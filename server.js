@@ -18,7 +18,7 @@ const DERIV_CAMPAIGN = process.env.DERIV_CAMPAIGN || 'protraders-fx';
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const DATA_FILE = path.join('/tmp', 'analytics.json');
 const sessions = new Map();
-const PUBLIC_DIR = path.join(__dirname, 'public');
+const PUBLIC_DIR = __dirname;
 
 if (!fs.existsSync(DATA_FILE)) {
   fs.writeFileSync(DATA_FILE, JSON.stringify({ visitors: 0, registrations: 0, events: [] }, null, 2));
