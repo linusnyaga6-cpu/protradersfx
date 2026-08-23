@@ -210,4 +210,4 @@ app.use(express.static(PUBLIC_DIR, { extensions: ['html'] }));
 app.get('*', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
 app.use((err, req, res, next) => { console.error(err); res.status(500).json({ error: 'Internal server error.' }); });
 
-app.listen(PORT, () => console.log(`[PROTRADERS FX] running on ${BASE_URL}`));
+module.exports = app;
