@@ -20,8 +20,9 @@ const DATA_FILE = path.join('/tmp', 'analytics.json');
 const sessions = new Map();
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
-fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
-if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, JSON.stringify({ visitors: 0, registrations: 0, events: [] }, null, 2));
+if (!fs.existsSync(DATA_FILE)) {
+  fs.writeFileSync(DATA_FILE, JSON.stringify({ visitors: 0, registrations: 0, events: [] }, null, 2));
+}
 
 function readData() { try { return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); } catch { return { visitors: 0, registrations: 0, events: [] }; } }
 function writeData(data) { fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2)); }
