@@ -1,459 +1,852 @@
 document.addEventListener('DOMContentLoaded', () => {
-  const MARKET_SYMBOLS = {
-    'EUR/USD': 'frxEURUSD',
-    'GBP/USD': 'frxGBPUSD',
-    'USD/JPY': 'frxUSDJPY',
-    'AUD/USD': 'frxAUDUSD',
-    'USD/CAD': 'frxUSDCAD',
-    'USD/CHF': 'frxUSDCHF'
+  const state = {
+    symbol: 'frxEURUSD',
+    symbolName: 'EUR/USD',
+    price: null,
+    previousPrice: null,
+    connected: false,
+    authenticated: false,
+    socket: null,
+    history: []
   };
 
-  let socket = null;
-  let reconnectTimer = null;
-  let selectedMarket = 'EUR/USD';
-  let currentPrice = null;
-  let previousPrice = null;
-  let connected = false;
+  const SYMBOLS = {
+    frxEURUSD: 'EUR/USD',
+    frxGBPUSD: 'GBP/USD',
+    frxUSDJPY: 'USD/JPY',
+    frxAUDUSD: 'AUD/USD',
+    frxUSDCAD: 'USD/CAD',
+    frxUSDCHF: 'USD/CHF'
+  };
 
-  const $ = (selector) => document.querySelector(selector);
+  const elements = {
+    price: document.querySelector('[data-price]'),
+    move: document.querySelector('[data-move]'),
+    status: document.querySelector('[data-status]'),
+    instrument: document.querySelector('[data-instrument]'),
+    chart: document.querySelector('[data-chart]'),
+    marketButtons: document.querySelectorAll('[data-symbol]')
+  };
 
-  function formatPrice(price) {
-    if (price === null || price === undefined || Number.isNaN(Number(price))) {
-      return '—';
+  /*
+   * ---------------------------------------------------------
+   * BASIC ANALYTICS
+   * ---------------------------------------------------------
+   */
+
+  async function track(type, extra = {}) {
+    try {
+      await fetch('/api/track', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          type,
+          path: window.location.pathname,
+          ...extra
+        }),
+        keepalive: true
+      });
+    } catch (error) {
+      // Analytics must never break the trading interface.
+    }
+  }
+
+  track('page_view');
+
+  document.querySelectorAll('a[href="/api/deriv/signup"]').forEach(link => {
+    link.addEventListener('click', () => {
+      track('signup_click');
+    });
+  });
+
+  document.querySelectorAll('a[href="/api/deriv/login"]').forEach(link => {
+    link.addEventListener('click', () => {
+      track('login_click');
+    });
+  });
+
+
+  /*
+   * ---------------------------------------------------------
+   * OAUTH RESULT
+   * ---------------------------------------------------------
+   */
+
+  function handleOAuthResult() {
+    const params = new URLSearchParams(window.location.search);
+
+    if (params.get('registered') === '1') {
+      showNotice(
+        'Deriv account access connected successfully.',
+        false
+      );
+
+      track('registration_complete');
     }
 
-    const number = Number(price);
+    if (params.get('logged_in') === '1') {
+      showNotice(
+        'Deriv account connected successfully.',
+        false
+      );
 
-    if (number >= 100) return number.toFixed(2);
-    if (number >= 10) return number.toFixed(3);
-    return number.toFixed(5);
-  }
+      track('oauth_success');
+    }
 
-  function setText(selector, value) {
-    const element = $(selector);
-    if (element) element.textContent = value;
-  }
+    if (params.get('oauth_error')) {
+      showNotice(
+        'Deriv authentication could not be completed. Please try again.',
+        true
+      );
 
-  function updateStatus(status, live = false) {
-    const statusElements = document.querySelectorAll(
-      '[data-market-status], .market-status, .connection-status'
-    );
-
-    statusElements.forEach(element => {
-      element.textContent = status;
-    });
-
-    const liveElements = document.querySelectorAll(
-      '.live-status, [data-live-status]'
-    );
-
-    liveElements.forEach(element => {
-      element.classList.toggle('is-live', live);
-    });
-  }
-
-  function updateMarketDisplay(price) {
-    const formatted = formatPrice(price);
-
-    setText('[data-price]', formatted);
-    setText('.market-price', formatted);
-    setText('.price-value', formatted);
-
-    const moveElements = document.querySelectorAll(
-      '[data-move], .market-move, .move-value'
-    );
-
-    let movement = '—';
-
-    if (
-      previousPrice !== null &&
-      currentPrice !== null &&
-      previousPrice !== 0
-    ) {
-      const change =
-        ((currentPrice - previousPrice) / previousPrice) * 100;
-
-      movement =
-        `${change >= 0 ? '+' : ''}${change.toFixed(3)}%`;
-
-      moveElements.forEach(element => {
-        element.textContent = movement;
-        element.classList.toggle('positive', change >= 0);
-        element.classList.toggle('negative', change < 0);
+      track('oauth_error', {
+        error: params.get('oauth_error')
       });
     }
 
-    moveElements.forEach(element => {
-      if (movement === '—') element.textContent = movement;
-    });
-
-    drawChart(price);
+    if (
+      params.has('registered') ||
+      params.has('logged_in') ||
+      params.has('oauth_error')
+    ) {
+      window.history.replaceState(
+        {},
+        document.title,
+        window.location.pathname + window.location.hash
+      );
+    }
   }
+
 
   /*
-   * Draw a lightweight live chart without requiring
-   * another charting library.
+   * ---------------------------------------------------------
+   * SESSION CHECK
+   * ---------------------------------------------------------
    */
-  const chartPoints = [];
 
-  function drawChart(price) {
-    if (!Number.isFinite(Number(price))) return;
+  async function checkSession() {
+    try {
+      const response = await fetch('/api/session', {
+        credentials: 'include',
+        cache: 'no-store'
+      });
 
-    chartPoints.push(Number(price));
+      if (!response.ok) {
+        return false;
+      }
 
-    if (chartPoints.length > 80) {
-      chartPoints.shift();
-    }
+      const data = await response.json();
 
-    const svg = document.querySelector('#live-chart');
+      state.authenticated = Boolean(data.authenticated);
 
-    if (!svg) return;
+      updateAuthenticationUI();
 
-    const width = 900;
-    const height = 360;
-    const padding = 20;
-
-    if (chartPoints.length < 2) return;
-
-    const min = Math.min(...chartPoints);
-    const max = Math.max(...chartPoints);
-
-    const range = max - min || 0.00001;
-
-    const points = chartPoints.map((value, index) => {
-      const x =
-        padding +
-        (index / Math.max(chartPoints.length - 1, 1)) *
-          (width - padding * 2);
-
-      const y =
-        height -
-        padding -
-        ((value - min) / range) *
-          (height - padding * 2);
-
-      return `${x.toFixed(2)},${y.toFixed(2)}`;
-    });
-
-    svg.innerHTML = `
-      <polyline
-        points="${points.join(' ')}"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="3"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        vector-effect="non-scaling-stroke"
-      />
-    `;
-  }
-
-  function clearChart() {
-    chartPoints.length = 0;
-
-    const svg = document.querySelector('#live-chart');
-
-    if (svg) {
-      svg.innerHTML = '';
+      return state.authenticated;
+    } catch (error) {
+      state.authenticated = false;
+      updateAuthenticationUI();
+      return false;
     }
   }
 
-  function connectMarket() {
-    if (socket) {
-      try {
-        socket.close();
-      } catch (_) {}
-    }
 
-    clearTimeout(reconnectTimer);
+  /*
+   * ---------------------------------------------------------
+   * AUTHENTICATION UI
+   * ---------------------------------------------------------
+   */
 
-    updateStatus('CONNECTING', false);
-
-    /*
-     * Public Deriv WebSocket.
-     * No account token is required for market data.
-     */
-    socket = new WebSocket(
-      'wss://api.derivws.com/trading/v1/options/ws/public'
+  function updateAuthenticationUI() {
+    const loginLinks = document.querySelectorAll(
+      'a[href="/api/deriv/login"]'
     );
 
-    socket.addEventListener('open', () => {
-      connected = true;
+    const accountLinks = document.querySelectorAll(
+      'a[href="/api/deriv/signup"]'
+    );
 
-      updateStatus('LIVE', true);
+    if (state.authenticated) {
+      loginLinks.forEach(link => {
+        link.textContent = 'TRADING ACCOUNT';
+        link.classList.add('authenticated');
+      });
 
-      subscribeToMarket(selectedMarket);
-    });
-
-    socket.addEventListener('message', event => {
-      let data;
-
-      try {
-        data = JSON.parse(event.data);
-      } catch (_) {
-        return;
-      }
-
-      if (data.error) {
-        console.error('Deriv market error:', data.error);
-        updateStatus('ERROR', false);
-        return;
-      }
-
-      if (data.msg_type === 'tick' && data.tick) {
-        const symbol = data.tick.symbol;
-
-        if (symbol !== MARKET_SYMBOLS[selectedMarket]) {
-          return;
-        }
-
-        const quote = Number(data.tick.quote);
-
-        if (!Number.isFinite(quote)) return;
-
-        previousPrice = currentPrice;
-        currentPrice = quote;
-
-        updateMarketDisplay(quote);
-
-        setText('[data-market]', selectedMarket);
-        setText('.selected-market', selectedMarket);
-      }
-    });
-
-    socket.addEventListener('error', error => {
-      console.error('Market WebSocket error:', error);
-
-      connected = false;
-      updateStatus('OFFLINE', false);
-    });
-
-    socket.addEventListener('close', () => {
-      connected = false;
-
-      updateStatus('RECONNECTING', false);
-
-      reconnectTimer = setTimeout(() => {
-        connectMarket();
-      }, 3000);
-    });
+      accountLinks.forEach(link => {
+        link.textContent = 'OPEN TERMINAL';
+      });
+    }
   }
 
-  function subscribeToMarket(market) {
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
+
+  /*
+   * ---------------------------------------------------------
+   * UI HELPERS
+   * ---------------------------------------------------------
+   */
+
+  function setText(element, value) {
+    if (element) {
+      element.textContent = value;
+    }
+  }
+
+  function setStatus(text, connected = false) {
+    setText(elements.status, text);
+
+    if (elements.status) {
+      elements.status.classList.toggle(
+        'connected',
+        connected
+      );
+    }
+  }
+
+  function updatePrice(price) {
+    const numericPrice = Number(price);
+
+    if (!Number.isFinite(numericPrice)) {
       return;
     }
 
-    const symbol = MARKET_SYMBOLS[market];
+    state.previousPrice = state.price;
+    state.price = numericPrice;
 
-    if (!symbol) return;
+    const formatted = formatPrice(
+      numericPrice,
+      state.symbol
+    );
 
-    /*
-     * Forget previous subscriptions where possible.
-     */
-    try {
-      socket.send(
-        JSON.stringify({
-          forget_all: 'ticks'
-        })
+    setText(elements.price, formatted);
+
+    if (state.previousPrice !== null) {
+      const movement =
+        ((state.price - state.previousPrice) /
+          state.previousPrice) *
+        100;
+
+      const sign = movement >= 0 ? '+' : '';
+
+      setText(
+        elements.move,
+        `${sign}${movement.toFixed(3)}%`
       );
-    } catch (_) {}
 
-    currentPrice = null;
-    previousPrice = null;
+      if (elements.move) {
+        elements.move.classList.remove(
+          'positive',
+          'negative'
+        );
 
-    clearChart();
+        elements.move.classList.add(
+          movement >= 0 ? 'positive' : 'negative'
+        );
+      }
+    }
 
-    setText('[data-market]', market);
-    setText('.selected-market', market);
-    setText('[data-price]', '—');
-    setText('.market-price', '—');
-    setText('.price-value', '—');
+    if (elements.instrument) {
+      elements.instrument.textContent =
+        state.symbolName;
+    }
 
-    document
-      .querySelectorAll('[data-move], .market-move, .move-value')
-      .forEach(element => {
-        element.textContent = '—';
-      });
+    addChartPoint(numericPrice);
+  }
 
-    socket.send(
-      JSON.stringify({
-        ticks: symbol,
-        subscribe: 1,
-        req_id: Date.now()
-      })
+
+  function formatPrice(price, symbol) {
+    if (symbol === 'frxUSDJPY') {
+      return price.toFixed(3);
+    }
+
+    return price.toFixed(5);
+  }
+
+
+  /*
+   * ---------------------------------------------------------
+   * CHART
+   * ---------------------------------------------------------
+   */
+
+  function addChartPoint(price) {
+    state.history.push(price);
+
+    if (state.history.length > 120) {
+      state.history.shift();
+    }
+
+    drawChart();
+  }
+
+
+  function drawChart() {
+    if (!elements.chart) {
+      return;
+    }
+
+    const svg =
+      elements.chart.tagName.toLowerCase() === 'svg'
+        ? elements.chart
+        : elements.chart.querySelector('svg');
+
+    if (!svg) {
+      return;
+    }
+
+    let line = svg.querySelector(
+      '[data-live-line]'
+    );
+
+    if (!line) {
+      line = document.createElementNS(
+        'http://www.w3.org/2000/svg',
+        'polyline'
+      );
+
+      line.setAttribute(
+        'data-live-line',
+        'true'
+      );
+
+      line.setAttribute(
+        'fill',
+        'none'
+      );
+
+      line.setAttribute(
+        'stroke',
+        '#61e6a7'
+      );
+
+      line.setAttribute(
+        'stroke-width',
+        '2.5'
+      );
+
+      line.setAttribute(
+        'vector-effect',
+        'non-scaling-stroke'
+      );
+
+      svg.appendChild(line);
+    }
+
+    if (state.history.length < 2) {
+      return;
+    }
+
+    const width =
+      svg.viewBox?.baseVal?.width ||
+      svg.clientWidth ||
+      600;
+
+    const height =
+      svg.viewBox?.baseVal?.height ||
+      260;
+
+    const values = state.history;
+
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+
+    const range =
+      max - min === 0
+        ? 1
+        : max - min;
+
+    const points = values.map(
+      (value, index) => {
+        const x =
+          (index /
+            Math.max(values.length - 1, 1)) *
+          width;
+
+        const normalized =
+          (value - min) / range;
+
+        const y =
+          height -
+          25 -
+          normalized *
+            (height - 50);
+
+        return `${x.toFixed(2)},${y.toFixed(2)}`;
+      }
+    );
+
+    line.setAttribute(
+      'points',
+      points.join(' ')
     );
   }
 
-  function selectMarket(market) {
-    if (!MARKET_SYMBOLS[market]) return;
 
-    selectedMarket = market;
+  /*
+   * ---------------------------------------------------------
+   * DERIV WEBSOCKET
+   * ---------------------------------------------------------
+   */
 
-    document.querySelectorAll('[data-market-button]').forEach(button => {
-      button.classList.toggle(
-        'active',
-        button.dataset.marketButton === market
+  async function getDerivToken() {
+    /*
+     * The server intentionally keeps the OAuth token
+     * private. We therefore ask the server for the
+     * authenticated session status first.
+     *
+     * The live public market feed does not require the
+     * user's password or OAuth token.
+     */
+
+    try {
+      const response = await fetch(
+        '/api/session',
+        {
+          credentials: 'include',
+          cache: 'no-store'
+        }
       );
-    });
 
-    if (connected) {
-      subscribeToMarket(market);
+      if (!response.ok) {
+        return null;
+      }
+
+      const data = await response.json();
+
+      state.authenticated =
+        Boolean(data.authenticated);
+
+      updateAuthenticationUI();
+
+      return state.authenticated;
+    } catch (error) {
+      return false;
     }
   }
 
+
+  function connectDeriv() {
+    disconnectDeriv();
+
+    setStatus('CONNECTING', false);
+
+    /*
+     * Deriv public WebSocket endpoint.
+     *
+     * No private OAuth access token is exposed
+     * to the browser.
+     */
+    const url =
+      'wss://ws.derivws.com/websockets/v3?app_id=' +
+      encodeURIComponent(
+        window.DERIV_APP_ID ||
+        document.body.dataset.derivAppId ||
+        ''
+      );
+
+    /*
+     * If the page does not expose an app ID, use the
+     * server configuration endpoint instead.
+     */
+    fetch('/api/config', {
+      cache: 'no-store'
+    })
+      .then(response => response.json())
+      .then(config => {
+        const appId =
+          config.appId ||
+          window.DERIV_APP_ID ||
+          document.body.dataset.derivAppId;
+
+        if (!appId) {
+          /*
+           * Fall back to the standard Deriv WebSocket
+           * endpoint without an app_id.
+           */
+          openSocket(
+            'wss://ws.derivws.com/websockets/v3'
+          );
+          return;
+        }
+
+        openSocket(
+          'wss://ws.derivws.com/websockets/v3?app_id=' +
+          encodeURIComponent(appId)
+        );
+      })
+      .catch(() => {
+        openSocket(
+          'wss://ws.derivws.com/websockets/v3'
+        );
+      });
+  }
+
+
+  function openSocket(url) {
+    try {
+      state.socket = new WebSocket(url);
+    } catch (error) {
+      handleSocketError();
+      return;
+    }
+
+    state.socket.addEventListener(
+      'open',
+      handleSocketOpen
+    );
+
+    state.socket.addEventListener(
+      'message',
+      handleSocketMessage
+    );
+
+    state.socket.addEventListener(
+      'error',
+      handleSocketError
+    );
+
+    state.socket.addEventListener(
+      'close',
+      handleSocketClose
+    );
+  }
+
+
+  function handleSocketOpen() {
+    state.connected = true;
+
+    setStatus('LIVE', true);
+
+    subscribeToSymbol(
+      state.symbol
+    );
+  }
+
+
+  function subscribeToSymbol(symbol) {
+    if (
+      !state.socket ||
+      state.socket.readyState !== WebSocket.OPEN
+    ) {
+      return;
+    }
+
+    state.history = [];
+    state.price = null;
+    state.previousPrice = null;
+
+    setText(elements.price, '—');
+    setText(elements.move, '—');
+
+    const request = {
+      ticks: symbol,
+      subscribe: 1
+    };
+
+    state.socket.send(
+      JSON.stringify(request)
+    );
+  }
+
+
+  function handleSocketMessage(event) {
+    let data;
+
+    try {
+      data = JSON.parse(event.data);
+    } catch (error) {
+      return;
+    }
+
+    if (data.error) {
+      console.warn(
+        'Deriv WebSocket error:',
+        data.error.message
+      );
+
+      setStatus('DATA ERROR', false);
+
+      return;
+    }
+
+    /*
+     * Tick response
+     */
+    if (
+      data.msg_type === 'tick' &&
+      data.tick
+    ) {
+      const tick = data.tick;
+
+      if (
+        tick.symbol &&
+        tick.symbol !== state.symbol
+      ) {
+        return;
+      }
+
+      updatePrice(
+        Number(tick.quote)
+      );
+
+      setStatus('LIVE', true);
+    }
+  }
+
+
+  function handleSocketError() {
+    state.connected = false;
+
+    setStatus(
+      'CONNECTION ERROR',
+      false
+    );
+  }
+
+
+  function handleSocketClose() {
+    state.connected = false;
+
+    setStatus(
+      'RECONNECTING',
+      false
+    );
+
+    /*
+     * Automatically reconnect.
+     */
+    setTimeout(() => {
+      connectDeriv();
+    }, 3000);
+  }
+
+
+  function disconnectDeriv() {
+    if (state.socket) {
+      try {
+        state.socket.close();
+      } catch (error) {
+        // Ignore close errors.
+      }
+    }
+
+    state.socket = null;
+    state.connected = false;
+  }
+
+
   /*
-   * Market buttons.
-   *
-   * Your HTML can use:
-   *
-   * <button data-market-button="EUR/USD">EUR/USD</button>
+   * ---------------------------------------------------------
+   * MARKET SELECTOR
+   * ---------------------------------------------------------
    */
-  document.querySelectorAll('[data-market-button]').forEach(button => {
-    button.addEventListener('click', () => {
-      selectMarket(button.dataset.marketButton);
+
+  function setupMarketSelector() {
+    elements.marketButtons.forEach(button => {
+      button.addEventListener(
+        'click',
+        () => {
+          const symbol =
+            button.dataset.symbol;
+
+          if (!SYMBOLS[symbol]) {
+            return;
+          }
+
+          state.symbol = symbol;
+          state.symbolName =
+            SYMBOLS[symbol];
+
+          elements.marketButtons.forEach(
+            item => {
+              item.classList.toggle(
+                'active',
+                item === button
+              );
+            }
+          );
+
+          if (elements.instrument) {
+            elements.instrument.textContent =
+              state.symbolName;
+          }
+
+          state.history = [];
+          state.price = null;
+          state.previousPrice = null;
+
+          setText(elements.price, '—');
+          setText(elements.move, '—');
+
+          subscribeToSymbol(
+            state.symbol
+          );
+
+          track(
+            'market_change',
+            {
+              symbol: state.symbolName
+            }
+          );
+        }
+      );
     });
-  });
+  }
+
 
   /*
-   * Support existing plain market links/buttons too.
+   * ---------------------------------------------------------
+   * TIMEFRAME BUTTONS
+   * ---------------------------------------------------------
+   *
+   * These currently control the visual selection.
+   * Actual historical candle loading can be connected
+   * separately once the live tick stream is confirmed.
    */
-  document.querySelectorAll('[data-market]').forEach(element => {
-    element.addEventListener('click', event => {
-      const market = element.dataset.market;
 
-      if (!MARKET_SYMBOLS[market]) return;
+  function setupTimeframes() {
+    const buttons =
+      document.querySelectorAll(
+        '[data-timeframe]'
+      );
 
-      event.preventDefault();
-      selectMarket(market);
+    buttons.forEach(button => {
+      button.addEventListener(
+        'click',
+        () => {
+          buttons.forEach(
+            item =>
+              item.classList.remove(
+                'active'
+              )
+          );
+
+          button.classList.add(
+            'active'
+          );
+
+          track(
+            'timeframe_change',
+            {
+              timeframe:
+                button.dataset.timeframe
+            }
+          );
+        }
+      );
     });
-  });
+  }
+
 
   /*
-   * OAuth notifications.
+   * ---------------------------------------------------------
+   * NOTICE
+   * ---------------------------------------------------------
    */
-  const params = new URLSearchParams(window.location.search);
 
-  if (params.get('registered') === '1') {
-    showNotice(
-      'Deriv account registration completed successfully.'
-    );
-  }
-
-  if (params.get('logged_in') === '1') {
-    showNotice(
-      'Deriv login completed successfully.'
-    );
-  }
-
-  if (params.get('oauth_error')) {
-    showNotice(
-      'Deriv authentication could not be completed. Please try again.',
-      true
-    );
-  }
-
-  if (
-    params.has('registered') ||
-    params.has('logged_in') ||
-    params.has('oauth_error')
+  function showNotice(
+    message,
+    error = false
   ) {
-    window.history.replaceState(
-      {},
-      document.title,
-      window.location.pathname + window.location.hash
+    const existing =
+      document.getElementById(
+        'protraders-notice'
+      );
+
+    if (existing) {
+      existing.remove();
+    }
+
+    const notice =
+      document.createElement('div');
+
+    notice.id =
+      'protraders-notice';
+
+    notice.textContent =
+      message;
+
+    Object.assign(
+      notice.style,
+      {
+        position: 'fixed',
+        top: '20px',
+        right: '20px',
+        zIndex: '99999',
+        maxWidth: '380px',
+        padding: '14px 18px',
+        borderRadius: '10px',
+        background: error
+          ? '#35151d'
+          : '#102b20',
+        color: '#ffffff',
+        border: error
+          ? '1px solid #843447'
+          : '1px solid #2e8061',
+        fontFamily:
+          'Inter, system-ui, sans-serif',
+        fontSize: '13px',
+        fontWeight: '700',
+        boxShadow:
+          '0 20px 50px rgba(0,0,0,.4)',
+        transition:
+          'opacity .35s ease'
+      }
     );
-  }
 
-  /*
-   * Analytics.
-   */
-  track('page_view');
-
-  document
-    .querySelectorAll('a[href="/api/deriv/signup"]')
-    .forEach(link => {
-      link.addEventListener('click', () => {
-        track('signup_click');
-      });
-    });
-
-  document
-    .querySelectorAll('a[href="/api/deriv/login"]')
-    .forEach(link => {
-      link.addEventListener('click', () => {
-        track('login_click');
-      });
-    });
-
-  /*
-   * Start the live market connection.
-   */
-  connectMarket();
-});
-
-
-async function track(type, extra = {}) {
-  try {
-    await fetch('/api/track', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        type,
-        path: window.location.pathname,
-        ...extra
-      }),
-      keepalive: true
-    });
-  } catch (_) {
-    // Tracking must never interfere with trading UI.
-  }
-}
-
-
-function showNotice(message, error = false) {
-  const existing =
-    document.getElementById('protraders-notice');
-
-  if (existing) {
-    existing.remove();
-  }
-
-  const notice = document.createElement('div');
-
-  notice.id = 'protraders-notice';
-  notice.textContent = message;
-
-  Object.assign(notice.style, {
-    position: 'fixed',
-    top: '20px',
-    right: '20px',
-    zIndex: '99999',
-    maxWidth: '380px',
-    padding: '14px 18px',
-    borderRadius: '10px',
-    background: error ? '#32151b' : '#10271d',
-    color: '#ffffff',
-    border: error
-      ? '1px solid #8f3548'
-      : '1px solid #2e8061',
-    fontFamily:
-      'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    fontSize: '13px',
-    fontWeight: '600',
-    boxShadow: '0 20px 50px rgba(0,0,0,.45)'
-  });
-
-  document.body.appendChild(notice);
-
-  setTimeout(() => {
-    notice.style.opacity = '0';
-    notice.style.transition = 'opacity .4s ease';
+    document.body.appendChild(
+      notice
+    );
 
     setTimeout(() => {
-      notice.remove();
-    }, 400);
-  }, 4500);
-}
+      notice.style.opacity = '0';
+
+      setTimeout(() => {
+        notice.remove();
+      }, 400);
+    }, 5000);
+  }
+
+
+  /*
+   * ---------------------------------------------------------
+   * START APPLICATION
+   * ---------------------------------------------------------
+   */
+
+  async function init() {
+    handleOAuthResult();
+
+    setupMarketSelector();
+
+    setupTimeframes();
+
+    await checkSession();
+
+    /*
+     * Public market data can be viewed without login.
+     * Login is only required when the user accesses
+     * their Deriv account/trading functionality.
+     */
+
+    await getDerivToken();
+
+    connectDeriv();
+  }
+
+  init();
+
+
+  /*
+   * ---------------------------------------------------------
+   * CLEANUP
+   * ---------------------------------------------------------
+   */
+
+  window.addEventListener(
+    'beforeunload',
+    () => {
+      disconnectDeriv();
+    }
+  );
+});
