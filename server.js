@@ -72,23 +72,7 @@ app.disable('x-powered-by');
 // Keep production OAuth on the canonical apex domain. The Deriv callback is
 // registered on https://protradersfx.com/oauth/callback, so www requests are
 // permanently redirected before any OAuth URL or session is created.
-const canonicalUrl = new URL(BASE_URL);
-const canonicalHost = canonicalUrl.hostname.toLowerCase();
 
-app.use((req, res, next) => {
-  const requestHost = String(req.get('host') || '')
-    .split(':')[0]
-    .toLowerCase();
-
-  if (
-    canonicalUrl.protocol === 'https:' &&
-    canonicalHost === 'protradersfx.com' &&
-    requestHost === 'www.protradersfx.com'
-  ) {
-    return res.redirect(308, `https://protradersfx.com${req.originalUrl}`);
-  }
-  next();
-});
 app.use(express.json({ limit: '20kb' }));
 app.use(express.urlencoded({ extended: false, limit: '20kb' }));
 app.use(require('cookie-parser')());
