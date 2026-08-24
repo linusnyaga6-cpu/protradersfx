@@ -113,7 +113,7 @@ function buildDerivOAuthUrl(req, mode) {
     response_type: 'code',
     client_id: DERIV_CLIENT_ID,
     redirect_uri: `${BASE_URL}/oauth/callback`,
-    scope: process.env.DERIV_SCOPE || 'trade'
+    scope: process.env.DERIV_SCOPE || 'trade',
     state,
     code_challenge: challenge(verifier),
     code_challenge_method: 'S256'
