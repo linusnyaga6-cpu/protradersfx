@@ -74,11 +74,22 @@ app.disable('x-powered-by');
 // permanently redirected before any OAuth URL or session is created.
 const canonicalUrl = new URL(BASE_URL);
 const canonicalHost = canonicalUrl.hostname.toLowerCase();
+
 app.use((req, res, next) => {
-  const requestHost = String(req.get('host') || '').split(':')[0].toLowerCase();
-  if (canonicalUrl.protocol === 'https:' && requestHost === `www.${canonicalHost}`) {
-    return res.redirect(308, `${BASE_URL}${req.originalUrl}`);
+  const requestHost = String(req.get('host') || '')
+    .split(':')[0]
+    .toLowerCase();
+
+  if (
+    canonicalUrl.protocol === 'https:' &&
+    canonicalHost === 'protradersfx.com' &&
+    requestHost === 'www.protradersfx.com'
+  ) {
+    return res.redirect(308, `https://protradersfx.com${req.originalUrl}`);
   }
+
+  next();
+});
   next();
 });
 app.use(express.json({ limit: '20kb' }));
