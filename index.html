@@ -1,21 +1,645 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="ProTraders FX — independent trading education and secure access to an existing Deriv account or new-account registration.">
-  <title>ProTraders FX | Learn. Analyse. Trade.</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+
+  <meta
+    name="description"
+    content="ProTraders FX — trading education, market analysis and secure Deriv account access."
+  >
+
+  <title>ProTraders FX | Trading Workspace</title>
+
   <link rel="stylesheet" href="/style.css">
 </head>
+
 <body>
-<header class="nav"><a class="brand" href="/">LINUS<span>TRADES</span></a><a class="nav-link" href="#risk">Risk disclosure</a></header>
-<main>
-<section class="hero">
-  <div class="hero-copy"><p class="eyebrow">INDEPENDENT DERIV PARTNER</p><h1>Trade with a plan.<br><span>Learn before you risk.</span></h1><p class="lead">Market education, analysis and a secure path to create or access your Deriv account.</p><div class="actions"><a class="button primary" href="/api/deriv/login">Login with Deriv</a><a class="button secondary" href="/api/deriv/signup">Create a Deriv account</a><a class="button secondary" href="#learn">Explore</a></div><p class="micro">Already have a Deriv account? Log in securely through Deriv. New users can create an account through the partner registration flow. We never ask for your Deriv password.</p></div>
-  <div class="card stats-card"><div class="card-label">PLATFORM</div><div class="metric">Secure onboarding</div><div class="line"></div><div class="mini-grid"><div><b>OAuth 2.0</b><small>Authentication</small></div><div><b>PKCE</b><small>CSRF protection</small></div><div><b>HTTPS</b><small>Required in production</small></div><div><b>Partner</b><small>Attribution enabled</small></div></div></div>
-</section>
-<section id="learn" class="section"><p class="eyebrow">WHAT YOU GET</p><div class="grid"><article><h3>Education</h3><p>Understand risk, leverage, markets and trading mechanics before placing trades.</p></article><article><h3>Market analysis</h3><p>Use analysis as information, not as a promise of profit or a personal financial recommendation.</p></article><article><h3>Deriv access</h3><p>Existing users can log in securely with Deriv. New users can register through the configured partner flow and complete account setup directly with Deriv.</p></article></div></section>
-<section id="risk" class="risk"><p class="eyebrow">IMPORTANT RISK WARNING</p><p>The products offered on the Deriv.com website include options, contracts for difference (“CFDs”), and other complex derivatives. Trading options may not be suitable for everyone. Trading CFDs carries a high level of risk since leverage can work both to your advantage and disadvantage. As a result, the products offered on the website may not be suitable for all investors because of the risk of losing all of your invested capital. You should never invest money that you cannot afford to lose and never trade with borrowed money. Before trading in the complex products offered, please be sure to understand the risks involved.</p></section>
-<section class="partner"><strong>Independent partner disclosure</strong><p>ProTraders FX is an independent Deriv partner. Trading services and financial products are offered by or through Deriv, not by ProTraders FX. This website does not guarantee profits or limit losses.</p></section>
-</main><footer><span>© 2026 ProTraders FX</span><span>Powered by Deriv</span></footer>
+
+<div class="app-shell">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+
+    <div class="logo">
+      <span class="logo-mark">P</span>
+      <span>PROTRADERS<span class="logo-accent">FX</span></span>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-title">WORKSPACE</div>
+
+      <a href="#dashboard" class="side-link active">
+        <span>⌂</span>
+        Dashboard
+      </a>
+
+      <a href="#markets" class="side-link">
+        <span>◈</span>
+        Markets
+      </a>
+
+      <a href="#analysis" class="side-link">
+        <span>⌁</span>
+        Analysis
+      </a>
+
+      <a href="#education" class="side-link">
+        <span>▣</span>
+        Education
+      </a>
+
+      <a href="#risk" class="side-link">
+        <span>!</span>
+        Risk
+      </a>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-title">ACCOUNT</div>
+
+      <a href="/api/deriv/login" class="side-link">
+        <span>↪</span>
+        Login with Deriv
+      </a>
+
+      <a href="/api/deriv/signup" class="side-link side-signup">
+        <span>＋</span>
+        Create account
+      </a>
+    </div>
+
+    <div class="sidebar-bottom">
+      <div class="connection-dot"></div>
+      <div>
+        <strong>System online</strong>
+        <small>Secure connection</small>
+      </div>
+    </div>
+
+  </aside>
+
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- TOP BAR -->
+    <header class="topbar">
+
+      <div>
+        <div class="top-title">Trading Workspace</div>
+        <div class="top-subtitle">
+          Market education • Analysis • Account access
+        </div>
+      </div>
+
+      <div class="top-actions">
+
+        <div class="live-status">
+          <span></span>
+          LIVE
+        </div>
+
+        <a href="/api/deriv/login" class="top-login">
+          LOGIN
+        </a>
+
+      </div>
+
+    </header>
+
+
+    <!-- DASHBOARD -->
+    <section id="dashboard" class="dashboard">
+
+      <div class="terminal-card boot-card">
+
+        <div class="terminal-top">
+          <div class="terminal-label">
+            PROTRADERS FX TERMINAL
+          </div>
+
+          <div class="terminal-status">
+            ONLINE
+          </div>
+        </div>
+
+        <div class="terminal-content">
+
+          <div class="eyebrow">
+            INDEPENDENT DERIV PARTNER
+          </div>
+
+          <h1>
+            Trade with a plan.
+            <span>Learn before you risk.</span>
+          </h1>
+
+          <p>
+            A focused trading workspace for learning market mechanics,
+            reviewing analysis and securely accessing your Deriv account.
+          </p>
+
+          <div class="hero-buttons">
+
+            <a href="/api/deriv/login" class="btn btn-primary">
+              LOGIN WITH DERIV
+            </a>
+
+            <a href="/api/deriv/signup" class="btn btn-secondary">
+              CREATE DERIV ACCOUNT
+            </a>
+
+          </div>
+
+          <div class="secure-note">
+            <span class="shield">◆</span>
+            OAuth 2.0 • PKCE • HTTPS • We never ask for your Deriv password
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <!-- SYSTEM PANEL -->
+      <div class="terminal-card system-card">
+
+        <div class="panel-heading">
+          <span>SYSTEM STATUS</span>
+          <span class="green">READY</span>
+        </div>
+
+        <div class="status-line">
+          <span>Platform</span>
+          <strong>PROTRADERS FX</strong>
+        </div>
+
+        <div class="status-line">
+          <span>Authentication</span>
+          <strong>OAuth 2.0</strong>
+        </div>
+
+        <div class="status-line">
+          <span>Security</span>
+          <strong>PKCE</strong>
+        </div>
+
+        <div class="status-line">
+          <span>Transport</span>
+          <strong>HTTPS</strong>
+        </div>
+
+        <div class="status-line">
+          <span>Partner</span>
+          <strong class="green">CONNECTED</strong>
+        </div>
+
+        <div class="system-bar">
+          <span></span>
+        </div>
+
+        <small class="system-note">
+          Secure onboarding environment operational.
+        </small>
+
+      </div>
+
+    </section>
+
+
+    <!-- MARKET OVERVIEW -->
+    <section id="markets" class="workspace-section">
+
+      <div class="section-header">
+
+        <div>
+          <div class="section-kicker">MARKET OVERVIEW</div>
+          <h2>Markets</h2>
+        </div>
+
+        <div class="market-status">
+          MARKET INFORMATION
+        </div>
+
+      </div>
+
+
+      <div class="market-grid">
+
+        <article class="market-card">
+
+          <div class="market-top">
+            <span>FOREX</span>
+            <span class="market-icon">FX</span>
+          </div>
+
+          <h3>Currency Markets</h3>
+
+          <p>
+            Learn how currency pairs, spreads, leverage and volatility
+            interact before entering a trade.
+          </p>
+
+          <a href="#education">Explore module →</a>
+
+        </article>
+
+
+        <article class="market-card">
+
+          <div class="market-top">
+            <span>INDICES</span>
+            <span class="market-icon">IDX</span>
+          </div>
+
+          <h3>Market Indices</h3>
+
+          <p>
+            Understand index movements, market sessions and the factors
+            that can influence price behaviour.
+          </p>
+
+          <a href="#analysis">View analysis →</a>
+
+        </article>
+
+
+        <article class="market-card">
+
+          <div class="market-top">
+            <span>DERIVATIVES</span>
+            <span class="market-icon">DRV</span>
+          </div>
+
+          <h3>Complex Products</h3>
+
+          <p>
+            Learn the mechanics and risks of derivatives before deciding
+            whether a product is appropriate for you.
+          </p>
+
+          <a href="#risk">Understand risk →</a>
+
+        </article>
+
+      </div>
+
+    </section>
+
+
+    <!-- ANALYSIS -->
+    <section id="analysis" class="workspace-section">
+
+      <div class="section-header">
+
+        <div>
+          <div class="section-kicker">MARKET INTELLIGENCE</div>
+          <h2>Analysis Workspace</h2>
+        </div>
+
+        <div class="terminal-badge">
+          INFORMATION ONLY
+        </div>
+
+      </div>
+
+
+      <div class="analysis-layout">
+
+        <div class="analysis-main terminal-card">
+
+          <div class="chart-header">
+
+            <div>
+              <strong>MARKET STRUCTURE</strong>
+              <small>Educational analysis workspace</small>
+            </div>
+
+            <div class="chart-timeframes">
+              <span>1H</span>
+              <span class="selected">4H</span>
+              <span>1D</span>
+              <span>1W</span>
+            </div>
+
+          </div>
+
+
+          <div class="chart">
+
+            <div class="chart-grid"></div>
+
+            <div class="price-line line-one"></div>
+            <div class="price-line line-two"></div>
+            <div class="price-line line-three"></div>
+
+            <div class="candles">
+
+              <i></i>
+              <i class="up"></i>
+              <i></i>
+              <i class="down"></i>
+              <i class="up"></i>
+              <i class="up"></i>
+              <i></i>
+              <i class="down"></i>
+              <i class="up"></i>
+              <i></i>
+              <i class="up"></i>
+              <i class="down"></i>
+              <i class="up"></i>
+              <i class="up"></i>
+              <i></i>
+
+            </div>
+
+            <div class="chart-label">
+              EDUCATIONAL VISUALIZATION
+            </div>
+
+          </div>
+
+        </div>
+
+
+        <div class="analysis-side">
+
+          <div class="info-card">
+
+            <span class="info-number">01</span>
+
+            <h3>Plan</h3>
+
+            <p>
+              Define the market, setup, entry conditions and risk before
+              considering a trade.
+            </p>
+
+          </div>
+
+
+          <div class="info-card">
+
+            <span class="info-number">02</span>
+
+            <h3>Analyse</h3>
+
+            <p>
+              Use market information to understand possible scenarios
+              rather than predict guaranteed outcomes.
+            </p>
+
+          </div>
+
+
+          <div class="info-card">
+
+            <span class="info-number">03</span>
+
+            <h3>Manage Risk</h3>
+
+            <p>
+              Consider position size, leverage, volatility and potential
+              losses before taking action.
+            </p>
+
+          </div>
+
+        </div>
+
+      </div>
+
+    </section>
+
+
+    <!-- EDUCATION -->
+    <section id="education" class="workspace-section">
+
+      <div class="section-header">
+
+        <div>
+          <div class="section-kicker">LEARNING CENTRE</div>
+          <h2>Build Your Trading Framework</h2>
+        </div>
+
+      </div>
+
+
+      <div class="education-grid">
+
+        <article class="education-card">
+
+          <div class="education-number">01</div>
+
+          <h3>Market Fundamentals</h3>
+
+          <p>
+            Learn market terminology, price behaviour, trading sessions,
+            volatility and basic market structure.
+          </p>
+
+          <span>FOUNDATION</span>
+
+        </article>
+
+
+        <article class="education-card">
+
+          <div class="education-number">02</div>
+
+          <h3>Technical Analysis</h3>
+
+          <p>
+            Explore charts, trends, support and resistance and other
+            analytical concepts.
+          </p>
+
+          <span>ANALYSIS</span>
+
+        </article>
+
+
+        <article class="education-card">
+
+          <div class="education-number">03</div>
+
+          <h3>Risk Management</h3>
+
+          <p>
+            Understand leverage, position sizing, drawdown and the
+            importance of protecting capital.
+          </p>
+
+          <span>RISK</span>
+
+        </article>
+
+
+        <article class="education-card">
+
+          <div class="education-number">04</div>
+
+          <h3>Trading Psychology</h3>
+
+          <p>
+            Build disciplined processes and recognise emotional decisions
+            that can influence trading behaviour.
+          </p>
+
+          <span>DISCIPLINE</span>
+
+        </article>
+
+      </div>
+
+    </section>
+
+
+    <!-- DERIV ACCESS -->
+    <section class="deriv-panel">
+
+      <div class="deriv-content">
+
+        <div class="section-kicker">
+          DERIV CONNECTION
+        </div>
+
+        <h2>Connect your Deriv account</h2>
+
+        <p>
+          Already have a Deriv account? Sign in securely through Deriv.
+          New users can create an account through the configured partner
+          registration flow.
+        </p>
+
+        <div class="deriv-actions">
+
+          <a href="/api/deriv/login" class="btn btn-primary">
+            LOGIN WITH DERIV
+          </a>
+
+          <a href="/api/deriv/signup" class="btn btn-secondary">
+            CREATE ACCOUNT
+          </a>
+
+        </div>
+
+        <div class="deriv-security">
+          <span>✓</span> OAuth authentication
+          <span>✓</span> PKCE protection
+          <span>✓</span> Secure HTTPS connection
+        </div>
+
+      </div>
+
+      <div class="deriv-terminal">
+
+        <div class="terminal-header">
+          DERIV ACCESS
+          <span>SECURE</span>
+        </div>
+
+        <div class="terminal-row">
+          <span>ACCOUNT</span>
+          <strong>AUTHENTICATED BY DERIV</strong>
+        </div>
+
+        <div class="terminal-row">
+          <span>PASSWORD</span>
+          <strong>NEVER SHARED</strong>
+        </div>
+
+        <div class="terminal-row">
+          <span>PARTNER</span>
+          <strong>PROTRADERS FX</strong>
+        </div>
+
+      </div>
+
+    </section>
+
+
+    <!-- RISK -->
+    <section id="risk" class="risk-section">
+
+      <div class="risk-header">
+        <span class="risk-symbol">!</span>
+
+        <div>
+          <div class="section-kicker">RISK CONTROL</div>
+          <h2>Important Risk Warning</h2>
+        </div>
+      </div>
+
+      <p>
+        The products offered on the Deriv.com website include options,
+        contracts for difference (“CFDs”), and other complex derivatives.
+        Trading options may not be suitable for everyone. Trading CFDs
+        carries a high level of risk since leverage can work both to your
+        advantage and disadvantage.
+      </p>
+
+      <p>
+        As a result, the products offered on the website may not be
+        suitable for all investors because of the risk of losing all of
+        your invested capital. You should never invest money that you
+        cannot afford to lose and never trade with borrowed money.
+      </p>
+
+      <p>
+        Before trading in complex products, please be sure to understand
+        the risks involved.
+      </p>
+
+    </section>
+
+
+    <!-- PARTNER DISCLOSURE -->
+    <section class="partner-section">
+
+      <div>
+        <div class="section-kicker">PARTNER DISCLOSURE</div>
+        <h2>Independent Deriv Partner</h2>
+      </div>
+
+      <p>
+        ProTraders FX is an independent Deriv partner. Trading services
+        and financial products are offered by or through Deriv, not by
+        ProTraders FX. This website does not guarantee profits or limit
+        losses.
+      </p>
+
+    </section>
+
+
+    <!-- FOOTER -->
+    <footer>
+
+      <div class="footer-brand">
+        <strong>PROTRADERS<span>FX</span></strong>
+        <small>Trading education &amp; market workspace</small>
+      </div>
+
+      <div class="footer-links">
+        <a href="#education">Education</a>
+        <a href="#analysis">Analysis</a>
+        <a href="#risk">Risk disclosure</a>
+        <a href="/api/deriv/login">Deriv login</a>
+      </div>
+
+      <div class="footer-copy">
+        © 2026 ProTraders FX<br>
+        Independent Deriv Partner
+      </div>
+
+    </footer>
+
+  </main>
+
+</div>
+
 <script src="/app.js" defer></script>
-</body></html>
+
+</body>
+</html>
