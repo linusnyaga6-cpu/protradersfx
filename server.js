@@ -68,11 +68,6 @@ app.use(helmet({
   referrerPolicy: { policy: 'strict-origin-when-cross-origin' }
 }));
 app.disable('x-powered-by');
-
-// Keep production OAuth on the canonical apex domain. The Deriv callback is
-// registered on https://protradersfx.com/oauth/callback, so www requests are
-// permanently redirected before any OAuth URL or session is created.
-
 app.use(express.json({ limit: '20kb' }));
 app.use(express.urlencoded({ extended: false, limit: '20kb' }));
 app.use(require('cookie-parser')());
@@ -184,7 +179,7 @@ app.get('/oauth/callback', async (req, res) => {
     writeData(data);
 
     // Store only an opaque session identifier in an HttpOnly cookie; never expose the Deriv token to the browser.
-    res.cookie('linus_session', sessionId, {
+ res.cookie('protraders_session', sessionId, {
       httpOnly: true,
       secure: BASE_URL.startsWith('https://'),
       sameSite: 'lax',
@@ -212,7 +207,7 @@ app.get('/api/preflight', (req, res) => {
 });
 
 app.get('/api/session', (req, res) => {
-  const s = sessions.get(req.cookies?.linus_session);
+const s = sessions.get(req.cookies?.protraders_session);
   if (!s || Date.now() >= s.expiresAt) return res.json({ authenticated: false });
   res.json({ authenticated: true, expiresAt: s.expiresAt });
 });
