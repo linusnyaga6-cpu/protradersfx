@@ -87,9 +87,6 @@ app.use((req, res, next) => {
   ) {
     return res.redirect(308, `https://protradersfx.com${req.originalUrl}`);
   }
-
-  next();
-});
   next();
 });
 app.use(express.json({ limit: '20kb' }));
