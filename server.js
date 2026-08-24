@@ -186,7 +186,7 @@ app.get('/oauth/callback', async (req, res) => {
       maxAge: Math.max(1, Number(token.expires_in || 3600) * 1000),
       path: '/'
     });
-    res.redirect(payload.mode === 'signup' ? '/?registered=1' : '/?logged_in=1');
+    res.redirect('/?trading=1');
   } catch (err) {
     console.error('OAuth callback error:', err.message);
     res.redirect(`/?oauth_error=${encodeURIComponent('oauth_failed')}`);
