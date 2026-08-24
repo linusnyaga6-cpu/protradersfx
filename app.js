@@ -1,216 +1,374 @@
 document.addEventListener('DOMContentLoaded', () => {
-  const priceEl = document.querySelector('.price-value');
-  const moveEl = document.querySelector('.move-value');
-  const marketEl = document.querySelector('.market-symbol');
-  const chartEl = document.querySelector('.chart-line');
-  const liveEl = document.querySelector('.live-status');
+  const markets = {
+    'EUR/USD': 'frxEURUSD',
+    'GBP/USD': 'frxGBPUSD',
+    'USD/JPY': 'frxUSDJPY',
+    'AUD/USD': 'frxAUDUSD',
+    'USD/CAD': 'frxUSDCAD',
+    'USD/CHF': 'frxUSDCHF'
+  };
 
-  const markets = [
-    { symbol: 'frxEURUSD', name: 'EUR/USD' },
-    { symbol: 'frxGBPUSD', name: 'GBP/USD' },
-    { symbol: 'frxUSDJPY', name: 'USD/JPY' },
-    { symbol: 'frxAUDUSD', name: 'AUD/USD' },
-    { symbol: 'frxUSDCAD', name: 'USD/CAD' },
-    { symbol: 'frxUSDCHF', name: 'USD/CHF' }
-  ];
+  let selectedMarket = 'EUR/USD';
+  let selectedSymbol = markets[selectedMarket];
+  let selectedTimeframe = 60;
 
-  let selectedMarket = markets[0];
-  let socket = null;
+  let ws = null;
+  let reconnectTimer = null;
+  let chartData = [];
   let previousPrice = null;
-  let prices = [];
 
-  function setLive(status) {
-    if (!liveEl) return;
+  const $ = (selector) => document.querySelector(selector);
 
-    liveEl.textContent = status;
-    liveEl.classList.toggle('offline', status !== 'LIVE');
+  const priceElement = document.querySelector('[data-price]');
+  const moveElement = document.querySelector('[data-move]');
+  const marketElement = document.querySelector('[data-market]');
+  const statusElement = document.querySelector('[data-status]');
+  const chartElement = document.querySelector('[data-chart]');
+
+  function setStatus(text, live = false) {
+    if (!statusElement) return;
+
+    statusElement.textContent = text;
+    statusElement.classList.toggle('live', live);
   }
 
-  function formatPrice(price, symbol) {
-    if (symbol.includes('JPY')) {
-      return Number(price).toFixed(3);
+  function formatPrice(price) {
+    if (!Number.isFinite(price)) return '—';
+
+    if (price >= 100) {
+      return price.toFixed(3);
     }
 
-    return Number(price).toFixed(5);
+    return price.toFixed(5);
+  }
+
+  function formatMove(current, previous) {
+    if (!Number.isFinite(current) || !Number.isFinite(previous) || previous === 0) {
+      return '—';
+    }
+
+    const move = ((current - previous) / previous) * 100;
+
+    return `${move >= 0 ? '+' : ''}${move.toFixed(2)}%`;
   }
 
   function updatePrice(price) {
-    if (!priceEl) return;
+    if (!Number.isFinite(price)) return;
 
-    const formatted = formatPrice(price, selectedMarket.symbol);
+    const move = formatMove(price, previousPrice);
 
-    priceEl.textContent = formatted;
+    if (priceElement) {
+      priceElement.textContent = formatPrice(price);
+    }
 
-    if (previousPrice !== null && moveEl) {
-      const change = ((price - previousPrice) / previousPrice) * 100;
+    if (moveElement) {
+      moveElement.textContent = move;
 
-      moveEl.textContent =
-        `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
+      moveElement.classList.remove('positive', 'negative');
 
-      moveEl.classList.toggle('negative', change < 0);
+      if (move.startsWith('+')) {
+        moveElement.classList.add('positive');
+      } else if (move !== '—') {
+        moveElement.classList.add('negative');
+      }
     }
 
     previousPrice = price;
-
-    prices.push(price);
-
-    if (prices.length > 80) {
-      prices.shift();
-    }
-
-    drawChart();
   }
 
-  function drawChart() {
-    if (!chartEl || prices.length < 2) return;
+  function drawChart(data) {
+    if (!chartElement || !data.length) return;
 
-    const width = 600;
-    const height = 260;
+    const values = data
+      .map(item => Number(item.price))
+      .filter(Number.isFinite);
 
-    const min = Math.min(...prices);
-    const max = Math.max(...prices);
+    if (values.length < 2) return;
+
+    const width = 1000;
+    const height = 360;
+
+    const min = Math.min(...values);
+    const max = Math.max(...values);
 
     const range = max - min || 0.00001;
 
-    const points = prices.map((price, index) => {
-      const x = (index / (prices.length - 1)) * width;
+    const points = values.map((value, index) => {
+      const x = (index / (values.length - 1)) * width;
+
       const y =
         height -
-        ((price - min) / range) * (height - 30) -
-        15;
+        ((value - min) / range) * (height - 40) -
+        20;
 
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
+      return `${x.toFixed(2)},${y.toFixed(2)}`;
     });
 
-    chartEl.setAttribute('points', points.join(' '));
+    chartElement.innerHTML = `
+      <svg
+        viewBox="0 0 ${width} ${height}"
+        preserveAspectRatio="none"
+        class="live-chart-svg"
+        aria-label="${selectedMarket} live chart"
+      >
+        <defs>
+          <linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-opacity=".24"></stop>
+            <stop offset="100%" stop-opacity="0"></stop>
+          </linearGradient>
+        </defs>
+
+        <polyline
+          class="chart-line"
+          points="${points.join(' ')}"
+        ></polyline>
+      </svg>
+    `;
   }
 
-  function connectMarket() {
-    if (socket) {
+  function connect() {
+    if (ws) {
       try {
-        socket.close();
-      } catch (e) {}
+        ws.close();
+      } catch (_) {}
     }
 
-    setLive('CONNECTING');
+    setStatus('CONNECTING');
 
-    socket = new WebSocket(
-      'wss://ws.derivws.com/websockets/v3?app_id=1089'
+    ws = new WebSocket(
+      'wss://ws.binaryws.com/websockets/v3'
     );
 
-    socket.addEventListener('open', () => {
-      setLive('LIVE');
+    ws.addEventListener('open', () => {
+      setStatus('LIVE', true);
 
-      socket.send(JSON.stringify({
-        ticks: selectedMarket.symbol,
-        subscribe: 1
-      }));
+      subscribeMarket();
+      requestHistory();
     });
 
-    socket.addEventListener('message', event => {
+    ws.addEventListener('message', (event) => {
       try {
         const data = JSON.parse(event.data);
 
-        if (data.tick && data.tick.quote) {
-          updatePrice(Number(data.tick.quote));
+        if (data.error) {
+          console.error('Deriv API error:', data.error);
+          setStatus('ERROR');
+          return;
+        }
+
+        if (data.msg_type === 'history') {
+          processHistory(data);
+          return;
+        }
+
+        if (data.msg_type === 'tick') {
+          processTick(data);
         }
       } catch (error) {
         console.error('Market data error:', error);
       }
     });
 
-    socket.addEventListener('error', error => {
-      console.error('WebSocket error:', error);
-      setLive('OFFLINE');
-    });
+    ws.addEventListener('close', () => {
+      setStatus('OFFLINE');
 
-    socket.addEventListener('close', () => {
-      setLive('OFFLINE');
+      clearTimeout(reconnectTimer);
 
-      setTimeout(() => {
-        connectMarket();
+      reconnectTimer = setTimeout(() => {
+        connect();
       }, 3000);
     });
+
+    ws.addEventListener('error', () => {
+      setStatus('ERROR');
+    });
   }
 
-  function selectMarket(market) {
-    selectedMarket = market;
+  function subscribeMarket() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+    ws.send(
+      JSON.stringify({
+        ticks: selectedSymbol,
+        subscribe: 1,
+        req_id: 10
+      })
+    );
+  }
+
+  function requestHistory() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+    chartData = [];
+
+    ws.send(
+      JSON.stringify({
+        ticks_history: selectedSymbol,
+        end: 'latest',
+        count: 120,
+        style: 'candles',
+        granularity: selectedTimeframe,
+        subscribe: 0,
+        req_id: 20
+      })
+    );
+  }
+
+  function processHistory(data) {
+    if (!data.history) return;
+
+    const prices = data.history.prices || [];
+    const times = data.history.times || [];
+
+    chartData = prices.map((price, index) => ({
+      time: times[index],
+      price: Number(price)
+    }));
+
+    drawChart(chartData);
+
+    if (prices.length) {
+      updatePrice(Number(prices[prices.length - 1]));
+    }
+  }
+
+  function processTick(data) {
+    if (!data.tick) return;
+
+    const price = Number(data.tick.quote);
+
+    if (!Number.isFinite(price)) return;
+
+    updatePrice(price);
+
+    chartData.push({
+      time: Number(data.tick.epoch),
+      price
+    });
+
+    if (chartData.length > 180) {
+      chartData.shift();
+    }
+
+    drawChart(chartData);
+  }
+
+  function selectMarket(name) {
+    if (!markets[name]) return;
+
+    selectedMarket = name;
+    selectedSymbol = markets[name];
     previousPrice = null;
-    prices = [];
+    chartData = [];
 
-    if (marketEl) {
-      marketEl.textContent = market.name;
+    if (marketElement) {
+      marketElement.textContent = selectedMarket;
     }
 
-    if (priceEl) {
-      priceEl.textContent = '—';
-    }
+    document
+      .querySelectorAll('[data-symbol]')
+      .forEach(button => {
+        button.classList.toggle(
+          'active',
+          button.dataset.symbol === selectedMarket
+        );
+      });
 
-    if (moveEl) {
-      moveEl.textContent = '—';
-    }
-
-    connectMarket();
+    requestHistory();
+    subscribeMarket();
   }
 
-  /*
-   * Market selector
-   */
+  function selectTimeframe(seconds) {
+    selectedTimeframe = seconds;
 
-  document.querySelectorAll('[data-market]').forEach(button => {
-    button.addEventListener('click', () => {
-      const symbol = button.dataset.market;
+    document
+      .querySelectorAll('[data-timeframe]')
+      .forEach(button => {
+        button.classList.toggle(
+          'active',
+          Number(button.dataset.timeframe) === seconds
+        );
+      });
 
-      const market = markets.find(
-        item => item.symbol === symbol
-      );
+    requestHistory();
+  }
 
-      if (market) {
-        document
-          .querySelectorAll('[data-market]')
-          .forEach(item => item.classList.remove('active'));
+  document
+    .querySelectorAll('[data-symbol]')
+    .forEach(button => {
+      button.addEventListener('click', () => {
+        selectMarket(button.dataset.symbol);
+      });
+    });
 
-        button.classList.add('active');
+  document
+    .querySelectorAll('[data-timeframe]')
+    .forEach(button => {
+      button.addEventListener('click', () => {
+        selectTimeframe(
+          Number(button.dataset.timeframe)
+        );
+      });
+    });
 
-        selectMarket(market);
-      }
+  const signupLinks = document.querySelectorAll(
+    'a[href="/api/deriv/signup"]'
+  );
+
+  signupLinks.forEach(link => {
+    link.addEventListener('click', () => {
+      track('signup_click');
     });
   });
 
-  /*
-   * Chart timeframe buttons
-   *
-   * These currently control the selected timeframe visually.
-   * Historical candles can be connected next.
-   */
+  const loginLinks = document.querySelectorAll(
+    'a[href="/api/deriv/login"]'
+  );
 
-  document.querySelectorAll('[data-timeframe]').forEach(button => {
-    button.addEventListener('click', () => {
-      document
-        .querySelectorAll('[data-timeframe]')
-        .forEach(item => item.classList.remove('active'));
-
-      button.classList.add('active');
+  loginLinks.forEach(link => {
+    link.addEventListener('click', () => {
+      track('login_click');
     });
   });
 
-  /*
-   * OAuth messages
-   */
+  function track(type, extra = {}) {
+    try {
+      fetch('/api/track', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          type,
+          path: window.location.pathname,
+          ...extra
+        }),
+        keepalive: true
+      }).catch(() => {});
+    } catch (_) {}
+  }
 
-  const params = new URLSearchParams(window.location.search);
+  track('page_view');
+
+  const params = new URLSearchParams(
+    window.location.search
+  );
 
   if (params.get('registered') === '1') {
-    showNotice('Deriv account connection completed.');
+    showNotice(
+      'Deriv account connection completed.'
+    );
   }
 
   if (params.get('logged_in') === '1') {
-    showNotice('Deriv login successful.');
+    showNotice(
+      'Deriv account connected successfully.'
+    );
   }
 
   if (params.get('oauth_error')) {
     showNotice(
-      'Deriv authentication could not be completed.',
+      'Deriv authentication could not be completed. Please try again.',
       true
     );
   }
@@ -223,23 +381,12 @@ document.addEventListener('DOMContentLoaded', () => {
     window.history.replaceState(
       {},
       document.title,
-      window.location.pathname + window.location.hash
+      window.location.pathname +
+      window.location.hash
     );
   }
 
-  /*
-   * Start market
-   */
-
-  const firstMarket = document.querySelector(
-    '[data-market="frxEURUSD"]'
-  );
-
-  if (firstMarket) {
-    firstMarket.classList.add('active');
-  }
-
-  connectMarket();
+  connect();
 });
 
 
@@ -256,38 +403,33 @@ function showNotice(message, error = false) {
   notice.id = 'protraders-notice';
   notice.textContent = message;
 
-  notice.style.position = 'fixed';
-  notice.style.top = '24px';
-  notice.style.right = '24px';
-  notice.style.zIndex = '9999';
-  notice.style.maxWidth = '380px';
-  notice.style.padding = '14px 18px';
-  notice.style.borderRadius = '10px';
-
-  notice.style.background =
-    error ? '#32151b' : '#102a20';
-
-  notice.style.color = '#fff';
-
-  notice.style.border =
-    error
-      ? '1px solid #71313e'
-      : '1px solid #286c51';
-
-  notice.style.fontFamily =
-    'Inter, Arial, sans-serif';
-
-  notice.style.fontSize = '13px';
-  notice.style.fontWeight = '700';
-
-  notice.style.boxShadow =
-    '0 15px 40px rgba(0,0,0,.35)';
+  Object.assign(notice.style, {
+    position: 'fixed',
+    top: '22px',
+    right: '22px',
+    zIndex: '99999',
+    maxWidth: '380px',
+    padding: '14px 18px',
+    borderRadius: '10px',
+    background: error ? '#35151d' : '#10271d',
+    color: '#fff',
+    border: error
+      ? '1px solid #743443'
+      : '1px solid #28694e',
+    fontFamily:
+      'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    fontSize: '13px',
+    fontWeight: '700',
+    boxShadow:
+      '0 20px 50px rgba(0,0,0,.45)'
+  });
 
   document.body.appendChild(notice);
 
   setTimeout(() => {
     notice.style.opacity = '0';
-    notice.style.transition = 'opacity .4s ease';
+    notice.style.transition =
+      'opacity .35s ease';
 
     setTimeout(() => {
       notice.remove();
