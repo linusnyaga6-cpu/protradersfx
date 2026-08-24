@@ -16,15 +16,22 @@ const DERIV_AFFILIATE_TOKEN = process.env.DERIV_AFFILIATE_TOKEN || '';
 const DERIV_AFFILIATE_ID = process.env.DERIV_AFFILIATE_ID || '';
 const DERIV_CAMPAIGN = process.env.DERIV_CAMPAIGN || 'protraders-fx';
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
-const DATA_FILE = path.join(__dirname, 'data', 'analytics.json');
 const sessions = new Map();
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
-fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
-if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, JSON.stringify({ visitors: 0, registrations: 0, events: [] }, null, 2));
+let analyticsData = {
+  visitors: 0,
+  registrations: 0,
+  events: []
+};
 
-function readData() { try { return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); } catch { return { visitors: 0, registrations: 0, events: [] }; } }
-function writeData(data) { fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2)); }
+function readData() {
+  return analyticsData;
+}
+
+function writeData(data) {
+  analyticsData = data;
+}
 function hashIp(ip) { return crypto.createHash('sha256').update(`${ip}|${SESSION_SECRET}`).digest('hex').slice(0, 16); }
 function base64url(buf) { return Buffer.from(buf).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
 function encrypt(obj) {
