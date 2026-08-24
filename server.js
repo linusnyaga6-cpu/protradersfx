@@ -16,13 +16,12 @@ const DERIV_AFFILIATE_TOKEN = process.env.DERIV_AFFILIATE_TOKEN || '';
 const DERIV_AFFILIATE_ID = process.env.DERIV_AFFILIATE_ID || '';
 const DERIV_CAMPAIGN = process.env.DERIV_CAMPAIGN || 'protraders-fx';
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
-const DATA_FILE = path.join('/tmp', 'analytics.json');
+const DATA_FILE = path.join(__dirname, 'data', 'analytics.json');
 const sessions = new Map();
-const PUBLIC_DIR = __dirname;
+const PUBLIC_DIR = path.join(__dirname, 'public');
 
-if (!fs.existsSync(DATA_FILE)) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify({ visitors: 0, registrations: 0, events: [] }, null, 2));
-}
+fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
+if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, JSON.stringify({ visitors: 0, registrations: 0, events: [] }, null, 2));
 
 function readData() { try { return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); } catch { return { visitors: 0, registrations: 0, events: [] }; } }
 function writeData(data) { fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2)); }
@@ -62,6 +61,19 @@ app.use(helmet({
   referrerPolicy: { policy: 'strict-origin-when-cross-origin' }
 }));
 app.disable('x-powered-by');
+
+// Keep production OAuth on the canonical apex domain. The Deriv callback is
+// registered on https://protradersfx.com/oauth/callback, so www requests are
+// permanently redirected before any OAuth URL or session is created.
+const canonicalUrl = new URL(BASE_URL);
+const canonicalHost = canonicalUrl.hostname.toLowerCase();
+app.use((req, res, next) => {
+  const requestHost = String(req.get('host') || '').split(':')[0].toLowerCase();
+  if (canonicalUrl.protocol === 'https:' && requestHost === `www.${canonicalHost}`) {
+    return res.redirect(308, `${BASE_URL}${req.originalUrl}`);
+  }
+  next();
+});
 app.use(express.json({ limit: '20kb' }));
 app.use(express.urlencoded({ extended: false, limit: '20kb' }));
 app.use(require('cookie-parser')());
@@ -211,4 +223,4 @@ app.use(express.static(PUBLIC_DIR, { extensions: ['html'] }));
 app.get('*', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
 app.use((err, req, res, next) => { console.error(err); res.status(500).json({ error: 'Internal server error.' }); });
 
-module.exports = app;
+app.listen(PORT, () => console.log(`[PROTRADERS FX] running on ${BASE_URL}`));
