@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-  const markets = {
+  const MARKET_SYMBOLS = {
     'EUR/USD': 'frxEURUSD',
     'GBP/USD': 'frxGBPUSD',
     'USD/JPY': 'frxUSDJPY',
@@ -8,235 +8,181 @@ document.addEventListener('DOMContentLoaded', () => {
     'USD/CHF': 'frxUSDCHF'
   };
 
-  let selectedMarket = 'EUR/USD';
-  let selectedSymbol = markets[selectedMarket];
-  let selectedTimeframe = 60;
-
   let socket = null;
   let reconnectTimer = null;
-  let history = [];
+  let selectedMarket = 'EUR/USD';
+  let currentPrice = null;
   let previousPrice = null;
+  let connected = false;
 
-  const $ = selector => document.querySelector(selector);
-
-  const priceEl = $('[data-price]');
-  const moveEl = $('[data-move]');
-  const marketEl = $('[data-market]');
-  const statusEl = $('[data-status]');
-  const chartEl = $('[data-chart]');
-
-  function setStatus(text, live = false) {
-    if (!statusEl) return;
-
-    statusEl.textContent = text;
-
-    statusEl.classList.toggle('live', live);
-  }
+  const $ = (selector) => document.querySelector(selector);
 
   function formatPrice(price) {
-    if (!Number.isFinite(price)) return '—';
-
-    if (price >= 100) {
-      return price.toFixed(3);
+    if (price === null || price === undefined || Number.isNaN(Number(price))) {
+      return '—';
     }
 
-    return price.toFixed(5);
+    const number = Number(price);
+
+    if (number >= 100) return number.toFixed(2);
+    if (number >= 10) return number.toFixed(3);
+    return number.toFixed(5);
   }
 
-  function calculateMove(current) {
+  function setText(selector, value) {
+    const element = $(selector);
+    if (element) element.textContent = value;
+  }
+
+  function updateStatus(status, live = false) {
+    const statusElements = document.querySelectorAll(
+      '[data-market-status], .market-status, .connection-status'
+    );
+
+    statusElements.forEach(element => {
+      element.textContent = status;
+    });
+
+    const liveElements = document.querySelectorAll(
+      '.live-status, [data-live-status]'
+    );
+
+    liveElements.forEach(element => {
+      element.classList.toggle('is-live', live);
+    });
+  }
+
+  function updateMarketDisplay(price) {
+    const formatted = formatPrice(price);
+
+    setText('[data-price]', formatted);
+    setText('.market-price', formatted);
+    setText('.price-value', formatted);
+
+    const moveElements = document.querySelectorAll(
+      '[data-move], .market-move, .move-value'
+    );
+
+    let movement = '—';
+
     if (
-      !Number.isFinite(current) ||
-      !Number.isFinite(previousPrice) ||
-      previousPrice === 0
+      previousPrice !== null &&
+      currentPrice !== null &&
+      previousPrice !== 0
     ) {
-      return null;
+      const change =
+        ((currentPrice - previousPrice) / previousPrice) * 100;
+
+      movement =
+        `${change >= 0 ? '+' : ''}${change.toFixed(3)}%`;
+
+      moveElements.forEach(element => {
+        element.textContent = movement;
+        element.classList.toggle('positive', change >= 0);
+        element.classList.toggle('negative', change < 0);
+      });
     }
 
-    return ((current - previousPrice) / previousPrice) * 100;
+    moveElements.forEach(element => {
+      if (movement === '—') element.textContent = movement;
+    });
+
+    drawChart(price);
   }
 
-  function updatePrice(price) {
-    if (!Number.isFinite(price)) return;
+  /*
+   * Draw a lightweight live chart without requiring
+   * another charting library.
+   */
+  const chartPoints = [];
 
-    const move = calculateMove(price);
+  function drawChart(price) {
+    if (!Number.isFinite(Number(price))) return;
 
-    if (priceEl) {
-      priceEl.textContent = formatPrice(price);
+    chartPoints.push(Number(price));
+
+    if (chartPoints.length > 80) {
+      chartPoints.shift();
     }
 
-    if (moveEl) {
-      if (move === null) {
-        moveEl.textContent = '—';
-      } else {
-        moveEl.textContent =
-          `${move >= 0 ? '+' : ''}${move.toFixed(2)}%`;
+    const svg = document.querySelector('#live-chart');
 
-        moveEl.classList.remove(
-          'positive',
-          'negative'
-        );
+    if (!svg) return;
 
-        moveEl.classList.add(
-          move >= 0 ? 'positive' : 'negative'
-        );
-      }
-    }
-
-    previousPrice = price;
-  }
-
-  function drawChart() {
-    if (!chartEl || history.length < 2) return;
-
-    const values = history
-      .map(point => Number(point.price))
-      .filter(Number.isFinite);
-
-    if (values.length < 2) return;
-
-    const width = 1000;
+    const width = 900;
     const height = 360;
+    const padding = 20;
 
-    const min = Math.min(...values);
-    const max = Math.max(...values);
+    if (chartPoints.length < 2) return;
+
+    const min = Math.min(...chartPoints);
+    const max = Math.max(...chartPoints);
+
     const range = max - min || 0.00001;
 
-    const points = values.map((value, index) => {
+    const points = chartPoints.map((value, index) => {
       const x =
-        (index / (values.length - 1)) *
-        width;
+        padding +
+        (index / Math.max(chartPoints.length - 1, 1)) *
+          (width - padding * 2);
 
       const y =
         height -
+        padding -
         ((value - min) / range) *
-          (height - 40) -
-        20;
+          (height - padding * 2);
 
       return `${x.toFixed(2)},${y.toFixed(2)}`;
     });
 
-    chartEl.innerHTML = `
-      <svg
-        viewBox="0 0 ${width} ${height}"
-        preserveAspectRatio="none"
-        class="live-chart-svg"
-      >
-        <defs>
-          <linearGradient
-            id="chartGradient"
-            x1="0"
-            y1="0"
-            x2="0"
-            y2="1"
-          >
-            <stop
-              offset="0%"
-              stop-opacity=".25"
-            />
-            <stop
-              offset="100%"
-              stop-opacity="0"
-            />
-          </linearGradient>
-        </defs>
-
-        <polyline
-          class="chart-line"
-          points="${points.join(' ')}"
-        ></polyline>
-      </svg>
+    svg.innerHTML = `
+      <polyline
+        points="${points.join(' ')}"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="3"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        vector-effect="non-scaling-stroke"
+      />
     `;
   }
 
-  function unsubscribe() {
-    if (!socket) return;
+  function clearChart() {
+    chartPoints.length = 0;
 
-    if (socket.readyState === WebSocket.OPEN) {
-      socket.send(
-        JSON.stringify({
-          forget_all: 'ticks'
-        })
-      );
+    const svg = document.querySelector('#live-chart');
+
+    if (svg) {
+      svg.innerHTML = '';
     }
   }
 
-  function subscribe() {
-    if (!socket) return;
-
-    if (socket.readyState !== WebSocket.OPEN) {
-      return;
+  function connectMarket() {
+    if (socket) {
+      try {
+        socket.close();
+      } catch (_) {}
     }
 
-    socket.send(
-      JSON.stringify({
-        ticks: selectedSymbol,
-        subscribe: 1
-      })
-    );
-  }
-
-  function loadHistory() {
-    if (!socket) return;
-
-    if (socket.readyState !== WebSocket.OPEN) {
-      return;
-    }
-
-    history = [];
-
-    socket.send(
-      JSON.stringify({
-        ticks_history: selectedSymbol,
-        end: 'latest',
-        count: 100,
-        style: 'candles',
-        granularity: selectedTimeframe
-      })
-    );
-  }
-
-  function connect() {
     clearTimeout(reconnectTimer);
 
-    setStatus('CONNECTING');
+    updateStatus('CONNECTING', false);
 
     /*
-     * Deriv's public WebSocket endpoint.
-     *
-     * The market-data stream itself does not require
-     * the user's Deriv password or trading token.
+     * Public Deriv WebSocket.
+     * No account token is required for market data.
      */
-    const appId =
-      document.body.dataset.derivAppId ||
-      '1089';
-
-    const url =
-      `wss://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`;
-
-    try {
-      socket = new WebSocket(url);
-    } catch (error) {
-      console.error(
-        'WebSocket creation failed:',
-        error
-      );
-
-      setStatus('CONNECTION ERROR');
-
-      scheduleReconnect();
-
-      return;
-    }
+    socket = new WebSocket(
+      'wss://api.derivws.com/trading/v1/options/ws/public'
+    );
 
     socket.addEventListener('open', () => {
-      console.log(
-        'ProTraders FX: Deriv market connection opened'
-      );
+      connected = true;
 
-      setStatus('LIVE', true);
+      updateStatus('LIVE', true);
 
-      loadHistory();
-      subscribe();
+      subscribeToMarket(selectedMarket);
     });
 
     socket.addEventListener('message', event => {
@@ -244,279 +190,165 @@ document.addEventListener('DOMContentLoaded', () => {
 
       try {
         data = JSON.parse(event.data);
-      } catch (error) {
-        console.error(
-          'Invalid Deriv response:',
-          error
-        );
-
+      } catch (_) {
         return;
       }
 
       if (data.error) {
-        console.error(
-          'Deriv API error:',
-          data.error
-        );
-
-        setStatus('API ERROR');
-
+        console.error('Deriv market error:', data.error);
+        updateStatus('ERROR', false);
         return;
       }
 
-      if (data.msg_type === 'history') {
-        processHistory(data);
-        return;
+      if (data.msg_type === 'tick' && data.tick) {
+        const symbol = data.tick.symbol;
+
+        if (symbol !== MARKET_SYMBOLS[selectedMarket]) {
+          return;
+        }
+
+        const quote = Number(data.tick.quote);
+
+        if (!Number.isFinite(quote)) return;
+
+        previousPrice = currentPrice;
+        currentPrice = quote;
+
+        updateMarketDisplay(quote);
+
+        setText('[data-market]', selectedMarket);
+        setText('.selected-market', selectedMarket);
       }
-
-      if (data.msg_type === 'candles') {
-        processCandles(data);
-        return;
-      }
-
-      if (data.msg_type === 'tick') {
-        processTick(data);
-      }
-    });
-
-    socket.addEventListener('close', event => {
-      console.warn(
-        'Deriv WebSocket closed:',
-        event.code,
-        event.reason
-      );
-
-      setStatus('RECONNECTING');
-
-      scheduleReconnect();
     });
 
     socket.addEventListener('error', error => {
-      console.error(
-        'Deriv WebSocket error:',
-        error
-      );
+      console.error('Market WebSocket error:', error);
 
-      setStatus('CONNECTION ERROR');
+      connected = false;
+      updateStatus('OFFLINE', false);
+    });
+
+    socket.addEventListener('close', () => {
+      connected = false;
+
+      updateStatus('RECONNECTING', false);
+
+      reconnectTimer = setTimeout(() => {
+        connectMarket();
+      }, 3000);
     });
   }
 
-  function scheduleReconnect() {
-    clearTimeout(reconnectTimer);
-
-    reconnectTimer = setTimeout(() => {
-      connect();
-    }, 3000);
-  }
-
-  function processHistory(data) {
-    if (!data.history) return;
-
-    const prices = data.history.prices || [];
-    const times = data.history.times || [];
-
-    history = prices.map((price, index) => ({
-      time: Number(times[index]),
-      price: Number(price)
-    }));
-
-    if (history.length) {
-      updatePrice(
-        history[history.length - 1].price
-      );
-    }
-
-    drawChart();
-  }
-
-  function processCandles(data) {
-    if (!Array.isArray(data.candles)) {
+  function subscribeToMarket(market) {
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
       return;
     }
 
-    history = data.candles.map(candle => ({
-      time: Number(candle.epoch),
-      price: Number(candle.close)
-    }));
+    const symbol = MARKET_SYMBOLS[market];
 
-    if (history.length) {
-      updatePrice(
-        history[history.length - 1].price
+    if (!symbol) return;
+
+    /*
+     * Forget previous subscriptions where possible.
+     */
+    try {
+      socket.send(
+        JSON.stringify({
+          forget_all: 'ticks'
+        })
       );
-    }
+    } catch (_) {}
 
-    drawChart();
-  }
-
-  function processTick(data) {
-    if (!data.tick) return;
-
-    const price = Number(
-      data.tick.quote
-    );
-
-    if (!Number.isFinite(price)) return;
-
-    updatePrice(price);
-
-    history.push({
-      time: Number(data.tick.epoch),
-      price
-    });
-
-    if (history.length > 150) {
-      history.shift();
-    }
-
-    drawChart();
-  }
-
-  function selectMarket(name) {
-    if (!markets[name]) return;
-
-    selectedMarket = name;
-    selectedSymbol = markets[name];
-
+    currentPrice = null;
     previousPrice = null;
-    history = [];
 
-    if (marketEl) {
-      marketEl.textContent = selectedMarket;
+    clearChart();
+
+    setText('[data-market]', market);
+    setText('.selected-market', market);
+    setText('[data-price]', '—');
+    setText('.market-price', '—');
+    setText('.price-value', '—');
+
+    document
+      .querySelectorAll('[data-move], .market-move, .move-value')
+      .forEach(element => {
+        element.textContent = '—';
+      });
+
+    socket.send(
+      JSON.stringify({
+        ticks: symbol,
+        subscribe: 1,
+        req_id: Date.now()
+      })
+    );
+  }
+
+  function selectMarket(market) {
+    if (!MARKET_SYMBOLS[market]) return;
+
+    selectedMarket = market;
+
+    document.querySelectorAll('[data-market-button]').forEach(button => {
+      button.classList.toggle(
+        'active',
+        button.dataset.marketButton === market
+      );
+    });
+
+    if (connected) {
+      subscribeToMarket(market);
     }
-
-    document
-      .querySelectorAll('[data-symbol]')
-      .forEach(button => {
-        button.classList.toggle(
-          'active',
-          button.dataset.symbol ===
-            selectedMarket
-        );
-      });
-
-    unsubscribe();
-    loadHistory();
-    subscribe();
   }
-
-  function selectTimeframe(seconds) {
-    selectedTimeframe = seconds;
-
-    document
-      .querySelectorAll('[data-timeframe]')
-      .forEach(button => {
-        button.classList.toggle(
-          'active',
-          Number(button.dataset.timeframe) ===
-            seconds
-        );
-      });
-
-    loadHistory();
-  }
-
-  document
-    .querySelectorAll('[data-symbol]')
-    .forEach(button => {
-      button.addEventListener(
-        'click',
-        () => {
-          selectMarket(
-            button.dataset.symbol
-          );
-        }
-      );
-    });
-
-  document
-    .querySelectorAll('[data-timeframe]')
-    .forEach(button => {
-      button.addEventListener(
-        'click',
-        () => {
-          selectTimeframe(
-            Number(
-              button.dataset.timeframe
-            )
-          );
-        }
-      );
-    });
 
   /*
-   * OAuth tracking
+   * Market buttons.
+   *
+   * Your HTML can use:
+   *
+   * <button data-market-button="EUR/USD">EUR/USD</button>
    */
-
-  function track(type) {
-    fetch('/api/track', {
-      method: 'POST',
-      headers: {
-        'Content-Type':
-          'application/json'
-      },
-      body: JSON.stringify({
-        type,
-        path:
-          window.location.pathname
-      }),
-      keepalive: true
-    }).catch(() => {});
-  }
-
-  track('page_view');
-
-  document
-    .querySelectorAll(
-      'a[href="/api/deriv/signup"]'
-    )
-    .forEach(link => {
-      link.addEventListener(
-        'click',
-        () => track('signup_click')
-      );
+  document.querySelectorAll('[data-market-button]').forEach(button => {
+    button.addEventListener('click', () => {
+      selectMarket(button.dataset.marketButton);
     });
-
-  document
-    .querySelectorAll(
-      'a[href="/api/deriv/login"]'
-    )
-    .forEach(link => {
-      link.addEventListener(
-        'click',
-        () => track('login_click')
-      );
-    });
+  });
 
   /*
-   * OAuth result handling
+   * Support existing plain market links/buttons too.
    */
+  document.querySelectorAll('[data-market]').forEach(element => {
+    element.addEventListener('click', event => {
+      const market = element.dataset.market;
 
-  const params =
-    new URLSearchParams(
-      window.location.search
-    );
+      if (!MARKET_SYMBOLS[market]) return;
 
-  if (
-    params.get('registered') === '1'
-  ) {
+      event.preventDefault();
+      selectMarket(market);
+    });
+  });
+
+  /*
+   * OAuth notifications.
+   */
+  const params = new URLSearchParams(window.location.search);
+
+  if (params.get('registered') === '1') {
     showNotice(
-      'Deriv account connection completed.'
+      'Deriv account registration completed successfully.'
     );
   }
 
-  if (
-    params.get('logged_in') === '1'
-  ) {
+  if (params.get('logged_in') === '1') {
     showNotice(
-      'Deriv account connected successfully.'
+      'Deriv login completed successfully.'
     );
   }
 
-  if (
-    params.get('oauth_error')
-  ) {
+  if (params.get('oauth_error')) {
     showNotice(
-      'Deriv authentication could not be completed.',
+      'Deriv authentication could not be completed. Please try again.',
       true
     );
   }
@@ -529,75 +361,96 @@ document.addEventListener('DOMContentLoaded', () => {
     window.history.replaceState(
       {},
       document.title,
-      window.location.pathname +
-        window.location.hash
+      window.location.pathname + window.location.hash
     );
   }
 
   /*
-   * Start market connection
+   * Analytics.
    */
+  track('page_view');
 
-  connect();
+  document
+    .querySelectorAll('a[href="/api/deriv/signup"]')
+    .forEach(link => {
+      link.addEventListener('click', () => {
+        track('signup_click');
+      });
+    });
+
+  document
+    .querySelectorAll('a[href="/api/deriv/login"]')
+    .forEach(link => {
+      link.addEventListener('click', () => {
+        track('login_click');
+      });
+    });
+
+  /*
+   * Start the live market connection.
+   */
+  connectMarket();
 });
 
 
-function showNotice(
-  message,
-  error = false
-) {
+async function track(type, extra = {}) {
+  try {
+    await fetch('/api/track', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        type,
+        path: window.location.pathname,
+        ...extra
+      }),
+      keepalive: true
+    });
+  } catch (_) {
+    // Tracking must never interfere with trading UI.
+  }
+}
+
+
+function showNotice(message, error = false) {
   const existing =
-    document.getElementById(
-      'protraders-notice'
-    );
+    document.getElementById('protraders-notice');
 
   if (existing) {
     existing.remove();
   }
 
-  const notice =
-    document.createElement('div');
+  const notice = document.createElement('div');
 
-  notice.id =
-    'protraders-notice';
+  notice.id = 'protraders-notice';
+  notice.textContent = message;
 
-  notice.textContent =
-    message;
+  Object.assign(notice.style, {
+    position: 'fixed',
+    top: '20px',
+    right: '20px',
+    zIndex: '99999',
+    maxWidth: '380px',
+    padding: '14px 18px',
+    borderRadius: '10px',
+    background: error ? '#32151b' : '#10271d',
+    color: '#ffffff',
+    border: error
+      ? '1px solid #8f3548'
+      : '1px solid #2e8061',
+    fontFamily:
+      'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    fontSize: '13px',
+    fontWeight: '600',
+    boxShadow: '0 20px 50px rgba(0,0,0,.45)'
+  });
 
-  Object.assign(
-    notice.style,
-    {
-      position: 'fixed',
-      top: '22px',
-      right: '22px',
-      zIndex: '99999',
-      maxWidth: '380px',
-      padding: '14px 18px',
-      borderRadius: '10px',
-      background: error
-        ? '#35151d'
-        : '#10271d',
-      color: '#fff',
-      border: error
-        ? '1px solid #743443'
-        : '1px solid #28694e',
-      fontFamily:
-        'Inter, system-ui, sans-serif',
-      fontSize: '13px',
-      fontWeight: '700',
-      boxShadow:
-        '0 20px 50px rgba(0,0,0,.45)'
-    }
-  );
-
-  document.body.appendChild(
-    notice
-  );
+  document.body.appendChild(notice);
 
   setTimeout(() => {
     notice.style.opacity = '0';
-    notice.style.transition =
-      'opacity .35s ease';
+    notice.style.transition = 'opacity .4s ease';
 
     setTimeout(() => {
       notice.remove();
