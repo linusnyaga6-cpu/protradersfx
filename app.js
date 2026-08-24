@@ -1,688 +1,296 @@
 document.addEventListener('DOMContentLoaded', () => {
+  const priceEl = document.querySelector('.price-value');
+  const moveEl = document.querySelector('.move-value');
+  const marketEl = document.querySelector('.market-symbol');
+  const chartEl = document.querySelector('.chart-line');
+  const liveEl = document.querySelector('.live-status');
 
-  /*
-   * ============================================================
-   * PROTRADERS FX
-   * Trading / Market Analysis Frontend
-   * ============================================================
-   */
+  const markets = [
+    { symbol: 'frxEURUSD', name: 'EUR/USD' },
+    { symbol: 'frxGBPUSD', name: 'GBP/USD' },
+    { symbol: 'frxUSDJPY', name: 'USD/JPY' },
+    { symbol: 'frxAUDUSD', name: 'AUD/USD' },
+    { symbol: 'frxUSDCAD', name: 'USD/CAD' },
+    { symbol: 'frxUSDCHF', name: 'USD/CHF' }
+  ];
 
-  const track = async (type, extra = {}) => {
-    try {
-      await fetch('/api/track', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          type,
-          path: window.location.pathname,
-          ...extra
-        }),
-        keepalive: true
-      });
-    } catch (error) {
-      console.warn('Tracking unavailable');
+  let selectedMarket = markets[0];
+  let socket = null;
+  let previousPrice = null;
+  let prices = [];
+
+  function setLive(status) {
+    if (!liveEl) return;
+
+    liveEl.textContent = status;
+    liveEl.classList.toggle('offline', status !== 'LIVE');
+  }
+
+  function formatPrice(price, symbol) {
+    if (symbol.includes('JPY')) {
+      return Number(price).toFixed(3);
     }
-  };
 
+    return Number(price).toFixed(5);
+  }
+
+  function updatePrice(price) {
+    if (!priceEl) return;
+
+    const formatted = formatPrice(price, selectedMarket.symbol);
+
+    priceEl.textContent = formatted;
+
+    if (previousPrice !== null && moveEl) {
+      const change = ((price - previousPrice) / previousPrice) * 100;
+
+      moveEl.textContent =
+        `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
+
+      moveEl.classList.toggle('negative', change < 0);
+    }
+
+    previousPrice = price;
+
+    prices.push(price);
+
+    if (prices.length > 80) {
+      prices.shift();
+    }
+
+    drawChart();
+  }
+
+  function drawChart() {
+    if (!chartEl || prices.length < 2) return;
+
+    const width = 600;
+    const height = 260;
+
+    const min = Math.min(...prices);
+    const max = Math.max(...prices);
+
+    const range = max - min || 0.00001;
+
+    const points = prices.map((price, index) => {
+      const x = (index / (prices.length - 1)) * width;
+      const y =
+        height -
+        ((price - min) / range) * (height - 30) -
+        15;
+
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+
+    chartEl.setAttribute('points', points.join(' '));
+  }
+
+  function connectMarket() {
+    if (socket) {
+      try {
+        socket.close();
+      } catch (e) {}
+    }
+
+    setLive('CONNECTING');
+
+    socket = new WebSocket(
+      'wss://ws.derivws.com/websockets/v3?app_id=1089'
+    );
+
+    socket.addEventListener('open', () => {
+      setLive('LIVE');
+
+      socket.send(JSON.stringify({
+        ticks: selectedMarket.symbol,
+        subscribe: 1
+      }));
+    });
+
+    socket.addEventListener('message', event => {
+      try {
+        const data = JSON.parse(event.data);
+
+        if (data.tick && data.tick.quote) {
+          updatePrice(Number(data.tick.quote));
+        }
+      } catch (error) {
+        console.error('Market data error:', error);
+      }
+    });
+
+    socket.addEventListener('error', error => {
+      console.error('WebSocket error:', error);
+      setLive('OFFLINE');
+    });
+
+    socket.addEventListener('close', () => {
+      setLive('OFFLINE');
+
+      setTimeout(() => {
+        connectMarket();
+      }, 3000);
+    });
+  }
+
+  function selectMarket(market) {
+    selectedMarket = market;
+    previousPrice = null;
+    prices = [];
+
+    if (marketEl) {
+      marketEl.textContent = market.name;
+    }
+
+    if (priceEl) {
+      priceEl.textContent = '—';
+    }
+
+    if (moveEl) {
+      moveEl.textContent = '—';
+    }
+
+    connectMarket();
+  }
 
   /*
-   * ============================================================
-   * PAGE TRACKING
-   * ============================================================
+   * Market selector
    */
 
-  track('page_view');
+  document.querySelectorAll('[data-market]').forEach(button => {
+    button.addEventListener('click', () => {
+      const symbol = button.dataset.market;
 
+      const market = markets.find(
+        item => item.symbol === symbol
+      );
 
-  document
-    .querySelectorAll('a[href="/api/deriv/signup"]')
-    .forEach(link => {
+      if (market) {
+        document
+          .querySelectorAll('[data-market]')
+          .forEach(item => item.classList.remove('active'));
 
-      link.addEventListener('click', () => {
-        track('signup_click');
-      });
+        button.classList.add('active');
 
+        selectMarket(market);
+      }
     });
-
-
-  document
-    .querySelectorAll('a[href="/api/deriv/login"]')
-    .forEach(link => {
-
-      link.addEventListener('click', () => {
-        track('login_click');
-      });
-
-    });
-
+  });
 
   /*
-   * ============================================================
-   * OAUTH RESULT
-   * ============================================================
+   * Chart timeframe buttons
+   *
+   * These currently control the selected timeframe visually.
+   * Historical candles can be connected next.
+   */
+
+  document.querySelectorAll('[data-timeframe]').forEach(button => {
+    button.addEventListener('click', () => {
+      document
+        .querySelectorAll('[data-timeframe]')
+        .forEach(item => item.classList.remove('active'));
+
+      button.classList.add('active');
+    });
+  });
+
+  /*
+   * OAuth messages
    */
 
   const params = new URLSearchParams(window.location.search);
 
   if (params.get('registered') === '1') {
-
-    showNotice(
-      'Deriv account connection completed.',
-      false
-    );
-
-    track('registration_complete');
-
+    showNotice('Deriv account connection completed.');
   }
-
 
   if (params.get('logged_in') === '1') {
-
-    showNotice(
-      'Deriv account connected successfully.',
-      false
-    );
-
-    track('oauth_success');
-
+    showNotice('Deriv login successful.');
   }
-
 
   if (params.get('oauth_error')) {
-
     showNotice(
-      'Deriv authentication could not be completed. Please try again.',
+      'Deriv authentication could not be completed.',
       true
     );
-
-    track('oauth_error', {
-      error: params.get('oauth_error')
-    });
-
   }
-
-
-  /*
-   * Remove temporary OAuth parameters.
-   */
 
   if (
     params.has('registered') ||
     params.has('logged_in') ||
     params.has('oauth_error')
   ) {
-
     window.history.replaceState(
       {},
       document.title,
       window.location.pathname + window.location.hash
     );
-
   }
 
-
   /*
-   * ============================================================
-   * LIVE DERIV MARKET DATA
-   * ============================================================
+   * Start market
    */
 
-  startMarketData();
+  const firstMarket = document.querySelector(
+    '[data-market="frxEURUSD"]'
+  );
 
+  if (firstMarket) {
+    firstMarket.classList.add('active');
+  }
+
+  connectMarket();
 });
 
 
-/*
- * ============================================================
- * LIVE MARKET DATA
- * ============================================================
- */
-
-function startMarketData() {
-
-  /*
-   * Current Deriv public WebSocket.
-   * Public market data does not require the user's login.
-   */
-
-  const WS_URL =
-    'wss://api.derivws.com/trading/v1/options/ws/public';
-
-  let socket = null;
-  let reconnectTimer = null;
-
-  const symbols = {
-    'EUR/USD': 'frxEURUSD',
-    'GBP/USD': 'frxGBPUSD',
-    'USD/JPY': 'frxUSDJPY'
-  };
-
-
-  function connect() {
-
-    try {
-
-      socket = new WebSocket(WS_URL);
-
-    } catch (error) {
-
-      console.error(
-        'Unable to create Deriv WebSocket:',
-        error
-      );
-
-      scheduleReconnect();
-
-      return;
-
-    }
-
-
-    socket.addEventListener('open', () => {
-
-      console.log(
-        '[ProTraders FX] Market connection established'
-      );
-
-      setLiveStatus(true);
-
-      /*
-       * Subscribe to each selected market.
-       */
-
-      Object.entries(symbols).forEach(
-        ([name, symbol], index) => {
-
-          socket.send(
-            JSON.stringify({
-              ticks: symbol,
-              subscribe: 1,
-              req_id: index + 10
-            })
-          );
-
-        }
-      );
-
-    });
-
-
-    socket.addEventListener('message', event => {
-
-      try {
-
-        const data = JSON.parse(event.data);
-
-        if (data.msg_type === 'tick') {
-
-          updateMarketFromTick(data);
-
-        }
-
-      } catch (error) {
-
-        console.warn(
-          'Invalid market message',
-          error
-        );
-
-      }
-
-    });
-
-
-    socket.addEventListener('error', error => {
-
-      console.warn(
-        '[ProTraders FX] Market WebSocket error',
-        error
-      );
-
-    });
-
-
-    socket.addEventListener('close', () => {
-
-      console.warn(
-        '[ProTraders FX] Market connection closed'
-      );
-
-      setLiveStatus(false);
-
-      scheduleReconnect();
-
-    });
-
-  }
-
-
-  function scheduleReconnect() {
-
-    if (reconnectTimer) {
-      return;
-    }
-
-    reconnectTimer = setTimeout(() => {
-
-      reconnectTimer = null;
-
-      connect();
-
-    }, 5000);
-
-  }
-
-
-  connect();
-
-}
-
-
-/*
- * ============================================================
- * UPDATE MARKET DATA
- * ============================================================
- */
-
-function updateMarketFromTick(data) {
-
-  const tick = data.tick;
-
-  if (!tick) {
-    return;
-  }
-
-
-  const symbol = tick.symbol;
-  const quote = Number(tick.quote);
-
-  if (!Number.isFinite(quote)) {
-    return;
-  }
-
-
-  let marketName = null;
-
-  if (symbol === 'frxEURUSD') {
-    marketName = 'EUR/USD';
-  }
-
-  if (symbol === 'frxGBPUSD') {
-    marketName = 'GBP/USD';
-  }
-
-  if (symbol === 'frxUSDJPY') {
-    marketName = 'USD/JPY';
-  }
-
-  if (!marketName) {
-    return;
-  }
-
-
-  /*
-   * Find the corresponding ticker card.
-   */
-
-  const cards = document.querySelectorAll('.ticker-card');
-
-  cards.forEach(card => {
-
-    const name =
-      card.querySelector('.ticker-head span');
-
-    if (!name) {
-      return;
-    }
-
-    if (name.textContent.trim() !== marketName) {
-      return;
-    }
-
-
-    const price =
-      card.querySelector('strong');
-
-    if (price) {
-
-      price.textContent =
-        formatPrice(marketName, quote);
-
-    }
-
-  });
-
-
-  /*
-   * Update the large analysis terminal
-   * when EUR/USD is selected.
-   */
-
-  if (marketName === 'EUR/USD') {
-
-    updateMainPrice(quote);
-
-    updateChart(quote);
-
-  }
-
-}
-
-
-/*
- * ============================================================
- * MAIN TERMINAL PRICE
- * ============================================================
- */
-
-function updateMainPrice(price) {
-
-  const priceElements =
-    document.querySelectorAll(
-      '.chart-toolbar .price strong'
-    );
-
-  priceElements.forEach(element => {
-
-    element.textContent =
-      formatPrice('EUR/USD', price);
-
-  });
-
-
-  const marker =
-    document.querySelector('.chart-marker');
-
-  if (marker) {
-
-    marker.textContent =
-      formatPrice('EUR/USD', price);
-
-  }
-
-
-  /*
-   * Also update the first market card.
-   */
-
-  const firstCard =
-    document.querySelector('.ticker-card strong');
-
-  if (firstCard) {
-
-    firstCard.textContent =
-      formatPrice('EUR/USD', price);
-
-  }
-
-}
-
-
-/*
- * ============================================================
- * CHART ANIMATION
- * ============================================================
- */
-
-const priceHistory = [];
-
-function updateChart(price) {
-
-  priceHistory.push(price);
-
-  /*
-   * Keep the chart lightweight.
-   */
-
-  if (priceHistory.length > 60) {
-
-    priceHistory.shift();
-
-  }
-
-
-  const svg =
-    document.querySelector('.main-chart svg');
-
-  if (!svg) {
-    return;
-  }
-
-
-  const polyline =
-    svg.querySelector('polyline');
-
-  if (!polyline) {
-    return;
-  }
-
-
-  if (priceHistory.length < 2) {
-    return;
-  }
-
-
-  const min =
-    Math.min(...priceHistory);
-
-  const max =
-    Math.max(...priceHistory);
-
-  const range =
-    max - min || 0.0001;
-
-
-  const points =
-    priceHistory
-      .map((value, index) => {
-
-        const x =
-          (index /
-            Math.max(priceHistory.length - 1, 1)) *
-          900;
-
-        const y =
-          350 -
-          ((value - min) / range) *
-          280;
-
-        return `${x},${y}`;
-
-      })
-      .join(' ');
-
-
-  polyline.setAttribute(
-    'points',
-    points
-  );
-
-}
-
-
-/*
- * ============================================================
- * PRICE FORMATTING
- * ============================================================
- */
-
-function formatPrice(symbol, value) {
-
-  if (symbol === 'USD/JPY') {
-
-    return value.toFixed(3);
-
-  }
-
-  return value.toFixed(5);
-
-}
-
-
-/*
- * ============================================================
- * LIVE STATUS
- * ============================================================
- */
-
-function setLiveStatus(connected) {
-
-  const badges =
-    document.querySelectorAll(
-      '.live-badge, .market-status strong'
-    );
-
-
-  badges.forEach(element => {
-
-    const indicator =
-      element.querySelector('i');
-
-    if (connected) {
-
-      if (element.classList.contains('live-badge')) {
-
-        element.innerHTML =
-          '<i></i> LIVE';
-
-      }
-
-      if (
-        element.classList.contains('market-status') ||
-        element.tagName === 'STRONG'
-      ) {
-
-        element.innerHTML =
-          '<i></i> OPEN';
-
-      }
-
-    } else {
-
-      if (element.classList.contains('live-badge')) {
-
-        element.innerHTML =
-          '<i></i> CONNECTING';
-
-      }
-
-    }
-
-  });
-
-
-  const dots =
-    document.querySelectorAll(
-      '.status-dot, .live-badge i'
-    );
-
-
-  dots.forEach(dot => {
-
-    dot.style.opacity =
-      connected ? '1' : '.45';
-
-  });
-
-}
-
-
-/*
- * ============================================================
- * NOTIFICATION
- * ============================================================
- */
-
 function showNotice(message, error = false) {
-
   const existing =
-    document.getElementById(
-      'protraders-notice'
-    );
+    document.getElementById('protraders-notice');
 
   if (existing) {
     existing.remove();
   }
 
+  const notice = document.createElement('div');
 
-  const notice =
-    document.createElement('div');
+  notice.id = 'protraders-notice';
+  notice.textContent = message;
 
-  notice.id =
-    'protraders-notice';
-
-  notice.textContent =
-    message;
-
-
-  notice.style.position =
-    'fixed';
-
-  notice.style.top =
-    '24px';
-
-  notice.style.right =
-    '24px';
-
-  notice.style.zIndex =
-    '9999';
-
-  notice.style.maxWidth =
-    '420px';
-
-  notice.style.padding =
-    '15px 18px';
-
-  notice.style.borderRadius =
-    '10px';
+  notice.style.position = 'fixed';
+  notice.style.top = '24px';
+  notice.style.right = '24px';
+  notice.style.zIndex = '9999';
+  notice.style.maxWidth = '380px';
+  notice.style.padding = '14px 18px';
+  notice.style.borderRadius = '10px';
 
   notice.style.background =
-    error
-      ? '#32151d'
-      : '#10271f';
+    error ? '#32151b' : '#102a20';
 
-  notice.style.color =
-    '#ffffff';
+  notice.style.color = '#fff';
 
   notice.style.border =
     error
-      ? '1px solid #803746'
-      : '1px solid #287557';
+      ? '1px solid #71313e'
+      : '1px solid #286c51';
 
   notice.style.fontFamily =
-    'Inter, system-ui, sans-serif';
+    'Inter, Arial, sans-serif';
 
-  notice.style.fontSize =
-    '13px';
-
-  notice.style.fontWeight =
-    '700';
+  notice.style.fontSize = '13px';
+  notice.style.fontWeight = '700';
 
   notice.style.boxShadow =
     '0 15px 40px rgba(0,0,0,.35)';
 
-  notice.style.transition =
-    'opacity .4s ease';
-
-
-  document.body.appendChild(
-    notice
-  );
-
+  document.body.appendChild(notice);
 
   setTimeout(() => {
-
-    notice.style.opacity =
-      '0';
+    notice.style.opacity = '0';
+    notice.style.transition = 'opacity .4s ease';
 
     setTimeout(() => {
-
       notice.remove();
-
     }, 400);
-
-  }, 5000);
-
+  }, 4500);
 }
