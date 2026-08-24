@@ -3,14 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-
-  <meta
-    name="description"
-    content="ProTraders FX — trading education, market analysis and secure access to Deriv."
-  >
-
-  <title>ProTraders FX | Build Your Trading Edge</title>
-
+  <meta name="description" content="ProTraders FX trading and market analysis terminal.">
+  <title>ProTraders FX | Trading Terminal</title>
   <link rel="stylesheet" href="/style.css">
 </head>
 
@@ -23,269 +17,136 @@
       PROTRADERS<span>FX</span>
     </a>
 
-    <nav class="desktop-nav">
-      <a href="#learn">Education</a>
-      <a href="#analysis">Analysis</a>
-      <a href="#how">How it works</a>
-      <a href="#risk">Risk</a>
-    </nav>
+    <div class="terminal-nav">
+      <span class="market-status">
+        <span class="status-dot"></span>
+        MARKETS LIVE
+      </span>
 
-    <div class="nav-actions">
-      <a class="login-link" href="/api/deriv/login">Login</a>
-      <a class="nav-button" href="/api/deriv/signup">Create Account</a>
+      <a class="login-link" href="/api/deriv/login">
+        LOGIN
+      </a>
+
+      <a class="nav-button" href="/api/deriv/signup">
+        CREATE ACCOUNT
+      </a>
     </div>
 
   </div>
 </header>
 
 
-<main>
+<main class="terminal">
 
-<!-- HERO -->
+  <!-- MARKET BAR -->
 
-<section class="hero">
+  <section class="market-bar">
 
-  <div class="hero-content">
+    <div class="asset-selector">
+      <span class="label">MARKET</span>
 
-    <div class="eyebrow">
+      <select id="symbol">
+        <option value="frxEURUSD">EUR/USD</option>
+        <option value="frxGBPUSD">GBP/USD</option>
+        <option value="frxUSDJPY">USD/JPY</option>
+        <option value="frxAUDUSD">AUD/USD</option>
+        <option value="frxUSDCAD">USD/CAD</option>
+        <option value="frxUSDCHF">USD/CHF</option>
+      </select>
+    </div>
+
+    <div class="price-box">
+      <span class="label">PRICE</span>
+      <strong id="market-price">—</strong>
+    </div>
+
+    <div class="change-box">
+      <span class="label">MOVE</span>
+      <strong id="market-change">—</strong>
+    </div>
+
+    <div class="market-live">
       <span class="status-dot"></span>
-      INDEPENDENT DERIV PARTNER
+      LIVE
     </div>
 
-    <h1>
-      Build your edge.
-      <span>Trade with purpose.</span>
-    </h1>
+  </section>
 
-    <p class="hero-text">
-      Learn the markets, understand risk and develop a disciplined approach
-      before accessing your Deriv trading account.
-    </p>
 
-    <div class="hero-buttons">
-      <a class="btn btn-primary" href="/api/deriv/signup">
-        Create Deriv Account
-        <span>→</span>
-      </a>
+  <!-- TRADING WORKSPACE -->
 
-      <a class="btn btn-outline" href="/api/deriv/login">
-        Login with Deriv
-      </a>
-    </div>
+  <section class="workspace">
 
-    <p class="security-note">
-      Your Deriv credentials remain with Deriv. ProTraders FX never asks
-      for or stores your Deriv password.
-    </p>
+    <!-- CHART -->
 
-  </div>
+    <div class="chart-panel">
 
-
-  <div class="hero-terminal">
-
-    <div class="terminal-top">
-      <div>
-        <span class="terminal-title">MARKET VIEW</span>
-        <span class="terminal-subtitle">EUR/USD</span>
-      </div>
-
-      <div class="live-status">
-        <span></span> LIVE
-      </div>
-    </div>
-
-    <div class="chart-area">
-
-      <div class="chart-grid"></div>
-
-      <svg
-        class="chart-line"
-        viewBox="0 0 600 260"
-        preserveAspectRatio="none"
-        aria-hidden="true"
-      >
-        <polyline
-          points="0,210 35,195 70,205 105,170 140,180 175,145 210,160 245,125 280,140 315,105 350,120 385,85 420,100 455,70 490,92 525,52 560,65 600,30"
-        />
-      </svg>
-
-      <div class="chart-price">
-        <strong>1.0842</strong>
-        <small>+0.64%</small>
-      </div>
-
-    </div>
-
-    <div class="terminal-stats">
-
-      <div>
-        <span>MARKET</span>
-        <strong>EUR/USD</strong>
-      </div>
-
-      <div>
-        <span>BIAS</span>
-        <strong>Analysis</strong>
-      </div>
-
-      <div>
-        <span>APPROACH</span>
-        <strong>Risk First</strong>
-      </div>
-
-    </div>
-
-  </div>
-
-</section>
-
-
-<!-- TRUST BAR -->
-
-<section class="trust-bar">
-
-  <div>
-    <span>01</span>
-    EDUCATION FIRST
-  </div>
-
-  <div>
-    <span>02</span>
-    RISK AWARENESS
-  </div>
-
-  <div>
-    <span>03</span>
-    MARKET ANALYSIS
-  </div>
-
-  <div>
-    <span>04</span>
-    SECURE DERIV ACCESS
-  </div>
-
-</section>
-
-
-<!-- EDUCATION -->
-
-<section id="learn" class="section">
-
-  <div class="section-heading">
-
-    <div>
-      <p class="eyebrow">LEARN</p>
-
-      <h2>
-        Build knowledge
-        <span>before taking risk.</span>
-      </h2>
-    </div>
-
-    <p>
-      Trading begins with understanding. ProTraders FX focuses on the
-      knowledge and discipline required to approach financial markets
-      responsibly.
-    </p>
-
-  </div>
-
-
-  <div class="feature-grid">
-
-    <article class="feature-card large-card">
-
-      <div class="card-number">01</div>
-
-      <div class="card-icon">◈</div>
-
-      <h3>Market Fundamentals</h3>
-
-      <p>
-        Understand market structure, price movement, volatility and the
-        mechanics behind financial markets.
-      </p>
-
-      <a href="#how">Explore learning →</a>
-
-    </article>
-
-
-    <article class="feature-card">
-
-      <div class="card-number">02</div>
-
-      <div class="card-icon">◫</div>
-
-      <h3>Risk Management</h3>
-
-      <p>
-        Learn why position sizing, leverage and capital protection matter
-        before entering a trade.
-      </p>
-
-      <a href="#risk">Understand risk →</a>
-
-    </article>
-
-
-    <article class="feature-card">
-
-      <div class="card-number">03</div>
-
-      <div class="card-icon">⌁</div>
-
-      <h3>Trading Psychology</h3>
-
-      <p>
-        Develop a structured mindset and avoid decisions driven by emotion,
-        pressure or unrealistic expectations.
-      </p>
-
-      <a href="#how">Learn more →</a>
-
-    </article>
-
-  </div>
-
-</section>
-
-
-<!-- ANALYSIS -->
-
-<section id="analysis" class="analysis-section">
-
-  <div class="analysis-panel">
-
-    <div class="analysis-copy">
-
-      <p class="eyebrow">MARKET ANALYSIS</p>
-
-      <h2>
-        Information first.
-        <span>Decisions second.</span>
-      </h2>
-
-      <p>
-        Explore market information and structured analysis designed to help
-        you understand potential opportunities and risks.
-      </p>
-
-      <div class="analysis-list">
+      <div class="panel-header">
 
         <div>
-          <span>01</span>
-          <strong>Understand the market</strong>
+          <strong id="chart-symbol">EUR/USD</strong>
+          <span>MARKET CHART</span>
+        </div>
+
+        <div class="timeframes">
+          <button class="timeframe active">1m</button>
+          <button class="timeframe">5m</button>
+          <button class="timeframe">15m</button>
+          <button class="timeframe">1h</button>
+        </div>
+
+      </div>
+
+      <div class="chart">
+
+        <div class="grid-lines"></div>
+
+        <div class="price-scale">
+          <span>1.0900</span>
+          <span>1.0875</span>
+          <span>1.0850</span>
+          <span>1.0825</span>
+          <span>1.0800</span>
+        </div>
+
+        <svg
+          id="market-chart"
+          viewBox="0 0 900 420"
+          preserveAspectRatio="none"
+          aria-label="Market chart"
+        >
+          <polyline
+            id="chart-line"
+            points="0,320 45,300 90,315 135,270 180,285 225,240 270,260 315,215 360,230 405,190 450,205 495,165 540,180 585,145 630,160 675,125 720,140 765,95 810,115 855,70 900,85"
+          />
+        </svg>
+
+        <div class="chart-overlay">
+          <span id="chart-live-price">—</span>
+        </div>
+
+      </div>
+
+      <div class="chart-footer">
+
+        <div>
+          <span>OPEN</span>
+          <strong id="open-price">—</strong>
         </div>
 
         <div>
-          <span>02</span>
-          <strong>Study potential scenarios</strong>
+          <span>HIGH</span>
+          <strong id="high-price">—</strong>
         </div>
 
         <div>
-          <span>03</span>
-          <strong>Consider the risk</strong>
+          <span>LOW</span>
+          <strong id="low-price">—</strong>
+        </div>
+
+        <div>
+          <span>STATUS</span>
+          <strong class="positive">LIVE</strong>
         </div>
 
       </div>
@@ -293,218 +154,318 @@
     </div>
 
 
-    <div class="analysis-screen">
+    <!-- ORDER PANEL -->
 
-      <div class="screen-header">
-        <span>PROTRADERS FX / ANALYSIS</span>
-        <span>MARKET INFORMATION</span>
+    <aside class="order-panel">
+
+      <div class="order-tabs">
+        <button class="order-tab active">TRADE</button>
+        <button class="order-tab">ANALYSIS</button>
       </div>
 
-      <div class="market-row">
-        <div>
-          <small>EUR/USD</small>
-          <strong>1.0842</strong>
+
+      <div class="order-content">
+
+        <div class="trade-market">
+
+          <span class="label">SELECTED MARKET</span>
+
+          <strong id="trade-symbol">EUR/USD</strong>
+
         </div>
 
-        <div class="market-positive">+0.64%</div>
-      </div>
 
-      <div class="market-row">
-        <div>
-          <small>GBP/USD</small>
-          <strong>1.2984</strong>
+        <div class="trade-field">
+
+          <label for="duration">
+            DURATION
+          </label>
+
+          <div class="input-row">
+
+            <input
+              id="duration"
+              type="number"
+              min="1"
+              value="1"
+            >
+
+            <select id="duration-unit">
+              <option value="m">MIN</option>
+              <option value="s">SEC</option>
+              <option value="h">HOUR</option>
+            </select>
+
+          </div>
+
         </div>
 
-        <div class="market-positive">+0.31%</div>
-      </div>
 
-      <div class="market-row">
-        <div>
-          <small>USD/JPY</small>
-          <strong>147.21</strong>
+        <div class="trade-field">
+
+          <label for="stake">
+            STAKE
+          </label>
+
+          <div class="stake-input">
+
+            <span>$</span>
+
+            <input
+              id="stake"
+              type="number"
+              min="0.35"
+              step="0.01"
+              value="1"
+            >
+
+          </div>
+
         </div>
 
-        <div class="market-negative">-0.18%</div>
+
+        <div class="trade-actions">
+
+          <button
+            id="buy-button"
+            class="trade-button up"
+            type="button"
+          >
+            <span>UP</span>
+            <small>RISE</small>
+          </button>
+
+          <button
+            id="sell-button"
+            class="trade-button down"
+            type="button"
+          >
+            <span>DOWN</span>
+            <small>FALL</small>
+          </button>
+
+        </div>
+
+
+        <div class="login-required" id="login-required">
+
+          <div class="lock-icon">🔒</div>
+
+          <strong>LOGIN REQUIRED</strong>
+
+          <span>Connect your Deriv account to trade.</span>
+
+          <a href="/api/deriv/login">
+            LOGIN WITH DERIV →
+          </a>
+
+        </div>
+
+
+        <div class="trade-message" id="trade-message"></div>
+
       </div>
 
-      <div class="screen-footer">
-        Market information is educational and not a guarantee of future results.
+    </aside>
+
+  </section>
+
+
+  <!-- ACCOUNT / POSITIONS -->
+
+  <section class="account-grid">
+
+    <div class="account-panel">
+
+      <div class="panel-title">
+        <span>ACCOUNT</span>
+        <span id="account-status">NOT CONNECTED</span>
+      </div>
+
+      <div class="account-balance">
+
+        <span>BALANCE</span>
+
+        <strong id="balance">
+          —
+        </strong>
+
+      </div>
+
+      <div class="account-actions">
+
+        <a href="/api/deriv/login">
+          LOGIN
+        </a>
+
+        <a href="/api/deriv/signup">
+          CREATE ACCOUNT
+        </a>
+
       </div>
 
     </div>
 
-  </div>
 
-</section>
+    <div class="positions-panel">
 
+      <div class="panel-title">
 
-<!-- HOW IT WORKS -->
+        <span>OPEN POSITIONS</span>
 
-<section id="how" class="section how-section">
+        <span id="position-count">0</span>
 
-  <div class="center-heading">
+      </div>
 
-    <p class="eyebrow">HOW IT WORKS</p>
+      <div id="positions">
 
-    <h2>
-      From learning
-      <span>to market access.</span>
-    </h2>
+        <div class="empty-position">
+          No open positions
+        </div>
 
-    <p>
-      A straightforward path designed to keep education and risk awareness
-      at the centre of the experience.
-    </p>
-
-  </div>
-
-
-  <div class="steps">
-
-    <article class="step">
-
-      <div class="step-number">01</div>
-
-      <h3>Learn</h3>
-
-      <p>
-        Build your understanding of markets, trading mechanics, leverage
-        and risk.
-      </p>
-
-    </article>
-
-
-    <div class="step-line"></div>
-
-
-    <article class="step">
-
-      <div class="step-number">02</div>
-
-      <h3>Analyse</h3>
-
-      <p>
-        Study market information and develop a structured approach before
-        making trading decisions.
-      </p>
-
-    </article>
-
-
-    <div class="step-line"></div>
-
-
-    <article class="step">
-
-      <div class="step-number">03</div>
-
-      <h3>Access Deriv</h3>
-
-      <p>
-        Existing users can log in, while new users can create a Deriv
-        account through the partner registration process.
-      </p>
-
-    </article>
-
-  </div>
-
-</section>
-
-
-<!-- CTA -->
-
-<section class="cta-section">
-
-  <div class="cta-box">
-
-    <div>
-
-      <p class="eyebrow">READY TO START?</p>
-
-      <h2>
-        Learn first.
-        <span>Trade responsibly.</span>
-      </h2>
-
-      <p>
-        When you're ready, access Deriv securely through ProTraders FX.
-        Your Deriv credentials are handled directly by Deriv.
-      </p>
+      </div>
 
     </div>
 
-    <div class="cta-buttons">
+  </section>
 
-      <a class="btn btn-primary" href="/api/deriv/signup">
-        Create Deriv Account
-        <span>→</span>
-      </a>
 
-      <a class="btn btn-outline" href="/api/deriv/login">
-        Existing User? Login
-      </a>
+  <!-- MARKET WATCH -->
+
+  <section class="watch-panel">
+
+    <div class="panel-title">
+      <span>MARKET WATCH</span>
+      <span>LIVE</span>
+    </div>
+
+    <div class="watch-grid">
+
+      <button class="watch-item" data-symbol="frxEURUSD">
+        <span>EUR/USD</span>
+        <strong>—</strong>
+        <small>—</small>
+      </button>
+
+      <button class="watch-item" data-symbol="frxGBPUSD">
+        <span>GBP/USD</span>
+        <strong>—</strong>
+        <small>—</small>
+      </button>
+
+      <button class="watch-item" data-symbol="frxUSDJPY">
+        <span>USD/JPY</span>
+        <strong>—</strong>
+        <small>—</small>
+      </button>
+
+      <button class="watch-item" data-symbol="frxAUDUSD">
+        <span>AUD/USD</span>
+        <strong>—</strong>
+        <small>—</small>
+      </button>
+
+      <button class="watch-item" data-symbol="frxUSDCAD">
+        <span>USD/CAD</span>
+        <strong>—</strong>
+        <small>—</small>
+      </button>
 
     </div>
 
-  </div>
-
-</section>
+  </section>
 
 
-<!-- RISK -->
+  <!-- ANALYSIS -->
 
-<section id="risk" class="risk-section">
+  <section class="analysis-terminal">
 
-  <div class="risk-label">
-    IMPORTANT RISK WARNING
-  </div>
+    <div class="panel-title">
+      <span>MARKET ANALYSIS</span>
+      <span id="analysis-market">EUR/USD</span>
+    </div>
 
-  <h2>Trading involves significant risk.</h2>
+    <div class="analysis-grid">
 
-  <p>
-    The products offered on the Deriv.com website include options,
-    contracts for difference (“CFDs”), and other complex derivatives.
-    Trading options may not be suitable for everyone. Trading CFDs carries
-    a high level of risk since leverage can work both to your advantage
-    and disadvantage.
-  </p>
+      <div class="analysis-card">
 
-  <p>
-    As a result, the products offered on the website may not be suitable
-    for all investors because of the risk of losing all of your invested
-    capital. You should never invest money that you cannot afford to lose
-    and never trade with borrowed money.
-  </p>
+        <span>PRICE ACTION</span>
 
-  <p>
-    Before trading in complex financial products, please be sure to
-    understand the risks involved.
-  </p>
+        <strong id="analysis-price">
+          —
+        </strong>
 
-</section>
+        <small>
+          Live market price
+        </small>
+
+      </div>
 
 
-<!-- PARTNER -->
+      <div class="analysis-card">
 
-<section class="partner-section">
+        <span>MARKET BIAS</span>
 
-  <div>
+        <strong id="market-bias">
+          WAIT
+        </strong>
 
-    <p class="eyebrow">PARTNER DISCLOSURE</p>
+        <small>
+          Based on current movement
+        </small>
 
-    <h2>Independent Deriv Partner</h2>
+      </div>
 
-  </div>
 
-  <p>
-    ProTraders FX is an independent Deriv partner. Trading services and
-    financial products are offered by or through Deriv, not by ProTraders FX.
-    This website does not guarantee profits or limit losses.
-  </p>
+      <div class="analysis-card">
 
-</section>
+        <span>MOMENTUM</span>
+
+        <strong id="momentum">
+          —
+        </strong>
+
+        <small>
+          Short-term movement
+        </small>
+
+      </div>
+
+
+      <div class="analysis-card">
+
+        <span>RISK</span>
+
+        <strong>
+          HIGH
+        </strong>
+
+        <small>
+          Trade only what you can afford to lose
+        </small>
+
+      </div>
+
+    </div>
+
+  </section>
+
+
+  <!-- COMPACT DISCLOSURE -->
+
+  <section class="risk-bar">
+
+    <strong>RISK WARNING</strong>
+
+    <span>
+      Trading derivatives involves significant risk and may result in loss of capital.
+    </span>
+
+    <span>
+      ProTraders FX is an independent Deriv partner.
+    </span>
+
+  </section>
 
 </main>
 
@@ -515,17 +476,12 @@
     PROTRADERS<span>FX</span>
   </div>
 
-  <div class="footer-links">
-    <a href="#learn">Education</a>
-    <a href="#analysis">Analysis</a>
-    <a href="#how">How it works</a>
-    <a href="#risk">Risk disclosure</a>
+  <div>
+    Independent Deriv Partner
   </div>
 
-  <div class="footer-copy">
+  <div>
     © 2026 ProTraders FX
-    <br>
-    Independent Deriv Partner
   </div>
 
 </footer>
