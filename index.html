@@ -1,448 +1,458 @@
 <!doctype html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="ProTraders FX trading and market analysis terminal.">
-  <title>ProTraders FX | Trading Terminal</title>
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+  >
+
+  <meta
+    name="description"
+    content="ProTraders FX — live market analysis and secure Deriv trading access."
+  >
+
+  <title>ProTraders FX | Markets</title>
+
   <link rel="stylesheet" href="/style.css">
 </head>
 
 <body>
 
 <header class="site-header">
+
   <div class="nav-wrap">
 
     <a class="logo" href="/">
       PROTRADERS<span>FX</span>
     </a>
 
-    <div class="terminal-nav">
-      <span class="market-status">
-        <span class="status-dot"></span>
-        MARKETS LIVE
-      </span>
+    <div class="nav-center">
+      <span class="nav-live-dot"></span>
+      MARKETS LIVE
+    </div>
 
-      <a class="login-link" href="/api/deriv/login">
+    <div class="nav-actions">
+
+      <a
+        class="login-link"
+        href="/api/deriv/login"
+      >
         LOGIN
       </a>
 
-      <a class="nav-button" href="/api/deriv/signup">
+      <a
+        class="nav-button"
+        href="/api/deriv/signup"
+      >
         CREATE ACCOUNT
       </a>
+
     </div>
 
   </div>
+
 </header>
 
 
-<main class="terminal">
+<main>
 
-  <!-- MARKET BAR -->
+  <!-- MARKET SELECTOR -->
 
-  <section class="market-bar">
+  <section class="market-strip">
 
-    <div class="asset-selector">
-      <span class="label">MARKET</span>
+    <div class="market-strip-inner">
 
-      <select id="symbol">
-        <option value="frxEURUSD">EUR/USD</option>
-        <option value="frxGBPUSD">GBP/USD</option>
-        <option value="frxUSDJPY">USD/JPY</option>
-        <option value="frxAUDUSD">AUD/USD</option>
-        <option value="frxUSDCAD">USD/CAD</option>
-        <option value="frxUSDCHF">USD/CHF</option>
-      </select>
-    </div>
+      <span class="strip-label">
+        MARKET
+      </span>
 
-    <div class="price-box">
-      <span class="label">PRICE</span>
-      <strong id="market-price">—</strong>
-    </div>
+      <button
+        data-market="frxEURUSD"
+        class="market-button active"
+      >
+        EUR/USD
+      </button>
 
-    <div class="change-box">
-      <span class="label">MOVE</span>
-      <strong id="market-change">—</strong>
-    </div>
+      <button
+        data-market="frxGBPUSD"
+        class="market-button"
+      >
+        GBP/USD
+      </button>
 
-    <div class="market-live">
-      <span class="status-dot"></span>
-      LIVE
+      <button
+        data-market="frxUSDJPY"
+        class="market-button"
+      >
+        USD/JPY
+      </button>
+
+      <button
+        data-market="frxAUDUSD"
+        class="market-button"
+      >
+        AUD/USD
+      </button>
+
+      <button
+        data-market="frxUSDCAD"
+        class="market-button"
+      >
+        USD/CAD
+      </button>
+
+      <button
+        data-market="frxUSDCHF"
+        class="market-button"
+      >
+        USD/CHF
+      </button>
+
     </div>
 
   </section>
 
 
-  <!-- TRADING WORKSPACE -->
+  <!-- MAIN TERMINAL -->
 
-  <section class="workspace">
+  <section class="terminal">
 
-    <!-- CHART -->
+    <!-- TOP MARKET INFO -->
 
-    <div class="chart-panel">
+    <div class="terminal-header">
 
-      <div class="panel-header">
+      <div class="instrument">
 
-        <div>
-          <strong id="chart-symbol">EUR/USD</strong>
-          <span>MARKET CHART</span>
-        </div>
+        <span class="terminal-label">
+          MARKET
+        </span>
 
-        <div class="timeframes">
-          <button class="timeframe active">1m</button>
-          <button class="timeframe">5m</button>
-          <button class="timeframe">15m</button>
-          <button class="timeframe">1h</button>
-        </div>
-
-      </div>
-
-      <div class="chart">
-
-        <div class="grid-lines"></div>
-
-        <div class="price-scale">
-          <span>1.0900</span>
-          <span>1.0875</span>
-          <span>1.0850</span>
-          <span>1.0825</span>
-          <span>1.0800</span>
-        </div>
-
-        <svg
-          id="market-chart"
-          viewBox="0 0 900 420"
-          preserveAspectRatio="none"
-          aria-label="Market chart"
+        <strong
+          class="market-symbol"
         >
-          <polyline
-            id="chart-line"
-            points="0,320 45,300 90,315 135,270 180,285 225,240 270,260 315,215 360,230 405,190 450,205 495,165 540,180 585,145 630,160 675,125 720,140 765,95 810,115 855,70 900,85"
-          />
-        </svg>
-
-        <div class="chart-overlay">
-          <span id="chart-live-price">—</span>
-        </div>
-
-      </div>
-
-      <div class="chart-footer">
-
-        <div>
-          <span>OPEN</span>
-          <strong id="open-price">—</strong>
-        </div>
-
-        <div>
-          <span>HIGH</span>
-          <strong id="high-price">—</strong>
-        </div>
-
-        <div>
-          <span>LOW</span>
-          <strong id="low-price">—</strong>
-        </div>
-
-        <div>
-          <span>STATUS</span>
-          <strong class="positive">LIVE</strong>
-        </div>
-
-      </div>
-
-    </div>
-
-
-    <!-- ORDER PANEL -->
-
-    <aside class="order-panel">
-
-      <div class="order-tabs">
-        <button class="order-tab active">TRADE</button>
-        <button class="order-tab">ANALYSIS</button>
-      </div>
-
-
-      <div class="order-content">
-
-        <div class="trade-market">
-
-          <span class="label">SELECTED MARKET</span>
-
-          <strong id="trade-symbol">EUR/USD</strong>
-
-        </div>
-
-
-        <div class="trade-field">
-
-          <label for="duration">
-            DURATION
-          </label>
-
-          <div class="input-row">
-
-            <input
-              id="duration"
-              type="number"
-              min="1"
-              value="1"
-            >
-
-            <select id="duration-unit">
-              <option value="m">MIN</option>
-              <option value="s">SEC</option>
-              <option value="h">HOUR</option>
-            </select>
-
-          </div>
-
-        </div>
-
-
-        <div class="trade-field">
-
-          <label for="stake">
-            STAKE
-          </label>
-
-          <div class="stake-input">
-
-            <span>$</span>
-
-            <input
-              id="stake"
-              type="number"
-              min="0.35"
-              step="0.01"
-              value="1"
-            >
-
-          </div>
-
-        </div>
-
-
-        <div class="trade-actions">
-
-          <button
-            id="buy-button"
-            class="trade-button up"
-            type="button"
-          >
-            <span>UP</span>
-            <small>RISE</small>
-          </button>
-
-          <button
-            id="sell-button"
-            class="trade-button down"
-            type="button"
-          >
-            <span>DOWN</span>
-            <small>FALL</small>
-          </button>
-
-        </div>
-
-
-        <div class="login-required" id="login-required">
-
-          <div class="lock-icon">🔒</div>
-
-          <strong>LOGIN REQUIRED</strong>
-
-          <span>Connect your Deriv account to trade.</span>
-
-          <a href="/api/deriv/login">
-            LOGIN WITH DERIV →
-          </a>
-
-        </div>
-
-
-        <div class="trade-message" id="trade-message"></div>
-
-      </div>
-
-    </aside>
-
-  </section>
-
-
-  <!-- ACCOUNT / POSITIONS -->
-
-  <section class="account-grid">
-
-    <div class="account-panel">
-
-      <div class="panel-title">
-        <span>ACCOUNT</span>
-        <span id="account-status">NOT CONNECTED</span>
-      </div>
-
-      <div class="account-balance">
-
-        <span>BALANCE</span>
-
-        <strong id="balance">
-          —
+          EUR/USD
         </strong>
 
       </div>
 
-      <div class="account-actions">
 
-        <a href="/api/deriv/login">
-          LOGIN
-        </a>
+      <div class="price-box">
 
-        <a href="/api/deriv/signup">
-          CREATE ACCOUNT
-        </a>
+        <span class="terminal-label">
+          PRICE
+        </span>
 
-      </div>
+        <div>
 
-    </div>
+          <strong
+            class="price-value"
+          >
+            —
+          </strong>
 
+          <span
+            class="move-value"
+          >
+            —
+          </span>
 
-    <div class="positions-panel">
-
-      <div class="panel-title">
-
-        <span>OPEN POSITIONS</span>
-
-        <span id="position-count">0</span>
-
-      </div>
-
-      <div id="positions">
-
-        <div class="empty-position">
-          No open positions
         </div>
 
       </div>
 
+
+      <div class="live-indicator">
+
+        <span class="live-dot"></span>
+
+        <span class="live-status">
+          LIVE
+        </span>
+
+      </div>
+
+    </div>
+
+
+    <!-- CHART HEADER -->
+
+    <div class="chart-toolbar">
+
+      <div class="chart-heading">
+
+        <strong class="chart-title">
+          EUR/USD
+        </strong>
+
+        <span>
+          MARKET CHART
+        </span>
+
+      </div>
+
+
+      <div class="timeframes">
+
+        <button
+          data-timeframe="1m"
+          class="timeframe active"
+        >
+          1m
+        </button>
+
+        <button
+          data-timeframe="5m"
+          class="timeframe"
+        >
+          5m
+        </button>
+
+        <button
+          data-timeframe="15m"
+          class="timeframe"
+        >
+          15m
+        </button>
+
+        <button
+          data-timeframe="1h"
+          class="timeframe"
+        >
+          1h
+        </button>
+
+      </div>
+
+    </div>
+
+
+    <!-- CHART -->
+
+    <div class="chart-container">
+
+      <div class="chart-grid"></div>
+
+      <div class="chart-y-axis">
+
+        <span>1.0900</span>
+        <span>1.0875</span>
+        <span>1.0850</span>
+        <span>1.0825</span>
+        <span>1.0800</span>
+
+      </div>
+
+
+      <svg
+        class="market-chart"
+        viewBox="0 0 900 400"
+        preserveAspectRatio="none"
+        aria-label="Live market chart"
+      >
+
+        <polyline
+          class="chart-line"
+          points=""
+        ></polyline>
+
+      </svg>
+
+
+      <div class="chart-loading">
+        CONNECTING TO MARKET...
+      </div>
+
+    </div>
+
+
+    <!-- MARKET STATUS -->
+
+    <div class="terminal-footer">
+
+      <div>
+
+        <span>
+          INSTRUMENT
+        </span>
+
+        <strong class="footer-symbol">
+          EUR/USD
+        </strong>
+
+      </div>
+
+
+      <div>
+
+        <span>
+          STATUS
+        </span>
+
+        <strong class="footer-status">
+          CONNECTING
+        </strong>
+
+      </div>
+
+
+      <div>
+
+        <span>
+          DATA
+        </span>
+
+        <strong>
+          DERIV
+        </strong>
+
+      </div>
+
+
+      <div>
+
+        <span>
+          MODE
+        </span>
+
+        <strong>
+          LIVE
+        </strong>
+
+      </div>
+
     </div>
 
   </section>
 
 
-  <!-- MARKET WATCH -->
+  <!-- ANALYSIS PANEL -->
 
-  <section class="watch-panel">
+  <section class="analysis-workspace">
 
-    <div class="panel-title">
-      <span>MARKET WATCH</span>
-      <span>LIVE</span>
-    </div>
+    <div class="workspace-header">
 
-    <div class="watch-grid">
+      <div>
 
-      <button class="watch-item" data-symbol="frxEURUSD">
-        <span>EUR/USD</span>
-        <strong>—</strong>
-        <small>—</small>
-      </button>
+        <span class="terminal-label">
+          PROTRADERS FX
+        </span>
 
-      <button class="watch-item" data-symbol="frxGBPUSD">
-        <span>GBP/USD</span>
-        <strong>—</strong>
-        <small>—</small>
-      </button>
+        <h1>
+          Market Analysis
+        </h1>
 
-      <button class="watch-item" data-symbol="frxUSDJPY">
-        <span>USD/JPY</span>
-        <strong>—</strong>
-        <small>—</small>
-      </button>
+      </div>
 
-      <button class="watch-item" data-symbol="frxAUDUSD">
-        <span>AUD/USD</span>
-        <strong>—</strong>
-        <small>—</small>
-      </button>
-
-      <button class="watch-item" data-symbol="frxUSDCAD">
-        <span>USD/CAD</span>
-        <strong>—</strong>
-        <small>—</small>
-      </button>
+      <span class="workspace-status">
+        LIVE MARKET DATA
+      </span>
 
     </div>
 
-  </section>
-
-
-  <!-- ANALYSIS -->
-
-  <section class="analysis-terminal">
-
-    <div class="panel-title">
-      <span>MARKET ANALYSIS</span>
-      <span id="analysis-market">EUR/USD</span>
-    </div>
 
     <div class="analysis-grid">
 
       <div class="analysis-card">
 
-        <span>PRICE ACTION</span>
+        <span>
+          MARKET
+        </span>
 
-        <strong id="analysis-price">
+        <strong class="analysis-market">
+          EUR/USD
+        </strong>
+
+      </div>
+
+
+      <div class="analysis-card">
+
+        <span>
+          PRICE
+        </span>
+
+        <strong class="analysis-price">
           —
         </strong>
 
-        <small>
-          Live market price
-        </small>
-
       </div>
 
 
       <div class="analysis-card">
 
-        <span>MARKET BIAS</span>
+        <span>
+          DIRECTION
+        </span>
 
-        <strong id="market-bias">
-          WAIT
-        </strong>
-
-        <small>
-          Based on current movement
-        </small>
-
-      </div>
-
-
-      <div class="analysis-card">
-
-        <span>MOMENTUM</span>
-
-        <strong id="momentum">
+        <strong class="analysis-direction">
           —
         </strong>
 
-        <small>
-          Short-term movement
-        </small>
-
       </div>
 
 
       <div class="analysis-card">
 
-        <span>RISK</span>
+        <span>
+          MOMENTUM
+        </span>
 
-        <strong>
-          HIGH
+        <strong class="analysis-momentum">
+          WAITING
         </strong>
 
-        <small>
-          Trade only what you can afford to lose
-        </small>
+      </div>
+
+    </div>
+
+
+    <div class="analysis-bottom">
+
+      <div class="analysis-note">
+
+        <span class="terminal-label">
+          MARKET VIEW
+        </span>
+
+        <h2>
+          Analyse before you trade.
+        </h2>
+
+        <p>
+          Monitor live prices, market movement and
+          technical conditions from one trading
+          workspace.
+        </p>
+
+      </div>
+
+
+      <div class="trade-access">
+
+        <span class="terminal-label">
+          DERIV ACCESS
+        </span>
+
+        <div class="trade-buttons">
+
+          <a
+            href="/api/deriv/login"
+            class="trade-login"
+          >
+            LOGIN
+          </a>
+
+          <a
+            href="/api/deriv/signup"
+            class="trade-create"
+          >
+            CREATE ACCOUNT
+          </a>
+
+        </div>
 
       </div>
 
@@ -451,21 +461,19 @@
   </section>
 
 
-  <!-- COMPACT DISCLOSURE -->
+  <!-- RISK -->
 
   <section class="risk-bar">
 
-    <strong>RISK WARNING</strong>
-
     <span>
-      Trading derivatives involves significant risk and may result in loss of capital.
+      RISK WARNING
     </span>
 
-    <span>
-      ProTraders FX is an independent Deriv partner.
-    </span>
+    Trading financial derivatives involves significant
+    risk and may result in loss of capital.
 
   </section>
+
 
 </main>
 
@@ -476,12 +484,8 @@
     PROTRADERS<span>FX</span>
   </div>
 
-  <div>
-    Independent Deriv Partner
-  </div>
-
-  <div>
-    © 2026 ProTraders FX
+  <div class="footer-right">
+    Independent Deriv Partner · © 2026 ProTraders FX
   </div>
 
 </footer>
@@ -490,4 +494,5 @@
 <script src="/app.js" defer></script>
 
 </body>
+
 </html>
