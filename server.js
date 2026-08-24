@@ -17,7 +17,7 @@ const DERIV_AFFILIATE_ID = process.env.DERIV_AFFILIATE_ID || '';
 const DERIV_CAMPAIGN = process.env.DERIV_CAMPAIGN || 'protraders-fx';
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const sessions = new Map();
-const PUBLIC_DIR = path.join(__dirname, 'public');
+const PUBLIC_DIR = __dirname;
 
 let analyticsData = {
   visitors: 0,
