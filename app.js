@@ -1,4 +1,6 @@
 document.addEventListener("DOMContentLoaded", () => {
+  "use strict";
+
   const state = {
     socket: null,
     connected: false,
@@ -13,13 +15,13 @@ document.addEventListener("DOMContentLoaded", () => {
     requestId: 0
   };
 
-  const markets = {
-    "EUR/USD": "EURUSD",
-    "GBP/USD": "GBPUSD",
-    "USD/JPY": "USDJPY",
-    "AUD/USD": "AUDUSD",
-    "USD/CAD": "USDCAD",
-    "USD/CHF": "USDCHF"
+  const MARKET_MAP = {
+    "EUR/USD": ["EUR/USD", "EURUSD", "FRXEURUSD"],
+    "GBP/USD": ["GBP/USD", "GBPUSD", "FRXGBPUSD"],
+    "USD/JPY": ["USD/JPY", "USDJPY", "FRXUSDJPY"],
+    "AUD/USD": ["AUD/USD", "AUDUSD", "FRXAUDUSD"],
+    "USD/CAD": ["USD/CAD", "USDCAD", "FRXUSDCAD"],
+    "USD/CHF": ["USD/CHF", "USDCHF", "FRXUSDCHF"]
   };
 
   const all = (selector) =>
@@ -33,6 +35,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const setStatus = (status) => {
     setAll("[data-market-status]", status);
+    console.log("MARKET STATUS:", status);
   };
 
   const clean = (value) =>
@@ -43,11 +46,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const normaliseMarket = (value) => {
     const cleaned = clean(value);
 
-    for (const [name, code] of Object.entries(markets)) {
+    for (const [name, aliases] of Object.entries(MARKET_MAP)) {
       if (
-        cleaned === clean(name) ||
-        cleaned === code ||
-        cleaned === `FRX${code}`
+        aliases.some(
+          (alias) => clean(alias) === cleaned
+        )
       ) {
         return name;
       }
@@ -63,15 +66,17 @@ document.addEventListener("DOMContentLoaded", () => {
       return "—";
     }
 
-    if (number >= 100) {
-      return number.toFixed(3);
-    }
-
-    return number.toFixed(5);
+    return number >= 100
+      ? number.toFixed(3)
+      : number.toFixed(5);
   };
 
-  const resetDisplay = () => {
-    setAll("[data-market]", state.symbolName);
+  const resetMarketDisplay = () => {
+    setAll(
+      "[data-market]",
+      state.symbolName
+    );
+
     setAll(
       "[data-analysis-market]",
       state.symbolName
@@ -173,7 +178,9 @@ document.addEventListener("DOMContentLoaded", () => {
       if (state.prices.length >= 10) {
         signal = "CALL";
       }
-    } else if (difference < 0) {
+    }
+
+    if (difference < 0) {
       trend = "BEARISH";
       momentum = "NEGATIVE";
       direction = "DOWN";
@@ -183,10 +190,25 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
 
-    setAll("[data-trend]", trend);
-    setAll("[data-momentum]", momentum);
-    setAll("[data-direction]", direction);
-    setAll("[data-signal]", signal);
+    setAll(
+      "[data-trend]",
+      trend
+    );
+
+    setAll(
+      "[data-momentum]",
+      momentum
+    );
+
+    setAll(
+      "[data-direction]",
+      direction
+    );
+
+    setAll(
+      "[data-signal]",
+      signal
+    );
 
     const signalElement =
       document.querySelector(
@@ -224,7 +246,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
       setAll(
         "[data-entry]",
-        formatPrice(state.price)
+        formatPrice(
+          state.price
+        )
       );
 
       setAll(
@@ -253,7 +277,8 @@ document.addEventListener("DOMContentLoaded", () => {
     state.previousPrice =
       state.price;
 
-    state.price = number;
+    state.price =
+      number;
 
     state.prices.push(number);
 
@@ -287,67 +312,59 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   /*
-   * Find a symbol from Deriv's
+   * Find the market inside Deriv's
    * active_symbols response.
-   *
-   * We use the symbol returned by
-   * Deriv instead of guessing it.
    */
-  const findDerivSymbol = () => {
-    const wanted =
-      markets[state.requestedMarket];
+  const findMarket = () => {
+    const aliases =
+      MARKET_MAP[
+        state.requestedMarket
+      ] || [];
+
+    const cleanedAliases =
+      aliases.map(clean);
 
     console.log(
-      "SEARCHING FOR:",
-      state.requestedMarket,
-      wanted
+      "SEARCHING FOR MARKET:",
+      state.requestedMarket
     );
 
-    const found =
+    console.log(
+      "MARKET ALIASES:",
+      cleanedAliases
+    );
+
+    const result =
       state.activeSymbols.find(
         (item) => {
-          const name =
-            clean(
-              item.underlying_symbol_name
-            );
+          const values = [
+            item.symbol,
+            item.underlying_symbol,
+            item.underlying_symbol_name,
+            item.display_name,
+            item.display_symbol,
+            item.name
+          ];
 
-          const symbol =
-            clean(
-              item.underlying_symbol
-            );
-
-          const display =
-            clean(
-              item.display_name
-            );
-
-          return (
-            name === wanted ||
-            name === clean(
-              state.requestedMarket
-            ) ||
-            symbol ===
-              `FRX${wanted}` ||
-            symbol === wanted ||
-            display ===
-              clean(
-                state.requestedMarket
+          return values.some(
+            (value) =>
+              cleanedAliases.includes(
+                clean(value)
               )
           );
         }
       );
 
     console.log(
-      "MATCHED SYMBOL:",
-      found || null
+      "MARKET MATCH:",
+      result || null
     );
 
-    return found || null;
+    return result || null;
   };
 
   /*
-   * Ask Deriv for the current
-   * active symbols.
+   * Request Deriv's current symbols.
    */
   const requestActiveSymbols = () => {
     if (
@@ -355,13 +372,31 @@ document.addEventListener("DOMContentLoaded", () => {
       state.socket.readyState !==
         WebSocket.OPEN
     ) {
+      console.error(
+        "CANNOT REQUEST SYMBOLS: SOCKET NOT OPEN"
+      );
+
       return;
     }
 
     state.requestId++;
 
+    const request = {
+      active_symbols: "brief",
+      product_type: "basic",
+      req_id: state.requestId
+    };
+
     console.log(
-      "REQUESTING ACTIVE SYMBOLS"
+      "ACTIVE SYMBOLS REQUEST:",
+      request
+    );
+
+    console.log(
+      "ACTIVE SYMBOLS REQUEST JSON:",
+      JSON.stringify(
+        request
+      )
     );
 
     setStatus(
@@ -369,17 +404,15 @@ document.addEventListener("DOMContentLoaded", () => {
     );
 
     state.socket.send(
-      JSON.stringify({
-        active_symbols: "brief",
-        product_type: "basic",
-        req_id: state.requestId
-      })
+      JSON.stringify(
+        request
+      )
     );
   };
 
   /*
-   * Subscribe to the symbol that
-   * Deriv actually returned.
+   * Subscribe only after Deriv
+   * has supplied the actual symbol.
    */
   const subscribeToMarket = () => {
     if (
@@ -389,10 +422,10 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    const market =
-      findDerivSymbol();
+    const record =
+      findMarket();
 
-    if (!market) {
+    if (!record) {
       console.error(
         "MARKET NOT FOUND:",
         state.requestedMarket
@@ -410,13 +443,18 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
+    /*
+     * Prefer underlying_symbol.
+     * Fall back to symbol if necessary.
+     */
     const actualSymbol =
-      market.underlying_symbol;
+      record.underlying_symbol ||
+      record.symbol;
 
     if (!actualSymbol) {
       console.error(
-        "DERIV RECORD HAS NO UNDERLYING SYMBOL:",
-        market
+        "SYMBOL RECORD DOES NOT CONTAIN A VALID SYMBOL:",
+        record
       );
 
       setStatus(
@@ -430,44 +468,57 @@ document.addEventListener("DOMContentLoaded", () => {
       actualSymbol;
 
     console.log(
-      "VALID DERIV SYMBOL:",
+      "ACTUAL DERIV SYMBOL:",
       state.symbol
     );
 
     /*
-     * Stop previous tick stream.
+     * Stop previous tick subscription.
      */
-    state.socket.send(
-      JSON.stringify({
-        forget_all: "ticks"
-      })
-    );
+    try {
+      state.socket.send(
+        JSON.stringify({
+          forget_all: "ticks"
+        })
+      );
+    } catch (error) {
+      console.error(
+        "FORGET ERROR:",
+        error
+      );
+    }
 
     /*
-     * Subscribe using the exact
+     * Subscribe to the actual
      * symbol returned by Deriv.
      */
     state.requestId++;
 
-    state.socket.send(
-      JSON.stringify({
-        ticks: state.symbol,
-        subscribe: 1,
-        req_id: state.requestId
-      })
-    );
+    const tickRequest = {
+      ticks: state.symbol,
+      subscribe: 1,
+      req_id: state.requestId
+    };
 
     console.log(
-      "TICK SUBSCRIPTION SENT:",
-      state.symbol
+      "TICK REQUEST:",
+      tickRequest
+    );
+
+    state.socket.send(
+      JSON.stringify(
+        tickRequest
+      )
     );
 
     setStatus("LIVE");
   };
 
   /*
-   * Connect using the endpoint
-   * already permitted by the site's CSP.
+   * Deriv WebSocket.
+   *
+   * This domain is already permitted
+   * by the website CSP.
    */
   const connectToDeriv = () => {
     if (
@@ -502,8 +553,6 @@ document.addEventListener("DOMContentLoaded", () => {
         "WEBSOCKET CREATION ERROR:",
         error
       );
-
-      state.connected = false;
 
       setStatus(
         "OFFLINE"
@@ -543,24 +592,36 @@ document.addEventListener("DOMContentLoaded", () => {
             );
         } catch (error) {
           console.error(
-            "DERIV JSON ERROR:",
+            "INVALID DERIV JSON:",
             event.data
           );
 
           return;
         }
 
+        /*
+         * Print the complete response.
+         */
         console.log(
           "DERIV MESSAGE:",
           data
         );
 
+        console.log(
+          "DERIV MESSAGE FULL:",
+          JSON.stringify(
+            data,
+            null,
+            2
+          )
+        );
+
         /*
-         * Handle API errors.
+         * Print API errors.
          */
         if (data.error) {
           console.error(
-            "DERIV ERROR:",
+            "DERIV API ERROR:",
             data.error
           );
 
@@ -572,7 +633,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         /*
-         * Handle active symbols.
+         * Active symbols response.
          */
         if (
           data.msg_type ===
@@ -590,36 +651,51 @@ document.addEventListener("DOMContentLoaded", () => {
             state.activeSymbols.length
           );
 
-          console.log(
-            "FIRST ACTIVE SYMBOLS:",
-            state.activeSymbols.slice(
-              0,
-              10
-            )
-          );
-
           if (
-            state.activeSymbols.length ===
-            0
+            state.activeSymbols.length
           ) {
+            console.log(
+              "FIRST ACTIVE SYMBOLS:",
+              state.activeSymbols.slice(
+                0,
+                10
+              )
+            );
+
+            subscribeToMarket();
+          } else {
             console.error(
-              "DERIV RETURNED ZERO ACTIVE SYMBOLS"
+              "NO ACTIVE SYMBOLS RETURNED"
+            );
+
+            console.error(
+              "ECHO REQUEST:",
+              JSON.stringify(
+                data.echo_req,
+                null,
+                2
+              )
+            );
+
+            console.error(
+              "FULL RESPONSE:",
+              JSON.stringify(
+                data,
+                null,
+                2
+              )
             );
 
             setStatus(
               "NO MARKETS RETURNED"
             );
-
-            return;
           }
-
-          subscribeToMarket();
 
           return;
         }
 
         /*
-         * Handle live tick.
+         * Live price.
          */
         if (
           data.msg_type === "tick" &&
@@ -627,6 +703,11 @@ document.addEventListener("DOMContentLoaded", () => {
           data.tick.quote !==
             undefined
         ) {
+          console.log(
+            "LIVE PRICE:",
+            data.tick.quote
+          );
+
           updatePrice(
             data.tick.quote
           );
@@ -687,12 +768,15 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     state.reconnectTimer =
-      setTimeout(() => {
-        state.reconnectTimer =
-          null;
+      setTimeout(
+        () => {
+          state.reconnectTimer =
+            null;
 
-        connectToDeriv();
-      }, 3000);
+          connectToDeriv();
+        },
+        3000
+      );
   };
 
   const setupMarketButtons = () => {
@@ -715,11 +799,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
             state.symbol = null;
             state.price = null;
-            state.previousPrice =
-              null;
+            state.previousPrice = null;
             state.prices = [];
 
-            resetDisplay();
+            resetMarketDisplay();
 
             all("[data-symbol]")
               .forEach((item) => {
@@ -815,7 +898,7 @@ document.addEventListener("DOMContentLoaded", () => {
     state.symbolName =
       "EUR/USD";
 
-    resetDisplay();
+    resetMarketDisplay();
 
     setStatus(
       "CONNECTING"
