@@ -8,30 +8,6 @@
   ],
   "routes": [
     {
-      "src": "/style.css",
-      "headers": {
-        "cache-control": "public, max-age=0, must-revalidate",
-        "content-type": "text/css; charset=utf-8"
-      },
-      "dest": "/style.css"
-    },
-    {
-      "src": "/app.js",
-      "headers": {
-        "cache-control": "public, max-age=0, must-revalidate",
-        "content-type": "application/javascript; charset=utf-8"
-      },
-      "dest": "/app.js"
-    },
-    {
-      "src": "/tracker.js",
-      "headers": {
-        "cache-control": "public, max-age=0, must-revalidate",
-        "content-type": "application/javascript; charset=utf-8"
-      },
-      "dest": "/tracker.js"
-    },
-    {
       "src": "/(.*)",
       "dest": "server.js"
     }
