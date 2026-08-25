@@ -30,8 +30,16 @@
     </nav>
 
     <div class="nav-actions">
-      <a class="login-link" href="/api/deriv/login">LOGIN</a>
-      <a class="nav-button" href="/api/deriv/signup">OPEN ACCOUNT</a>
+      <a class="login-link" href="/api/deriv/login">
+        LOGIN
+      </a>
+
+      <a
+        class="nav-button"
+        href="/api/deriv/signup"
+      >
+        OPEN ACCOUNT
+      </a>
     </div>
 
   </div>
@@ -42,7 +50,10 @@
 
   <!-- MARKETS -->
 
-  <section class="market-ticker" id="markets">
+  <section
+    class="market-ticker"
+    id="markets"
+  >
 
     <div class="ticker-label">
       MARKETS
@@ -50,42 +61,48 @@
 
     <button
       class="market-button active"
-      data-symbol="frxEURUSD"
+      data-symbol="EUR/USD"
+      type="button"
     >
       EUR/USD
     </button>
 
     <button
       class="market-button"
-      data-symbol="frxGBPUSD"
+      data-symbol="GBP/USD"
+      type="button"
     >
       GBP/USD
     </button>
 
     <button
       class="market-button"
-      data-symbol="frxUSDJPY"
+      data-symbol="USD/JPY"
+      type="button"
     >
       USD/JPY
     </button>
 
     <button
       class="market-button"
-      data-symbol="frxAUDUSD"
+      data-symbol="AUD/USD"
+      type="button"
     >
       AUD/USD
     </button>
 
     <button
       class="market-button"
-      data-symbol="frxUSDCAD"
+      data-symbol="USD/CAD"
+      type="button"
     >
       USD/CAD
     </button>
 
     <button
       class="market-button"
-      data-symbol="frxUSDCHF"
+      data-symbol="USD/CHF"
+      type="button"
     >
       USD/CHF
     </button>
@@ -100,7 +117,6 @@
     <div class="terminal-top">
 
       <div class="instrument-block">
-
         <span class="eyebrow">MARKET</span>
 
         <strong
@@ -109,11 +125,10 @@
         >
           EUR/USD
         </strong>
-
       </div>
 
-      <div class="terminal-price">
 
+      <div class="terminal-price">
         <span class="eyebrow">PRICE</span>
 
         <strong
@@ -122,11 +137,10 @@
         >
           —
         </strong>
-
       </div>
 
-      <div class="terminal-change">
 
+      <div class="terminal-change">
         <span class="eyebrow">CHANGE</span>
 
         <strong
@@ -135,8 +149,8 @@
         >
           —
         </strong>
-
       </div>
+
 
       <div class="terminal-status">
 
@@ -158,15 +172,24 @@
       <div class="chart-header">
 
         <div class="chart-symbol">
-          <strong data-market>EUR/USD</strong>
-          <span>DERIV</span>
+
+          <strong data-market>
+            EUR/USD
+          </strong>
+
+          <span>
+            DERIV
+          </span>
+
         </div>
+
 
         <div class="timeframes">
 
           <button
             class="timeframe active"
             data-timeframe="1m"
+            type="button"
           >
             1m
           </button>
@@ -174,6 +197,7 @@
           <button
             class="timeframe"
             data-timeframe="5m"
+            type="button"
           >
             5m
           </button>
@@ -181,6 +205,7 @@
           <button
             class="timeframe"
             data-timeframe="15m"
+            type="button"
           >
             15m
           </button>
@@ -188,6 +213,7 @@
           <button
             class="timeframe"
             data-timeframe="1h"
+            type="button"
           >
             1H
           </button>
@@ -195,6 +221,7 @@
           <button
             class="timeframe"
             data-timeframe="4h"
+            type="button"
           >
             4H
           </button>
@@ -208,13 +235,17 @@
 
         <div class="chart-grid"></div>
 
+
         <div class="chart-y-axis">
+
           <span>—</span>
           <span>—</span>
           <span>—</span>
           <span>—</span>
           <span>—</span>
+
         </div>
+
 
         <svg
           id="live-chart"
@@ -223,16 +254,22 @@
           preserveAspectRatio="none"
           aria-label="Live price chart"
         >
+
           <polyline
             data-live-line
             points=""
             fill="none"
           />
+
         </svg>
 
+
         <div class="chart-live">
+
           <span class="live-dot"></span>
+
           LIVE
+
         </div>
 
       </div>
@@ -246,22 +283,30 @@
 
       <div>
         <span>MARKET</span>
-        <strong data-market>EUR/USD</strong>
+        <strong data-market>
+          EUR/USD
+        </strong>
       </div>
 
       <div>
         <span>PRICE</span>
-        <strong data-price>—</strong>
+        <strong data-price>
+          —
+        </strong>
       </div>
 
       <div>
         <span>CHANGE</span>
-        <strong data-move>—</strong>
+        <strong data-move>
+          —
+        </strong>
       </div>
 
       <div>
         <span>STATUS</span>
-        <strong data-market-status>CONNECTING</strong>
+        <strong data-market-status>
+          CONNECTING
+        </strong>
       </div>
 
     </div>
@@ -271,18 +316,32 @@
 
   <!-- ANALYSIS + TRADE -->
 
-  <section class="workspace" id="analysis">
+  <section
+    class="workspace"
+    id="analysis"
+  >
 
     <div class="workspace-heading">
 
       <div>
-        <span class="eyebrow green">ANALYSIS</span>
-        <h1>Market Scanner</h1>
+
+        <span class="eyebrow green">
+          ANALYSIS
+        </span>
+
+        <h1>
+          Market Scanner
+        </h1>
+
       </div>
 
+
       <div class="scanner-status">
+
         <span class="live-dot"></span>
+
         SCANNING
+
       </div>
 
     </div>
@@ -290,20 +349,31 @@
 
     <div class="workspace-grid">
 
+
       <!-- ANALYSIS -->
 
       <section class="analysis-panel">
 
         <div class="panel-header">
-          <span>MARKET ANALYSIS</span>
-          <strong data-analysis-market>EUR/USD</strong>
+
+          <span>
+            MARKET ANALYSIS
+          </span>
+
+          <strong data-analysis-market>
+            EUR/USD
+          </strong>
+
         </div>
+
 
         <div class="analysis-main">
 
           <div class="signal-box">
 
-            <span class="eyebrow">SIGNAL</span>
+            <span class="eyebrow">
+              SIGNAL
+            </span>
 
             <strong
               class="signal-value wait"
@@ -314,40 +384,54 @@
 
           </div>
 
+
           <div class="analysis-row">
 
             <div>
               <span>TREND</span>
-              <strong data-trend>WAIT</strong>
+              <strong data-trend>
+                WAIT
+              </strong>
             </div>
 
             <div>
               <span>MOMENTUM</span>
-              <strong data-momentum>WAIT</strong>
+              <strong data-momentum>
+                WAIT
+              </strong>
             </div>
 
             <div>
               <span>DIRECTION</span>
-              <strong data-direction>—</strong>
+              <strong data-direction>
+                —
+              </strong>
             </div>
 
           </div>
+
 
           <div class="levels">
 
             <div>
               <span>ENTRY</span>
-              <strong data-entry>—</strong>
+              <strong data-entry>
+                —
+              </strong>
             </div>
 
             <div>
               <span>STOP</span>
-              <strong data-stop>—</strong>
+              <strong data-stop>
+                —
+              </strong>
             </div>
 
             <div>
               <span>TARGET</span>
-              <strong data-target>—</strong>
+              <strong data-target>
+                —
+              </strong>
             </div>
 
           </div>
@@ -359,31 +443,52 @@
 
       <!-- TRADE -->
 
-      <section class="trade-panel" id="trade">
+      <section
+        class="trade-panel"
+        id="trade"
+      >
 
         <div class="panel-header">
-          <span>TRADE</span>
-          <strong>DERIV</strong>
+
+          <span>
+            TRADE
+          </span>
+
+          <strong>
+            DERIV
+          </strong>
+
         </div>
+
 
         <div class="account-row">
 
           <div>
             <span>BALANCE</span>
-            <strong data-balance>—</strong>
+
+            <strong data-balance>
+              —
+            </strong>
           </div>
 
           <div>
             <span>STATUS</span>
-            <strong data-account-status>NOT CONNECTED</strong>
+
+            <strong data-account-status>
+              NOT CONNECTED
+            </strong>
           </div>
 
         </div>
 
+
         <div class="trade-form">
 
           <label>
-            <span>STAKE</span>
+
+            <span>
+              STAKE
+            </span>
 
             <input
               type="number"
@@ -392,18 +497,32 @@
               step="0.01"
               placeholder="10.00"
             >
+
           </label>
 
+
           <label>
-            <span>CONTRACT</span>
+
+            <span>
+              CONTRACT
+            </span>
 
             <select id="contract-type">
-              <option value="CALL">RISE</option>
-              <option value="PUT">FALL</option>
+
+              <option value="CALL">
+                RISE
+              </option>
+
+              <option value="PUT">
+                FALL
+              </option>
+
             </select>
+
           </label>
 
         </div>
+
 
         <div class="trade-actions">
 
@@ -425,7 +544,11 @@
 
         </div>
 
-        <div class="trade-message" data-trade-message>
+
+        <div
+          class="trade-message"
+          data-trade-message
+        >
           LOGIN REQUIRED
         </div>
 
@@ -441,11 +564,22 @@
   <section class="positions-panel">
 
     <div class="panel-header">
-      <span>POSITIONS</span>
-      <strong data-position-count>0</strong>
+
+      <span>
+        POSITIONS
+      </span>
+
+      <strong data-position-count>
+        0
+      </strong>
+
     </div>
 
-    <div class="positions-empty" data-positions>
+
+    <div
+      class="positions-empty"
+      data-positions
+    >
       NO OPEN POSITIONS
     </div>
 
@@ -457,9 +591,17 @@
   <section class="account-bar">
 
     <div>
-      <span>ACCOUNT</span>
-      <strong data-account-status>NOT CONNECTED</strong>
+
+      <span>
+        ACCOUNT
+      </span>
+
+      <strong data-account-status>
+        NOT CONNECTED
+      </strong>
+
     </div>
+
 
     <a
       class="account-login"
@@ -486,7 +628,10 @@
 </footer>
 
 
-<script src="/app.js" defer></script>
+<script
+  src="/app.js"
+  defer
+></script>
 
 </body>
 </html>
