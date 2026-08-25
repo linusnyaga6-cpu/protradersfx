@@ -6,10 +6,10 @@
 
   <meta
     name="description"
-    content="ProTraders FX — live market analysis and secure Deriv trading access."
+    content="ProTraders FX — market analysis and Deriv trading terminal."
   >
 
-  <title>ProTraders FX | Live Market Analysis</title>
+  <title>ProTraders FX | Trading Terminal</title>
 
   <link rel="stylesheet" href="/style.css">
 </head>
@@ -23,18 +23,15 @@
       PROTRADERS<span>FX</span>
     </a>
 
-    <div class="nav-center">
-      <span class="nav-live">
-        <span class="status-dot"></span>
-        MARKETS LIVE
-      </span>
-    </div>
+    <nav class="main-nav">
+      <a href="#markets">MARKETS</a>
+      <a href="#analysis">ANALYSIS</a>
+      <a href="#trade">TRADE</a>
+    </nav>
 
     <div class="nav-actions">
       <a class="login-link" href="/api/deriv/login">LOGIN</a>
-      <a class="nav-button" href="/api/deriv/signup">
-        CREATE ACCOUNT
-      </a>
+      <a class="nav-button" href="/api/deriv/signup">OPEN ACCOUNT</a>
     </div>
 
   </div>
@@ -43,52 +40,52 @@
 
 <main>
 
-  <!-- MARKET TICKER -->
+  <!-- MARKETS -->
 
-  <section class="market-ticker">
+  <section class="market-ticker" id="markets">
 
     <div class="ticker-label">
-      MARKET
+      MARKETS
     </div>
 
     <button
       class="market-button active"
-      data-market-button="EUR/USD"
+      data-symbol="frxEURUSD"
     >
       EUR/USD
     </button>
 
     <button
       class="market-button"
-      data-market-button="GBP/USD"
+      data-symbol="frxGBPUSD"
     >
       GBP/USD
     </button>
 
     <button
       class="market-button"
-      data-market-button="USD/JPY"
+      data-symbol="frxUSDJPY"
     >
       USD/JPY
     </button>
 
     <button
       class="market-button"
-      data-market-button="AUD/USD"
+      data-symbol="frxAUDUSD"
     >
       AUD/USD
     </button>
 
     <button
       class="market-button"
-      data-market-button="USD/CAD"
+      data-symbol="frxUSDCAD"
     >
       USD/CAD
     </button>
 
     <button
       class="market-button"
-      data-market-button="USD/CHF"
+      data-symbol="frxUSDCHF"
     >
       USD/CHF
     </button>
@@ -96,35 +93,28 @@
   </section>
 
 
-  <!-- MAIN TERMINAL -->
+  <!-- TERMINAL -->
 
   <section class="terminal">
 
-    <!-- TERMINAL HEADER -->
+    <div class="terminal-top">
 
-    <div class="terminal-header">
+      <div class="instrument-block">
 
-      <div class="instrument">
-
-        <span class="instrument-label">
-          MARKET
-        </span>
+        <span class="eyebrow">MARKET</span>
 
         <strong
           class="selected-market"
-          data-market="EUR/USD"
+          data-market
         >
           EUR/USD
         </strong>
 
       </div>
 
+      <div class="terminal-price">
 
-      <div class="price-box">
-
-        <span class="price-label">
-          PRICE
-        </span>
+        <span class="eyebrow">PRICE</span>
 
         <strong
           class="market-price"
@@ -135,12 +125,9 @@
 
       </div>
 
+      <div class="terminal-change">
 
-      <div class="move-box">
-
-        <span class="price-label">
-          MOVE
-        </span>
+        <span class="eyebrow">CHANGE</span>
 
         <strong
           class="market-move"
@@ -151,15 +138,11 @@
 
       </div>
 
-
-      <div class="live-indicator">
+      <div class="terminal-status">
 
         <span class="live-dot"></span>
 
-        <span
-          class="market-status"
-          data-market-status
-        >
+        <span data-market-status>
           CONNECTING
         </span>
 
@@ -170,42 +153,50 @@
 
     <!-- CHART -->
 
-    <div class="chart-container">
+    <div class="chart-area">
 
-      <div class="chart-toolbar">
+      <div class="chart-header">
 
-        <div class="chart-title">
-
-          <strong
-            class="selected-market"
-            data-market="EUR/USD"
-          >
-            EUR/USD
-          </strong>
-
-          <span>
-            MARKET CHART
-          </span>
-
+        <div class="chart-symbol">
+          <strong data-market>EUR/USD</strong>
+          <span>DERIV</span>
         </div>
-
 
         <div class="timeframes">
 
-          <button class="timeframe active">
+          <button
+            class="timeframe active"
+            data-timeframe="1m"
+          >
             1m
           </button>
 
-          <button class="timeframe">
+          <button
+            class="timeframe"
+            data-timeframe="5m"
+          >
             5m
           </button>
 
-          <button class="timeframe">
+          <button
+            class="timeframe"
+            data-timeframe="15m"
+          >
             15m
           </button>
 
-          <button class="timeframe">
-            1h
+          <button
+            class="timeframe"
+            data-timeframe="1h"
+          >
+            1H
+          </button>
+
+          <button
+            class="timeframe"
+            data-timeframe="4h"
+          >
+            4H
           </button>
 
         </div>
@@ -215,40 +206,33 @@
 
       <div class="chart">
 
-        <div class="price-scale">
-
-          <span>1.0900</span>
-          <span>1.0875</span>
-          <span>1.0850</span>
-          <span>1.0825</span>
-          <span>1.0800</span>
-
-        </div>
-
-
         <div class="chart-grid"></div>
 
+        <div class="chart-y-axis">
+          <span>—</span>
+          <span>—</span>
+          <span>—</span>
+          <span>—</span>
+          <span>—</span>
+        </div>
 
         <svg
           id="live-chart"
           class="live-chart"
-          viewBox="0 0 900 360"
+          viewBox="0 0 1000 400"
           preserveAspectRatio="none"
-          aria-label="Live market chart"
+          aria-label="Live price chart"
         >
           <polyline
+            data-live-line
             points=""
             fill="none"
           />
         </svg>
 
-
-        <div class="chart-overlay">
-
-          <span>
-            LIVE MARKET DATA
-          </span>
-
+        <div class="chart-live">
+          <span class="live-dot"></span>
+          LIVE
         </div>
 
       </div>
@@ -256,212 +240,233 @@
     </div>
 
 
-    <!-- MARKET INFORMATION -->
+    <!-- MARKET STATS -->
 
-    <div class="market-information">
-
-      <div class="info-card">
-
-        <span>INSTRUMENT</span>
-
-        <strong
-          class="selected-market"
-          data-market="EUR/USD"
-        >
-          EUR/USD
-        </strong>
-
-      </div>
-
-
-      <div class="info-card">
-
-        <span>STATUS</span>
-
-        <strong
-          class="connection-status"
-          data-market-status
-        >
-          CONNECTING
-        </strong>
-
-      </div>
-
-
-      <div class="info-card">
-
-        <span>DATA</span>
-
-        <strong>
-          DERIV
-        </strong>
-
-      </div>
-
-
-      <div class="info-card">
-
-        <span>MODE</span>
-
-        <strong>
-          LIVE
-        </strong>
-
-      </div>
-
-    </div>
-
-  </section>
-
-
-  <!-- ANALYSIS -->
-
-  <section class="analysis-workspace">
-
-    <div class="workspace-header">
+    <div class="market-stats">
 
       <div>
-
-        <span class="section-label">
-          PROTRADERS FX
-        </span>
-
-        <h1>
-          Market Analysis
-        </h1>
-
+        <span>MARKET</span>
+        <strong data-market>EUR/USD</strong>
       </div>
 
-      <div class="workspace-status">
-        <span class="status-dot"></span>
-        LIVE MARKET DATA
+      <div>
+        <span>PRICE</span>
+        <strong data-price>—</strong>
+      </div>
+
+      <div>
+        <span>CHANGE</span>
+        <strong data-move>—</strong>
+      </div>
+
+      <div>
+        <span>STATUS</span>
+        <strong data-market-status>CONNECTING</strong>
+      </div>
+
+    </div>
+
+  </section>
+
+
+  <!-- ANALYSIS + TRADE -->
+
+  <section class="workspace" id="analysis">
+
+    <div class="workspace-heading">
+
+      <div>
+        <span class="eyebrow green">ANALYSIS</span>
+        <h1>Market Scanner</h1>
+      </div>
+
+      <div class="scanner-status">
+        <span class="live-dot"></span>
+        SCANNING
       </div>
 
     </div>
 
 
-    <div class="analysis-grid">
+    <div class="workspace-grid">
 
-      <div class="analysis-card main-analysis">
+      <!-- ANALYSIS -->
 
-        <span class="card-label">
-          MARKET
-        </span>
+      <section class="analysis-panel">
 
-        <strong
-          class="selected-market large-value"
-          data-market="EUR/USD"
-        >
-          EUR/USD
-        </strong>
+        <div class="panel-header">
+          <span>MARKET ANALYSIS</span>
+          <strong data-analysis-market>EUR/USD</strong>
+        </div>
 
-        <div class="analysis-price">
+        <div class="analysis-main">
 
-          <span>
-            PRICE
-          </span>
+          <div class="signal-box">
 
-          <strong
-            class="market-price"
-            data-price
-          >
-            —
-          </strong>
+            <span class="eyebrow">SIGNAL</span>
+
+            <strong
+              class="signal-value wait"
+              data-signal
+            >
+              WAIT
+            </strong>
+
+          </div>
+
+          <div class="analysis-row">
+
+            <div>
+              <span>TREND</span>
+              <strong data-trend>WAIT</strong>
+            </div>
+
+            <div>
+              <span>MOMENTUM</span>
+              <strong data-momentum>WAIT</strong>
+            </div>
+
+            <div>
+              <span>DIRECTION</span>
+              <strong data-direction>—</strong>
+            </div>
+
+          </div>
+
+          <div class="levels">
+
+            <div>
+              <span>ENTRY</span>
+              <strong data-entry>—</strong>
+            </div>
+
+            <div>
+              <span>STOP</span>
+              <strong data-stop>—</strong>
+            </div>
+
+            <div>
+              <span>TARGET</span>
+              <strong data-target>—</strong>
+            </div>
+
+          </div>
 
         </div>
 
-      </div>
+      </section>
 
 
-      <div class="analysis-card">
+      <!-- TRADE -->
 
-        <span class="card-label">
-          DIRECTION
-        </span>
+      <section class="trade-panel" id="trade">
 
-        <strong
-          class="market-move"
-          data-move
-        >
-          —
-        </strong>
+        <div class="panel-header">
+          <span>TRADE</span>
+          <strong>DERIV</strong>
+        </div>
 
-      </div>
+        <div class="account-row">
 
+          <div>
+            <span>BALANCE</span>
+            <strong data-balance>—</strong>
+          </div>
 
-      <div class="analysis-card">
+          <div>
+            <span>STATUS</span>
+            <strong data-account-status>NOT CONNECTED</strong>
+          </div>
 
-        <span class="card-label">
-          MOMENTUM
-        </span>
+        </div>
 
-        <strong>
-          WAITING
-        </strong>
+        <div class="trade-form">
 
-      </div>
+          <label>
+            <span>STAKE</span>
+
+            <input
+              type="number"
+              id="stake"
+              min="0.35"
+              step="0.01"
+              placeholder="10.00"
+            >
+          </label>
+
+          <label>
+            <span>CONTRACT</span>
+
+            <select id="contract-type">
+              <option value="CALL">RISE</option>
+              <option value="PUT">FALL</option>
+            </select>
+          </label>
+
+        </div>
+
+        <div class="trade-actions">
+
+          <button
+            class="trade-button buy"
+            id="buy-button"
+            type="button"
+          >
+            BUY
+          </button>
+
+          <button
+            class="trade-button sell"
+            id="sell-button"
+            type="button"
+          >
+            SELL
+          </button>
+
+        </div>
+
+        <div class="trade-message" data-trade-message>
+          LOGIN REQUIRED
+        </div>
+
+      </section>
 
     </div>
 
   </section>
 
 
-  <!-- DERIV ACCESS -->
+  <!-- POSITIONS -->
 
-  <section class="access-panel">
+  <section class="positions-panel">
 
-    <div class="access-content">
-
-      <span class="section-label">
-        DERIV ACCESS
-      </span>
-
-      <h2>
-        Trade from your market workspace.
-      </h2>
-
-      <p>
-        Connect your Deriv account securely and move from
-        market analysis to trading access.
-      </p>
-
+    <div class="panel-header">
+      <span>POSITIONS</span>
+      <strong data-position-count>0</strong>
     </div>
 
-
-    <div class="access-buttons">
-
-      <a
-        class="btn btn-outline"
-        href="/api/deriv/login"
-      >
-        LOGIN
-      </a>
-
-      <a
-        class="btn btn-primary"
-        href="/api/deriv/signup"
-      >
-        CREATE ACCOUNT
-      </a>
-
+    <div class="positions-empty" data-positions>
+      NO OPEN POSITIONS
     </div>
 
   </section>
 
 
-  <!-- RISK -->
+  <!-- ACCOUNT -->
 
-  <section class="risk-strip">
+  <section class="account-bar">
 
-    <span>
-      RISK WARNING
-    </span>
+    <div>
+      <span>ACCOUNT</span>
+      <strong data-account-status>NOT CONNECTED</strong>
+    </div>
 
-    <p>
-      Trading financial derivatives involves significant risk
-      and may result in loss of capital. Market information
-      is not a guarantee of future results.
-    </p>
+    <a
+      class="account-login"
+      href="/api/deriv/login"
+    >
+      LOGIN
+    </a>
 
   </section>
 
@@ -474,12 +479,8 @@
     PROTRADERS<span>FX</span>
   </div>
 
-  <div class="footer-center">
-    Independent Deriv Partner
-  </div>
-
   <div class="footer-copy">
-    © 2026 ProTraders FX
+    © 2026
   </div>
 
 </footer>
