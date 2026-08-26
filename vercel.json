@@ -4,23 +4,32 @@
     {
       "src": "server.js",
       "use": "@vercel/node"
+    },
+    {
+      "src": "public/**",
+      "use": "@vercel/static"
     }
   ],
   "routes": [
     {
-      "src": "/(.*)",
-      "dest": "server.js"
-    }
-  ],
-  "headers": [
+      "src": "/api/(.*)",
+      "dest": "/server.js"
+    },
     {
-      "source": "/(.*)",
-      "headers": [
-        {
-          "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data: https:; connect-src 'self' https://auth.deriv.com https://api.deriv.com https://api.derivws.com wss://*.derivws.com wss://*.deriv.com wss://ws.binaryws.com; frame-src 'self' https://auth.deriv.com https://*.deriv.com; object-src 'none'; base-uri 'self'; form-action 'self' https://auth.deriv.com https://*.deriv.com"
-        }
-      ]
+      "src": "/oauth/(.*)",
+      "dest": "/server.js"
+    },
+    {
+      "src": "/health",
+      "dest": "/server.js"
+    },
+    {
+      "src": "/",
+      "dest": "/public/index.html"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/public/$1"
     }
   ]
 }
