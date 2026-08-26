@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <title>ProTraders FX</title>
-  <meta name="description" content="ProTraders FX live forex trading terminal.">
+  <meta name="description" content="ProTraders FX live forex trading terminal">
 
   <style>
     * {
@@ -14,15 +14,25 @@
       padding: 0;
     }
 
+    html,
     body {
+      width: 100%;
+      min-height: 100%;
       background: #080b10;
       color: #e8edf5;
       font-family: Arial, Helvetica, sans-serif;
+    }
+
+    body {
       min-height: 100vh;
     }
 
-    button {
+    button,
+    input {
       font: inherit;
+    }
+
+    button {
       cursor: pointer;
     }
 
@@ -32,174 +42,191 @@
       flex-direction: column;
     }
 
-    /* TOP BAR */
+    /* =========================
+       TOP BAR
+    ========================= */
 
     .topbar {
       height: 64px;
-      border-bottom: 1px solid #202630;
+      flex-shrink: 0;
       background: #0c1016;
+      border-bottom: 1px solid #202630;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 0 24px;
-      position: sticky;
-      top: 0;
-      z-index: 20;
+      padding: 0 22px;
     }
 
     .brand {
       display: flex;
       align-items: center;
       gap: 10px;
-      font-weight: 800;
-      letter-spacing: .5px;
+      color: #ffffff;
       font-size: 18px;
+      font-weight: 800;
+      letter-spacing: .6px;
     }
 
     .brand-dot {
-      width: 10px;
-      height: 10px;
+      width: 9px;
+      height: 9px;
       border-radius: 50%;
-      background: #21d98b;
-      box-shadow: 0 0 14px #21d98b;
+      background: #20d88c;
+      box-shadow: 0 0 14px rgba(32,216,140,.8);
     }
 
     .top-actions {
       display: flex;
-      align-items: center;
-      gap: 10px;
+      gap: 9px;
     }
 
-    .btn {
-      border: 1px solid #2b323d;
+    .top-button {
+      border: 1px solid #303946;
       background: #121720;
       color: #e8edf5;
-      padding: 10px 16px;
-      border-radius: 7px;
-      font-weight: 700;
+      border-radius: 6px;
+      padding: 9px 15px;
+      font-size: 12px;
+      font-weight: 800;
     }
 
-    .btn:hover {
+    .top-button:hover {
+      background: #19202a;
       border-color: #46515f;
-      background: #171d27;
     }
 
-    .btn-primary {
+    .top-button.primary {
       background: #16b875;
       border-color: #16b875;
-      color: #06120d;
+      color: #03130c;
     }
 
-    .btn-primary:hover {
+    .top-button.primary:hover {
       background: #20d88c;
-      border-color: #20d88c;
     }
 
-    /* MARKET TICKER */
+    /* =========================
+       TICKER
+    ========================= */
 
     .ticker {
-      height: 42px;
+      height: 40px;
+      flex-shrink: 0;
       display: flex;
-      align-items: center;
-      overflow: hidden;
-      white-space: nowrap;
+      overflow-x: auto;
+      background: #090d12;
       border-bottom: 1px solid #202630;
-      background: #0a0e13;
+    }
+
+    .ticker::-webkit-scrollbar {
+      display: none;
     }
 
     .ticker-item {
       min-width: 145px;
-      padding: 0 16px;
-      border-right: 1px solid #1c222b;
-      height: 100%;
+      height: 40px;
+      padding: 0 13px;
+      border-right: 1px solid #1b222b;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 12px;
-      font-size: 12px;
+      gap: 10px;
+      font-size: 11px;
     }
 
     .ticker-symbol {
-      font-weight: 700;
+      color: #dfe5ed;
+      font-weight: 800;
     }
 
     .ticker-price {
-      color: #aeb7c5;
+      color: #8792a2;
     }
 
-    /* MAIN */
+    /* =========================
+       WORKSPACE
+    ========================= */
 
     .workspace {
       flex: 1;
+      min-height: 0;
       display: grid;
-      grid-template-columns: 220px minmax(0, 1fr) 280px;
-      min-height: calc(100vh - 106px);
+      grid-template-columns: 205px minmax(0, 1fr) 275px;
     }
 
-    /* LEFT */
+    /* =========================
+       LEFT MARKET PANEL
+    ========================= */
 
     .sidebar {
-      border-right: 1px solid #202630;
       background: #0b0f15;
-      padding: 18px 14px;
+      border-right: 1px solid #202630;
+      padding: 17px 12px;
+      overflow-y: auto;
     }
 
-    .section-label {
-      color: #697384;
+    .section-title {
+      color: #6e7888;
       font-size: 10px;
       font-weight: 800;
-      letter-spacing: 1.3px;
-      margin-bottom: 10px;
+      letter-spacing: 1.2px;
+      margin-bottom: 9px;
       text-transform: uppercase;
     }
 
-    .markets {
+    .market-list {
       display: flex;
       flex-direction: column;
       gap: 4px;
     }
 
-    .market {
-      border: 1px solid transparent;
-      background: transparent;
-      color: #cbd2dc;
+    .market-button {
       width: 100%;
-      padding: 12px 11px;
+      border: 1px solid transparent;
       border-radius: 7px;
-      text-align: left;
+      background: transparent;
+      color: #cbd3de;
+      padding: 11px 10px;
       display: flex;
-      justify-content: space-between;
       align-items: center;
+      justify-content: space-between;
+      text-align: left;
     }
 
-    .market:hover {
+    .market-button:hover {
       background: #111720;
     }
 
-    .market.active {
-      background: #121a21;
-      border-color: #26333b;
-      color: #fff;
+    .market-button.active {
+      background: #131a22;
+      border-color: #29343f;
+      color: #ffffff;
     }
 
-    .market small {
-      color: #697384;
+    .market-code {
+      color: #697586;
+      font-size: 9px;
     }
 
-    /* CENTER */
+    /* =========================
+       TERMINAL
+    ========================= */
 
     .terminal {
       min-width: 0;
       background: #080b10;
+      display: flex;
+      flex-direction: column;
     }
 
-    .instrument {
-      height: 76px;
+    .instrument-bar {
+      height: 75px;
+      flex-shrink: 0;
       border-bottom: 1px solid #202630;
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      padding: 0 22px;
+      justify-content: space-between;
+      padding: 0 21px;
     }
 
     .instrument-left {
@@ -209,174 +236,236 @@
     }
 
     .instrument-name {
+      color: #ffffff;
       font-size: 21px;
       font-weight: 800;
     }
 
-    .live {
+    .connection {
+      margin-top: 5px;
       display: flex;
       align-items: center;
       gap: 7px;
-      color: #21d98b;
-      font-size: 11px;
-      font-weight: 700;
+      color: #788494;
+      font-size: 10px;
+      font-weight: 800;
     }
 
-    .live-dot {
+    .connection-dot {
       width: 7px;
       height: 7px;
-      background: #21d98b;
       border-radius: 50%;
+      background: #697586;
     }
 
-    .price-box {
+    .connection.live {
+      color: #20d88c;
+    }
+
+    .connection.live .connection-dot {
+      background: #20d88c;
+      box-shadow: 0 0 10px rgba(32,216,140,.8);
+    }
+
+    .connection.error {
+      color: #ff6173;
+    }
+
+    .connection.error .connection-dot {
+      background: #ff6173;
+    }
+
+    .price-area {
       text-align: right;
     }
 
-    .price {
+    .main-price {
+      color: #ffffff;
       font-size: 26px;
+      line-height: 1;
       font-weight: 800;
       letter-spacing: .5px;
     }
 
-    .move {
-      font-size: 12px;
-      margin-top: 2px;
-    }
-
-    .up {
-      color: #21d98b;
-    }
-
-    .down {
-      color: #ff5c70;
-    }
-
-    /* CHART */
-
-    .chart-panel {
-      height: 510px;
-      border-bottom: 1px solid #202630;
-      position: relative;
-      overflow: hidden;
-      background:
-        linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
-      background-size: 60px 60px;
-    }
-
-    .chart-header {
-      position: absolute;
-      left: 18px;
-      top: 14px;
-      z-index: 3;
-      display: flex;
-      gap: 6px;
-    }
-
-    .timeframe {
-      background: #11161e;
-      border: 1px solid #242c36;
-      color: #9ba5b4;
-      border-radius: 5px;
-      padding: 5px 9px;
+    .main-move {
+      margin-top: 6px;
       font-size: 11px;
     }
 
+    .positive {
+      color: #20d88c;
+    }
+
+    .negative {
+      color: #ff6173;
+    }
+
+    /* =========================
+       CHART
+    ========================= */
+
+    .chart-panel {
+      position: relative;
+      flex: 1;
+      min-height: 390px;
+      background:
+        linear-gradient(
+          rgba(255,255,255,.035) 1px,
+          transparent 1px
+        ),
+        linear-gradient(
+          90deg,
+          rgba(255,255,255,.035) 1px,
+          transparent 1px
+        );
+      background-size: 60px 60px;
+      overflow: hidden;
+    }
+
+    .chart-tools {
+      position: absolute;
+      top: 12px;
+      left: 16px;
+      z-index: 5;
+      display: flex;
+      gap: 5px;
+    }
+
+    .timeframe {
+      border: 1px solid #29323d;
+      background: #10151c;
+      color: #7f8a99;
+      border-radius: 5px;
+      padding: 5px 9px;
+      font-size: 10px;
+    }
+
     .timeframe.active {
-      color: #fff;
-      border-color: #4b5665;
+      color: #ffffff;
+      border-color: #4b5766;
     }
 
     #chart {
+      position: absolute;
+      inset: 0;
       width: 100%;
       height: 100%;
-      display: block;
     }
 
-    /* LOWER PANEL */
+    .chart-status {
+      position: absolute;
+      left: 20px;
+      bottom: 16px;
+      z-index: 5;
+      color: #606b7a;
+      font-size: 10px;
+    }
 
-    .bottom-panel {
-      padding: 18px 22px;
+    /* =========================
+       MARKET STATS
+    ========================= */
+
+    .stats-panel {
+      flex-shrink: 0;
+      border-top: 1px solid #202630;
+      padding: 14px 20px;
     }
 
     .stats {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
-      gap: 10px;
+      gap: 9px;
     }
 
     .stat {
-      border: 1px solid #202630;
       background: #0d1219;
-      padding: 14px;
+      border: 1px solid #202630;
       border-radius: 7px;
+      padding: 12px;
     }
 
     .stat-label {
-      color: #697384;
-      font-size: 10px;
-      text-transform: uppercase;
+      color: #687384;
+      font-size: 9px;
+      font-weight: 800;
       letter-spacing: 1px;
-      margin-bottom: 7px;
+      text-transform: uppercase;
+      margin-bottom: 6px;
     }
 
     .stat-value {
-      font-size: 15px;
+      color: #e7ecf3;
+      font-size: 13px;
       font-weight: 700;
     }
 
-    /* RIGHT */
+    /* =========================
+       RIGHT PANEL
+    ========================= */
 
     .trade-panel {
-      border-left: 1px solid #202630;
       background: #0b0f15;
-      padding: 18px;
+      border-left: 1px solid #202630;
+      padding: 17px;
+      overflow-y: auto;
     }
 
-    .trade-title {
-      font-size: 16px;
+    .trade-heading {
+      color: #ffffff;
+      font-size: 15px;
       font-weight: 800;
-      margin-bottom: 18px;
+      margin-bottom: 14px;
     }
 
-    .trade-card {
-      border: 1px solid #202630;
+    .card {
       background: #0e131a;
+      border: 1px solid #202630;
       border-radius: 8px;
-      padding: 14px;
-      margin-bottom: 12px;
+      padding: 13px;
+      margin-bottom: 10px;
     }
 
     .trade-row {
+      min-height: 32px;
+      border-bottom: 1px solid #1c232c;
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      padding: 9px 0;
-      border-bottom: 1px solid #1b222c;
-      font-size: 12px;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 11px;
     }
 
     .trade-row:last-child {
       border-bottom: 0;
     }
 
-    .trade-row span:first-child {
-      color: #737e8d;
+    .trade-row span {
+      color: #707b8a;
     }
 
-    .trade-input {
+    .trade-row strong {
+      color: #e9eef5;
+    }
+
+    .input-label {
+      display: block;
+      color: #737e8d;
+      font-size: 10px;
+      font-weight: 800;
+      margin-bottom: 6px;
+    }
+
+    .stake-input {
       width: 100%;
-      margin-top: 6px;
       background: #080c11;
-      border: 1px solid #29313c;
-      color: white;
+      border: 1px solid #29323d;
       border-radius: 6px;
+      color: #ffffff;
       padding: 10px;
       outline: none;
     }
 
-    .trade-input:focus {
+    .stake-input:focus {
       border-color: #16b875;
     }
 
@@ -384,39 +473,65 @@
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 8px;
+      margin-top: 10px;
+    }
+
+    .buy-button,
+    .sell-button {
+      border: 0;
+      border-radius: 6px;
+      padding: 11px 8px;
+      font-weight: 800;
+      font-size: 11px;
+    }
+
+    .buy-button {
+      background: #16b875;
+      color: #03130c;
+    }
+
+    .sell-button {
+      background: #ff5268;
+      color: #180306;
+    }
+
+    .buy-button:hover {
+      background: #20d88c;
+    }
+
+    .sell-button:hover {
+      background: #ff6d7f;
+    }
+
+    .account-button {
+      width: 100%;
+      border: 1px solid #303946;
+      background: #121720;
+      color: #dce3eb;
+      border-radius: 6px;
+      padding: 10px;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .account-button:hover {
+      background: #19202a;
+    }
+
+    .small-note {
+      color: #606b7a;
+      font-size: 9px;
+      line-height: 1.5;
       margin-top: 12px;
     }
 
-    .buy {
-      background: #16b875;
-      color: #04120c;
-      border: 0;
-      border-radius: 6px;
-      padding: 12px;
-      font-weight: 800;
-    }
-
-    .sell {
-      background: #ff5268;
-      color: #180306;
-      border: 0;
-      border-radius: 6px;
-      padding: 12px;
-      font-weight: 800;
-    }
-
-    .notice {
-      color: #687383;
-      font-size: 10px;
-      line-height: 1.5;
-      margin-top: 15px;
-    }
-
-    /* RESPONSIVE */
+    /* =========================
+       RESPONSIVE
+    ========================= */
 
     @media (max-width: 1050px) {
       .workspace {
-        grid-template-columns: 190px minmax(0, 1fr);
+        grid-template-columns: 185px minmax(0, 1fr);
       }
 
       .trade-panel {
@@ -429,6 +544,14 @@
         padding: 0 12px;
       }
 
+      .brand {
+        font-size: 15px;
+      }
+
+      .top-button {
+        padding: 8px 10px;
+      }
+
       .workspace {
         display: block;
       }
@@ -436,27 +559,37 @@
       .sidebar {
         border-right: 0;
         border-bottom: 1px solid #202630;
+        padding: 10px;
         overflow-x: auto;
       }
 
-      .markets {
+      .market-list {
         flex-direction: row;
+        width: max-content;
       }
 
-      .market {
-        min-width: 120px;
+      .market-button {
+        width: 120px;
+      }
+
+      .chart-panel {
+        min-height: 430px;
       }
 
       .stats {
         grid-template-columns: 1fr 1fr;
       }
 
-      .chart-panel {
-        height: 420px;
+      .instrument-bar {
+        padding: 0 13px;
       }
 
-      .top-actions .btn:first-child {
-        display: none;
+      .instrument-name {
+        font-size: 17px;
+      }
+
+      .main-price {
+        font-size: 21px;
       }
     }
   </style>
@@ -466,120 +599,231 @@
 
 <div class="app">
 
+  <!-- =========================
+       HEADER
+  ========================== -->
+
   <header class="topbar">
+
     <div class="brand">
       <span class="brand-dot"></span>
       PROTRADERS FX
     </div>
 
     <div class="top-actions">
-      <button class="btn" onclick="login()">LOGIN</button>
-      <button class="btn btn-primary" onclick="signup()">CREATE ACCOUNT</button>
+
+      <button
+        class="top-button"
+        id="loginButton"
+        type="button"
+      >
+        LOGIN
+      </button>
+
+      <button
+        class="top-button primary"
+        id="signupButton"
+        type="button"
+      >
+        CREATE ACCOUNT
+      </button>
+
     </div>
+
   </header>
+
+
+  <!-- =========================
+       MARKET TICKER
+  ========================== -->
 
   <div class="ticker">
 
     <div class="ticker-item">
       <span class="ticker-symbol">EUR/USD</span>
-      <span class="ticker-price" id="ticker-eurusd">—</span>
+      <span
+        class="ticker-price"
+        id="ticker-EURUSD"
+      >—</span>
     </div>
 
     <div class="ticker-item">
       <span class="ticker-symbol">GBP/USD</span>
-      <span class="ticker-price" id="ticker-gbpusd">—</span>
+      <span
+        class="ticker-price"
+        id="ticker-GBPUSD"
+      >—</span>
     </div>
 
     <div class="ticker-item">
       <span class="ticker-symbol">USD/JPY</span>
-      <span class="ticker-price" id="ticker-usdjpy">—</span>
+      <span
+        class="ticker-price"
+        id="ticker-USDJPY"
+      >—</span>
     </div>
 
     <div class="ticker-item">
       <span class="ticker-symbol">AUD/USD</span>
-      <span class="ticker-price" id="ticker-audusd">—</span>
+      <span
+        class="ticker-price"
+        id="ticker-AUDUSD"
+      >—</span>
     </div>
 
     <div class="ticker-item">
       <span class="ticker-symbol">USD/CAD</span>
-      <span class="ticker-price" id="ticker-usdcad">—</span>
+      <span
+        class="ticker-price"
+        id="ticker-USDCAD"
+      >—</span>
     </div>
 
     <div class="ticker-item">
       <span class="ticker-symbol">USD/CHF</span>
-      <span class="ticker-price" id="ticker-usdchf">—</span>
+      <span
+        class="ticker-price"
+        id="ticker-USDCHF"
+      >—</span>
     </div>
 
   </div>
 
+
+  <!-- =========================
+       WORKSPACE
+  ========================== -->
+
   <main class="workspace">
+
+
+    <!-- =========================
+         MARKETS
+    ========================== -->
 
     <aside class="sidebar">
 
-      <div class="section-label">Markets</div>
+      <div class="section-title">
+        MARKETS
+      </div>
 
-      <div class="markets">
+      <div class="market-list">
 
-        <button class="market active" data-symbol="frxEURUSD" data-name="EUR/USD">
+        <button
+          class="market-button active"
+          data-symbol="frxEURUSD"
+          data-name="EUR/USD"
+          data-ticker="EURUSD"
+        >
           <span>EUR/USD</span>
-          <small>FX</small>
+          <span class="market-code">FX</span>
         </button>
 
-        <button class="market" data-symbol="frxGBPUSD" data-name="GBP/USD">
+        <button
+          class="market-button"
+          data-symbol="frxGBPUSD"
+          data-name="GBP/USD"
+          data-ticker="GBPUSD"
+        >
           <span>GBP/USD</span>
-          <small>FX</small>
+          <span class="market-code">FX</span>
         </button>
 
-        <button class="market" data-symbol="frxUSDJPY" data-name="USD/JPY">
+        <button
+          class="market-button"
+          data-symbol="frxUSDJPY"
+          data-name="USD/JPY"
+          data-ticker="USDJPY"
+        >
           <span>USD/JPY</span>
-          <small>FX</small>
+          <span class="market-code">FX</span>
         </button>
 
-        <button class="market" data-symbol="frxAUDUSD" data-name="AUD/USD">
+        <button
+          class="market-button"
+          data-symbol="frxAUDUSD"
+          data-name="AUD/USD"
+          data-ticker="AUDUSD"
+        >
           <span>AUD/USD</span>
-          <small>FX</small>
+          <span class="market-code">FX</span>
         </button>
 
-        <button class="market" data-symbol="frxUSDCAD" data-name="USD/CAD">
+        <button
+          class="market-button"
+          data-symbol="frxUSDCAD"
+          data-name="USD/CAD"
+          data-ticker="USDCAD"
+        >
           <span>USD/CAD</span>
-          <small>FX</small>
+          <span class="market-code">FX</span>
         </button>
 
-        <button class="market" data-symbol="frxUSDCHF" data-name="USD/CHF">
+        <button
+          class="market-button"
+          data-symbol="frxUSDCHF"
+          data-name="USD/CHF"
+          data-ticker="USDCHF"
+        >
           <span>USD/CHF</span>
-          <small>FX</small>
+          <span class="market-code">FX</span>
         </button>
 
       </div>
 
     </aside>
 
+
+    <!-- =========================
+         MAIN TERMINAL
+    ========================== -->
+
     <section class="terminal">
 
-      <div class="instrument">
+
+      <!-- INSTRUMENT -->
+
+      <div class="instrument-bar">
 
         <div class="instrument-left">
 
           <div>
-            <div class="instrument-name" id="instrument-name">
+
+            <div
+              class="instrument-name"
+              id="instrumentName"
+            >
               EUR/USD
             </div>
 
-            <div class="live">
-              <span class="live-dot"></span>
-              <span id="connection-status">CONNECTING</span>
+            <div
+              class="connection"
+              id="connection"
+            >
+              <span class="connection-dot"></span>
+              <span id="connectionText">
+                CONNECTING
+              </span>
             </div>
+
           </div>
 
         </div>
 
-        <div class="price-box">
 
-          <div class="price" id="main-price">
+        <div class="price-area">
+
+          <div
+            class="main-price"
+            id="mainPrice"
+          >
             —
           </div>
 
-          <div class="move" id="main-move">
+          <div
+            class="main-move"
+            id="mainMove"
+          >
             —
           </div>
 
@@ -587,44 +831,126 @@
 
       </div>
 
+
+      <!-- CHART -->
+
       <div class="chart-panel">
 
-        <div class="chart-header">
+        <div class="chart-tools">
 
-          <button class="timeframe active">1m</button>
-          <button class="timeframe">5m</button>
-          <button class="timeframe">15m</button>
-          <button class="timeframe">1H</button>
-          <button class="timeframe">4H</button>
+          <button
+            class="timeframe active"
+            type="button"
+          >
+            1m
+          </button>
+
+          <button
+            class="timeframe"
+            type="button"
+          >
+            5m
+          </button>
+
+          <button
+            class="timeframe"
+            type="button"
+          >
+            15m
+          </button>
+
+          <button
+            class="timeframe"
+            type="button"
+          >
+            1H
+          </button>
+
+          <button
+            class="timeframe"
+            type="button"
+          >
+            4H
+          </button>
 
         </div>
 
         <canvas id="chart"></canvas>
 
+        <div
+          class="chart-status"
+          id="chartStatus"
+        >
+          Connecting to market data...
+        </div>
+
       </div>
 
-      <div class="bottom-panel">
+
+      <!-- STATS -->
+
+      <div class="stats-panel">
 
         <div class="stats">
 
           <div class="stat">
-            <div class="stat-label">Market</div>
-            <div class="stat-value" id="stat-market">EUR/USD</div>
+
+            <div class="stat-label">
+              MARKET
+            </div>
+
+            <div
+              class="stat-value"
+              id="statMarket"
+            >
+              EUR/USD
+            </div>
+
           </div>
 
           <div class="stat">
-            <div class="stat-label">Bid</div>
-            <div class="stat-value" id="stat-bid">—</div>
+
+            <div class="stat-label">
+              PRICE
+            </div>
+
+            <div
+              class="stat-value"
+              id="statPrice"
+            >
+              —
+            </div>
+
           </div>
 
           <div class="stat">
-            <div class="stat-label">Ask</div>
-            <div class="stat-value" id="stat-ask">—</div>
+
+            <div class="stat-label">
+              CHANGE
+            </div>
+
+            <div
+              class="stat-value"
+              id="statChange"
+            >
+              —
+            </div>
+
           </div>
 
           <div class="stat">
-            <div class="stat-label">Status</div>
-            <div class="stat-value" id="stat-status">Connecting</div>
+
+            <div class="stat-label">
+              STATUS
+            </div>
+
+            <div
+              class="stat-value"
+              id="statStatus"
+            >
+              Connecting
+            </div>
+
           </div>
 
         </div>
@@ -633,52 +959,92 @@
 
     </section>
 
+
+    <!-- =========================
+         TRADE PANEL
+    ========================== -->
+
     <aside class="trade-panel">
 
-      <div class="trade-title">
+      <div class="trade-heading">
         TRADE
       </div>
 
-      <div class="trade-card">
+
+      <div class="card">
 
         <div class="trade-row">
-          <span>Instrument</span>
-          <strong id="trade-symbol">EUR/USD</strong>
+
+          <span>
+            Instrument
+          </span>
+
+          <strong id="tradeSymbol">
+            EUR/USD
+          </strong>
+
         </div>
 
         <div class="trade-row">
-          <span>Price</span>
-          <strong id="trade-price">—</strong>
+
+          <span>
+            Price
+          </span>
+
+          <strong id="tradePrice">
+            —
+          </strong>
+
         </div>
 
         <div class="trade-row">
-          <span>Direction</span>
-          <strong>Market</strong>
+
+          <span>
+            Market
+          </span>
+
+          <strong>
+            FX
+          </strong>
+
         </div>
 
       </div>
 
-      <div class="trade-card">
 
-        <label class="section-label">
-          Stake
+      <div class="card">
+
+        <label
+          class="input-label"
+          for="stake"
+        >
+          STAKE
         </label>
 
         <input
-          class="trade-input"
+          class="stake-input"
           id="stake"
           type="number"
           min="1"
+          step="1"
           value="10"
         >
 
         <div class="trade-buttons">
 
-          <button class="buy" onclick="trade('BUY')">
+          <button
+            class="buy-button"
+            id="buyButton"
+            type="button"
+          >
             BUY
           </button>
 
-          <button class="sell" onclick="trade('SELL')">
+          <button
+            class="sell-button"
+            id="sellButton"
+            type="button"
+          >
             SELL
           </button>
 
@@ -686,23 +1052,48 @@
 
       </div>
 
-      <div class="trade-card">
+
+      <div class="card">
 
         <div class="trade-row">
-          <span>Account</span>
-          <strong id="account-status">Not connected</strong>
+
+          <span>
+            Account
+          </span>
+
+          <strong id="accountStatus">
+            Not connected
+          </strong>
+
         </div>
 
         <div class="trade-row">
-          <span>Balance</span>
-          <strong id="balance">—</strong>
+
+          <span>
+            Balance
+          </span>
+
+          <strong id="accountBalance">
+            —
+          </strong>
+
         </div>
 
       </div>
 
-      <div class="notice">
-        Live market prices are supplied through the connected market data service.
-        Trading actions require an authenticated trading account.
+
+      <button
+        class="account-button"
+        id="accountButton"
+        type="button"
+      >
+        LOGIN TO TRADE
+      </button>
+
+
+      <div class="small-note">
+        Connect your Deriv account to access
+        authenticated trading features.
       </div>
 
     </aside>
@@ -711,122 +1102,385 @@
 
 </div>
 
+
 <script>
+
 (function () {
+
+  "use strict";
+
+
+  /* ==========================================
+     STATE
+  ========================================== */
 
   let socket = null;
 
-  let currentSymbol = 'frxEURUSD';
-  let currentName = 'EUR/USD';
+  let currentSymbol = "frxEURUSD";
+  let currentName = "EUR/USD";
+  let currentTicker = "EURUSD";
 
   let currentPrice = null;
   let previousPrice = null;
 
-  const history = [];
+  let reconnectTimer = null;
 
-  const chart = document.getElementById('chart');
-  const ctx = chart.getContext('2d');
+  const prices = [];
 
-  const mainPrice = document.getElementById('main-price');
-  const mainMove = document.getElementById('main-move');
-  const connectionStatus = document.getElementById('connection-status');
 
-  const instrumentName = document.getElementById('instrument-name');
-  const statMarket = document.getElementById('stat-market');
-  const statBid = document.getElementById('stat-bid');
-  const statAsk = document.getElementById('stat-ask');
-  const statStatus = document.getElementById('stat-status');
+  /* ==========================================
+     ELEMENTS
+  ========================================== */
 
-  const tradeSymbol = document.getElementById('trade-symbol');
-  const tradePrice = document.getElementById('trade-price');
+  const chart =
+    document.getElementById("chart");
 
-  function resizeCanvas() {
+  const ctx =
+    chart.getContext("2d");
 
-    const rect = chart.getBoundingClientRect();
+  const mainPrice =
+    document.getElementById("mainPrice");
 
-    const ratio = window.devicePixelRatio || 1;
+  const mainMove =
+    document.getElementById("mainMove");
 
-    chart.width = rect.width * ratio;
-    chart.height = rect.height * ratio;
+  const connection =
+    document.getElementById("connection");
 
-    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  const connectionText =
+    document.getElementById("connectionText");
 
-    drawChart();
+  const chartStatus =
+    document.getElementById("chartStatus");
+
+  const instrumentName =
+    document.getElementById("instrumentName");
+
+  const statMarket =
+    document.getElementById("statMarket");
+
+  const statPrice =
+    document.getElementById("statPrice");
+
+  const statChange =
+    document.getElementById("statChange");
+
+  const statStatus =
+    document.getElementById("statStatus");
+
+  const tradeSymbol =
+    document.getElementById("tradeSymbol");
+
+  const tradePrice =
+    document.getElementById("tradePrice");
+
+  const accountStatus =
+    document.getElementById("accountStatus");
+
+  const loginButton =
+    document.getElementById("loginButton");
+
+  const signupButton =
+    document.getElementById("signupButton");
+
+  const accountButton =
+    document.getElementById("accountButton");
+
+
+  /* ==========================================
+     LOGIN
+  ========================================== */
+
+  function goLogin() {
+
+    window.location.href =
+      "/api/deriv/login";
+
   }
 
-  window.addEventListener('resize', resizeCanvas);
+
+  function goSignup() {
+
+    window.location.href =
+      "/api/deriv/signup";
+
+  }
+
+
+  loginButton.addEventListener(
+    "click",
+    goLogin
+  );
+
+
+  signupButton.addEventListener(
+    "click",
+    goSignup
+  );
+
+
+  accountButton.addEventListener(
+    "click",
+    goLogin
+  );
+
+
+  /* ==========================================
+     TRADE BUTTONS
+  ========================================== */
+
+  document
+    .getElementById("buyButton")
+    .addEventListener(
+      "click",
+      function () {
+
+        alert(
+          "Login to your Deriv account before placing a BUY trade."
+        );
+
+      }
+    );
+
+
+  document
+    .getElementById("sellButton")
+    .addEventListener(
+      "click",
+      function () {
+
+        alert(
+          "Login to your Deriv account before placing a SELL trade."
+        );
+
+      }
+    );
+
+
+  /* ==========================================
+     CANVAS
+  ========================================== */
+
+  function resizeChart() {
+
+    const rect =
+      chart.getBoundingClientRect();
+
+    const ratio =
+      window.devicePixelRatio || 1;
+
+    chart.width =
+      Math.max(
+        1,
+        Math.floor(
+          rect.width * ratio
+        )
+      );
+
+    chart.height =
+      Math.max(
+        1,
+        Math.floor(
+          rect.height * ratio
+        )
+      );
+
+    ctx.setTransform(
+      ratio,
+      0,
+      0,
+      ratio,
+      0,
+      0
+    );
+
+    drawChart();
+
+  }
+
+
+  window.addEventListener(
+    "resize",
+    resizeChart
+  );
+
+
+  /* ==========================================
+     CHART
+  ========================================== */
 
   function drawChart() {
 
-    const width = chart.clientWidth;
-    const height = chart.clientHeight;
+    const width =
+      chart.clientWidth;
 
-    ctx.clearRect(0, 0, width, height);
+    const height =
+      chart.clientHeight;
 
-    if (history.length < 2) {
-      ctx.fillStyle = '#697384';
-      ctx.font = '12px Arial';
-      ctx.fillText('Waiting for live market data…', 22, height - 25);
+    if (
+      width <= 0 ||
+      height <= 0
+    ) {
       return;
     }
 
-    const values = history.slice(-120);
+    ctx.clearRect(
+      0,
+      0,
+      width,
+      height
+    );
 
-    const min = Math.min(...values);
-    const max = Math.max(...values);
 
-    const range = max - min || 0.0001;
+    if (prices.length < 2) {
+
+      ctx.fillStyle =
+        "#697586";
+
+      ctx.font =
+        "12px Arial";
+
+      ctx.fillText(
+        "Waiting for live market data...",
+        20,
+        height - 22
+      );
+
+      return;
+    }
+
+
+    const values =
+      prices.slice(-150);
+
+    let min =
+      Math.min.apply(
+        null,
+        values
+      );
+
+    let max =
+      Math.max.apply(
+        null,
+        values
+      );
+
+    if (min === max) {
+
+      min -= 0.00001;
+      max += 0.00001;
+
+    }
+
+
+    const range =
+      max - min;
+
 
     ctx.beginPath();
 
-    values.forEach((value, index) => {
 
-      const x =
-        20 +
-        (index / Math.max(values.length - 1, 1)) *
-        (width - 40);
+    values.forEach(
+      function (
+        value,
+        index
+      ) {
 
-      const y =
-        height -
-        25 -
-        ((value - min) / range) *
-        (height - 60);
+        const x =
+          20 +
+          (
+            index /
+            Math.max(
+              values.length - 1,
+              1
+            )
+          ) *
+          (
+            width - 40
+          );
 
-      if (index === 0) {
-        ctx.moveTo(x, y);
-      } else {
-        ctx.lineTo(x, y);
+
+        const y =
+          height -
+          28 -
+          (
+            (
+              value - min
+            ) /
+            range
+          ) *
+          (
+            height - 65
+          );
+
+
+        if (index === 0) {
+
+          ctx.moveTo(
+            x,
+            y
+          );
+
+        } else {
+
+          ctx.lineTo(
+            x,
+            y
+          );
+
+        }
+
       }
+    );
 
-    });
-
-    ctx.strokeStyle =
-      currentPrice >= previousPrice
-        ? '#21d98b'
-        : '#ff5c70';
 
     ctx.lineWidth = 2;
 
+    ctx.strokeStyle =
+      currentPrice >=
+      previousPrice
+        ? "#20d88c"
+        : "#ff6173";
+
     ctx.stroke();
 
-    if (currentPrice !== null) {
 
-      const lastX = width - 20;
+    if (
+      currentPrice !== null
+    ) {
 
-      const lastY =
+      const x =
+        width - 20;
+
+      const y =
         height -
-        25 -
-        ((currentPrice - min) / range) *
-        (height - 60);
+        28 -
+        (
+          (
+            currentPrice - min
+          ) /
+          range
+        ) *
+        (
+          height - 65
+        );
+
 
       ctx.beginPath();
 
-      ctx.arc(lastX, lastY, 4, 0, Math.PI * 2);
+      ctx.arc(
+        x,
+        y,
+        4,
+        0,
+        Math.PI * 2
+      );
 
       ctx.fillStyle =
-        currentPrice >= previousPrice
-          ? '#21d98b'
-          : '#ff5c70';
+        currentPrice >=
+        previousPrice
+          ? "#20d88c"
+          : "#ff6173";
 
       ctx.fill();
 
@@ -834,140 +1488,609 @@
 
   }
 
-  function updatePrice(price) {
 
-    previousPrice = currentPrice;
-    currentPrice = Number(price);
+  /* ==========================================
+     FORMAT PRICE
+  ========================================== */
 
-    history.push(currentPrice);
+  function pricePrecision(
+    price
+  ) {
 
-    if (history.length > 300) {
-      history.shift();
+    if (
+      price >= 100
+    ) {
+      return 3;
     }
 
-    mainPrice.textContent = currentPrice.toFixed(5);
-    tradePrice.textContent = currentPrice.toFixed(5);
+    return 5;
 
-    statBid.textContent = currentPrice.toFixed(5);
-    statAsk.textContent = currentPrice.toFixed(5);
+  }
 
-    if (previousPrice !== null) {
+
+  /* ==========================================
+     UPDATE PRICE
+  ========================================== */
+
+  function updatePrice(
+    tick
+  ) {
+
+    if (
+      !tick ||
+      tick.quote === undefined
+    ) {
+      return;
+    }
+
+
+    previousPrice =
+      currentPrice;
+
+    currentPrice =
+      Number(
+        tick.quote
+      );
+
+
+    if (
+      !Number.isFinite(
+        currentPrice
+      )
+    ) {
+      return;
+    }
+
+
+    prices.push(
+      currentPrice
+    );
+
+
+    if (
+      prices.length > 300
+    ) {
+
+      prices.shift();
+
+    }
+
+
+    const precision =
+      pricePrecision(
+        currentPrice
+      );
+
+
+    mainPrice.textContent =
+      currentPrice.toFixed(
+        precision
+      );
+
+
+    tradePrice.textContent =
+      currentPrice.toFixed(
+        precision
+      );
+
+
+    statPrice.textContent =
+      currentPrice.toFixed(
+        precision
+      );
+
+
+    if (
+      previousPrice !== null
+    ) {
 
       const difference =
-        currentPrice - previousPrice;
+        currentPrice -
+        previousPrice;
+
 
       const percentage =
-        (difference / previousPrice) * 100;
+        (
+          difference /
+          previousPrice
+        ) *
+        100;
+
+
+      const sign =
+        difference >= 0
+          ? "+"
+          : "";
+
 
       mainMove.textContent =
-        (difference >= 0 ? '+' : '') +
-        difference.toFixed(5) +
-        ' (' +
-        (percentage >= 0 ? '+' : '') +
+        sign +
+        difference.toFixed(
+          precision
+        ) +
+        " (" +
+        sign +
         percentage.toFixed(3) +
-        '%)';
+        "%)";
 
-      mainMove.className =
-        'move ' +
-        (difference >= 0 ? 'up' : 'down');
+
+      statChange.textContent =
+        sign +
+        percentage.toFixed(3) +
+        "%";
+
+
+      if (
+        difference >= 0
+      ) {
+
+        mainMove.className =
+          "main-move positive";
+
+      } else {
+
+        mainMove.className =
+          "main-move negative";
+
+      }
 
     }
+
+
+    updateTicker(
+      currentTicker,
+      currentPrice
+    );
+
+
+    chartStatus.textContent =
+      "LIVE MARKET DATA";
+
 
     drawChart();
 
   }
 
-  function connect() {
 
-    if (socket) {
+  /* ==========================================
+     TICKER
+  ========================================== */
 
-      try {
-        socket.close();
-      } catch (e) {}
+  function updateTicker(
+    ticker,
+    price
+  ) {
+
+    const element =
+      document.getElementById(
+        "ticker-" + ticker
+      );
+
+    if (!element) {
+      return;
+    }
+
+
+    const precision =
+      pricePrecision(
+        price
+      );
+
+
+    element.textContent =
+      Number(price).toFixed(
+        precision
+      );
+
+  }
+
+
+  /* ==========================================
+     CONNECTION UI
+  ========================================== */
+
+  function setConnection(
+    state,
+    text
+  ) {
+
+    connection.classList.remove(
+      "live",
+      "error"
+    );
+
+
+    if (
+      state === "live"
+    ) {
+
+      connection.classList.add(
+        "live"
+      );
 
     }
 
-    connectionStatus.textContent = 'CONNECTING';
-    statStatus.textContent = 'Connecting';
+
+    if (
+      state === "error"
+    ) {
+
+      connection.classList.add(
+        "error"
+      );
+
+    }
+
+
+    connectionText.textContent =
+      text;
+
+
+    statStatus.textContent =
+      text;
+
+  }
+
+
+  /* ==========================================
+     DERIV WEBSOCKET
+  ========================================== */
+
+  function connect() {
+
+    if (
+      reconnectTimer
+    ) {
+
+      clearTimeout(
+        reconnectTimer
+      );
+
+      reconnectTimer =
+        null;
+
+    }
+
+
+    if (
+      socket
+    ) {
+
+      try {
+        socket.close();
+      } catch (error) {}
+
+    }
+
+
+    setConnection(
+      "connecting",
+      "CONNECTING"
+    );
+
+
+    chartStatus.textContent =
+      "Connecting to market data...";
+
+
+    /*
+      Public Deriv market-data
+      WebSocket.
+    */
 
     socket =
       new WebSocket(
-        'wss://ws.derivws.com/websockets/v3?app_id=1089'
+        "wss://api.derivws.com/trading/v1/options/ws/public"
       );
 
-    socket.onopen = function () {
 
-      connectionStatus.textContent = 'LIVE';
-      statStatus.textContent = 'Live';
+    socket.onopen =
+      function () {
 
-      socket.send(
-        JSON.stringify({
-          ticks: currentSymbol,
-          subscribe: 1
-        })
-      );
+        console.log(
+          "ProTraders FX: market socket connected"
+        );
 
-    };
 
-    socket.onmessage = function (event) {
+        setConnection(
+          "live",
+          "CONNECTED"
+        );
 
-      try {
 
-        const data = JSON.parse(event.data);
+        /*
+          Ask Deriv for active symbols.
+        */
 
-        if (data.error) {
+        socket.send(
+          JSON.stringify({
+            active_symbols: "brief",
+            req_id: 1
+          })
+        );
 
-          console.error(data.error);
+      };
 
-          connectionStatus.textContent = 'ERROR';
-          statStatus.textContent = 'Error';
+
+    socket.onmessage =
+      function (event) {
+
+        let data;
+
+        try {
+
+          data =
+            JSON.parse(
+              event.data
+            );
+
+        } catch (error) {
+
+          console.error(
+            "Invalid Deriv response",
+            error
+          );
 
           return;
         }
 
-        if (data.tick) {
 
-          updatePrice(data.tick.quote);
+        console.log(
+          "Deriv:",
+          data
+        );
+
+
+        /*
+          API ERROR
+        */
+
+        if (
+          data.error
+        ) {
+
+          console.error(
+            "Deriv API error:",
+            data.error
+          );
+
+
+          setConnection(
+            "error",
+            "ERROR"
+          );
+
+
+          chartStatus.textContent =
+            data.error.message ||
+            "Market data error";
+
+
+          return;
 
         }
 
-      } catch (error) {
 
-        console.error(error);
+        /*
+          ACTIVE SYMBOLS
+        */
 
-      }
+        if (
+          data.msg_type ===
+          "active_symbols"
+        ) {
 
-    };
+          subscribeToSymbol(
+            data.active_symbols || []
+          );
 
-    socket.onerror = function () {
+          return;
 
-      connectionStatus.textContent = 'OFFLINE';
-      statStatus.textContent = 'Offline';
+        }
 
-    };
 
-    socket.onclose = function () {
+        /*
+          LIVE TICK
+        */
 
-      connectionStatus.textContent = 'DISCONNECTED';
-      statStatus.textContent = 'Disconnected';
+        if (
+          data.msg_type ===
+          "tick"
+        ) {
 
-      setTimeout(connect, 3000);
+          updatePrice(
+            data.tick
+          );
 
-    };
+          return;
+
+        }
+
+      };
+
+
+    socket.onerror =
+      function (error) {
+
+        console.error(
+          "Deriv socket error:",
+          error
+        );
+
+
+        setConnection(
+          "error",
+          "OFFLINE"
+        );
+
+
+        chartStatus.textContent =
+          "Market connection unavailable";
+
+      };
+
+
+    socket.onclose =
+      function () {
+
+        console.log(
+          "Deriv socket closed"
+        );
+
+
+        setConnection(
+          "connecting",
+          "RECONNECTING"
+        );
+
+
+        chartStatus.textContent =
+          "Reconnecting to market data...";
+
+
+        reconnectTimer =
+          setTimeout(
+            connect,
+            3000
+          );
+
+      };
 
   }
 
-  function selectMarket(button) {
+
+  /* ==========================================
+     SUBSCRIBE
+  ========================================== */
+
+  function subscribeToSymbol(
+    activeSymbols
+  ) {
+
+    if (
+      !socket ||
+      socket.readyState !==
+      WebSocket.OPEN
+    ) {
+
+      return;
+
+    }
+
+
+    /*
+      Find exact underlying symbol.
+    */
+
+    let found =
+      activeSymbols.find(
+        function (item) {
+
+          return (
+            item.underlying_symbol ===
+            currentSymbol
+          );
+
+        }
+      );
+
+
+    /*
+      Some Deriv responses use symbol
+      instead of underlying_symbol.
+    */
+
+    if (!found) {
+
+      found =
+        activeSymbols.find(
+          function (item) {
+
+            return (
+              item.symbol ===
+              currentSymbol
+            );
+
+          }
+        );
+
+    }
+
+
+    if (!found) {
+
+      console.warn(
+        "Symbol not found:",
+        currentSymbol
+      );
+
+
+      /*
+        Try direct subscription anyway.
+      */
+
+      socket.send(
+        JSON.stringify({
+          ticks: currentSymbol,
+          subscribe: 1,
+          req_id: 2
+        })
+      );
+
+      return;
+
+    }
+
+
+    const symbol =
+      found.underlying_symbol ||
+      found.symbol;
+
+
+    console.log(
+      "Subscribing:",
+      symbol
+    );
+
+
+    socket.send(
+      JSON.stringify({
+        ticks: symbol,
+        subscribe: 1,
+        req_id: 2
+      })
+    );
+
+  }
+
+
+  /* ==========================================
+     SELECT MARKET
+  ========================================== */
+
+  function selectMarket(
+    button
+  ) {
 
     document
-      .querySelectorAll('.market')
-      .forEach(function (item) {
+      .querySelectorAll(
+        ".market-button"
+      )
+      .forEach(
+        function (item) {
 
-        item.classList.remove('active');
+          item.classList.remove(
+            "active"
+          );
 
-      });
+        }
+      );
 
-    button.classList.add('active');
+
+    button.classList.add(
+      "active"
+    );
+
 
     currentSymbol =
       button.dataset.symbol;
@@ -975,66 +2098,179 @@
     currentName =
       button.dataset.name;
 
+    currentTicker =
+      button.dataset.ticker;
+
+
     instrumentName.textContent =
       currentName;
+
 
     statMarket.textContent =
       currentName;
 
+
     tradeSymbol.textContent =
       currentName;
 
-    currentPrice = null;
-    previousPrice = null;
 
-    history.length = 0;
+    currentPrice =
+      null;
 
-    mainPrice.textContent = '—';
-    mainMove.textContent = '—';
-    tradePrice.textContent = '—';
+    previousPrice =
+      null;
+
+
+    prices.length =
+      0;
+
+
+    mainPrice.textContent =
+      "—";
+
+    mainMove.textContent =
+      "—";
+
+    statPrice.textContent =
+      "—";
+
+    statChange.textContent =
+      "—";
+
+    tradePrice.textContent =
+      "—";
+
 
     connect();
 
   }
 
+
   document
-    .querySelectorAll('.market')
-    .forEach(function (button) {
+    .querySelectorAll(
+      ".market-button"
+    )
+    .forEach(
+      function (button) {
 
-      button.addEventListener(
-        'click',
-        function () {
-          selectMarket(button);
-        }
-      );
+        button.addEventListener(
+          "click",
+          function () {
 
-    });
+            selectMarket(
+              button
+            );
 
-  window.login = function () {
+          }
+        );
 
-    window.location.href =
-      '/api/deriv/login';
-
-  };
-
-  window.signup = function () {
-
-    window.location.href =
-      '/api/deriv/signup';
-
-  };
-
-  window.trade = function (direction) {
-
-    alert(
-      'Please connect your Deriv trading account before placing a ' +
-      direction +
-      ' trade.'
+      }
     );
 
-  };
 
-  resizeCanvas();
+  /* ==========================================
+     TIMEFRAMES
+  ========================================== */
+
+  document
+    .querySelectorAll(
+      ".timeframe"
+    )
+    .forEach(
+      function (button) {
+
+        button.addEventListener(
+          "click",
+          function () {
+
+            document
+              .querySelectorAll(
+                ".timeframe"
+              )
+              .forEach(
+                function (item) {
+
+                  item.classList.remove(
+                    "active"
+                  );
+
+                }
+              );
+
+
+            button.classList.add(
+              "active"
+            );
+
+          }
+        );
+
+      }
+    );
+
+
+  /* ==========================================
+     CHECK SESSION
+  ========================================== */
+
+  async function checkSession() {
+
+    try {
+
+      const response =
+        await fetch(
+          "/api/session",
+          {
+            credentials:
+              "same-origin"
+          }
+        );
+
+
+      if (
+        !response.ok
+      ) {
+
+        return;
+
+      }
+
+
+      const data =
+        await response.json();
+
+
+      if (
+        data.authenticated
+      ) {
+
+        accountStatus.textContent =
+          "Connected";
+
+
+        accountButton.textContent =
+          "ACCOUNT CONNECTED";
+
+      }
+
+    } catch (error) {
+
+      console.log(
+        "Session check unavailable"
+      );
+
+    }
+
+  }
+
+
+  /* ==========================================
+     START
+  ========================================== */
+
+  resizeChart();
+
+  checkSession();
 
   connect();
 
