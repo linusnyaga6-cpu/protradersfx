@@ -32,7 +32,11 @@
       <a href="#trade">Trade</a>
     </nav>
 
-    <!-- LOGGED OUT -->
+    <!-- =======================================================
+         LOGGED OUT
+         Visible BEFORE authentication only
+    ======================================================== -->
+
     <div
       class="header-actions"
       id="logged-out-actions"
@@ -55,7 +59,11 @@
     </div>
 
 
-    <!-- LOGGED IN -->
+    <!-- =======================================================
+         LOGGED IN
+         Completely hidden until session is authenticated
+    ======================================================== -->
+
     <div
       class="account-panel"
       id="account-panel"
@@ -69,11 +77,9 @@
         </span>
 
         <select id="account-select">
-
           <option value="">
             SELECT ACCOUNT
           </option>
-
         </select>
 
       </div>
@@ -105,7 +111,7 @@
 
 
   <!-- =========================================================
-       MARKET TICKER
+       MARKETS
   ========================================================== -->
 
   <section
@@ -338,7 +344,7 @@
 
 
     <!-- =======================================================
-         WORKSPACE
+         ANALYSIS + LEVELS + TRADE
     ======================================================== -->
 
     <section
@@ -493,7 +499,12 @@
         </div>
 
 
-        <!-- Selected account shown only after login -->
+        <!-- ===================================================
+             ACCOUNT INFORMATION
+
+             IMPORTANT:
+             This entire section is hidden before login.
+        ==================================================== -->
 
         <div
           class="trade-account"
@@ -516,6 +527,10 @@
         </div>
 
 
+        <!-- ===================================================
+             STAKE
+        ==================================================== -->
+
         <label for="stake">
           STAKE
         </label>
@@ -528,6 +543,10 @@
           value="1"
         >
 
+
+        <!-- ===================================================
+             CONTRACT
+        ==================================================== -->
 
         <label for="contract-type">
           CONTRACT
@@ -545,6 +564,10 @@
 
         </select>
 
+
+        <!-- ===================================================
+             BUY / SELL
+        ==================================================== -->
 
         <div class="trade-actions">
 
@@ -566,6 +589,10 @@
 
         </div>
 
+
+        <!-- ===================================================
+             TRADE STATUS
+        ==================================================== -->
 
         <div
           class="trade-message"
@@ -595,7 +622,8 @@
       LIVE MARKETS
     </span>
 
-    <!-- These remain hidden once logged in through app.js -->
+
+    <!-- LOGGED OUT FOOTER -->
 
     <span id="footer-login">
 
@@ -615,6 +643,8 @@
     </span>
 
 
+    <!-- LOGGED IN FOOTER -->
+
     <span
       id="footer-account"
       hidden
@@ -628,6 +658,10 @@
 
   </footer>
 
+
+  <!-- =========================================================
+       JAVASCRIPT
+  ========================================================== -->
 
   <script src="/app.js"></script>
 
