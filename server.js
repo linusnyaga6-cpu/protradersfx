@@ -1,11 +1,13 @@
 const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
 
 const CLIENT_ID =
   process.env.DERIV_CLIENT_ID || "348m9hYwW0YkB5rM2ki9f";
 
 const BASE_URL =
-  (process.env.BASE_URL ||
-    "https://www.protradersfx.com").replace(/\/+$/, "");
+  (process.env.BASE_URL || "https://www.protradersfx.com")
+    .replace(/\/+$/, "");
 
 const CALLBACK_URL =
   `${BASE_URL}/oa`;
@@ -16,12 +18,21 @@ const REFERRAL_CODE =
   "HVHHL2US93LW";
 
 
+/* =====================================================
+   HELPERS
+===================================================== */
+
 function sendJson(res, status, data) {
   res.statusCode = status;
 
   res.setHeader(
     "Content-Type",
     "application/json; charset=utf-8"
+  );
+
+  res.setHeader(
+    "Cache-Control",
+    "no-store"
   );
 
   res.end(JSON.stringify(data));
@@ -40,6 +51,50 @@ function redirect(res, location) {
 }
 
 
+function sendFile(res, filename, contentType) {
+  const filePath = path.join(
+    process.cwd(),
+    filename
+  );
+
+  try {
+    const data = fs.readFileSync(filePath);
+
+    res.statusCode = 200;
+
+    res.setHeader(
+      "Content-Type",
+      contentType
+    );
+
+    res.setHeader(
+      "Cache-Control",
+      "no-cache"
+    );
+
+    res.end(data);
+
+  } catch (error) {
+
+    console.error(
+      "FILE ERROR:",
+      filename,
+      error
+    );
+
+    sendJson(
+      res,
+      404,
+      {
+        ok: false,
+        error: "File not found",
+        file: filename
+      }
+    );
+  }
+}
+
+
 function escapeHtml(value) {
   return String(value || "")
     .replace(/&/g, "&amp;")
@@ -50,11 +105,9 @@ function escapeHtml(value) {
 }
 
 
-/*
---------------------------------------------------
-CREATE OAUTH REQUEST
---------------------------------------------------
-*/
+/* =====================================================
+   OAUTH REQUEST
+===================================================== */
 
 function createOAuthRequest(mode) {
 
@@ -86,26 +139,16 @@ function createOAuthRequest(mode) {
     "code"
   );
 
-
   oauthUrl.searchParams.set(
     "client_id",
     CLIENT_ID
   );
-
 
   oauthUrl.searchParams.set(
     "redirect_uri",
     CALLBACK_URL
   );
 
-
-  /*
-  LOGIN:
-  Only trade permission.
-
-  SIGNUP:
-  Account creation permission is required.
-  */
 
   if (mode === "login") {
 
@@ -130,7 +173,6 @@ function createOAuthRequest(mode) {
       "t",
       REFERRAL_CODE
     );
-
   }
 
 
@@ -139,12 +181,10 @@ function createOAuthRequest(mode) {
     state
   );
 
-
   oauthUrl.searchParams.set(
     "code_challenge",
     challenge
   );
-
 
   oauthUrl.searchParams.set(
     "code_challenge_method",
@@ -160,11 +200,9 @@ function createOAuthRequest(mode) {
 }
 
 
-/*
---------------------------------------------------
-ENCRYPT OAUTH SESSION
---------------------------------------------------
-*/
+/* =====================================================
+   SESSION ENCRYPTION
+===================================================== */
 
 function encryptSession(payload) {
 
@@ -219,12 +257,6 @@ function encryptSession(payload) {
 }
 
 
-/*
---------------------------------------------------
-DECRYPT OAUTH SESSION
---------------------------------------------------
-*/
-
 function decryptSession(value) {
 
   const secret =
@@ -261,13 +293,11 @@ function decryptSession(value) {
       "base64url"
     );
 
-
   const tag =
     Buffer.from(
       parts[1],
       "base64url"
     );
-
 
   const encrypted =
     Buffer.from(
@@ -300,16 +330,11 @@ function decryptSession(value) {
 }
 
 
-/*
---------------------------------------------------
-SET COOKIE
---------------------------------------------------
-*/
+/* =====================================================
+   OAUTH COOKIE
+===================================================== */
 
-function setOAuthCookie(
-  res,
-  oauth
-) {
+function setOAuthCookie(res, oauth) {
 
   const value =
     encryptSession({
@@ -325,12 +350,6 @@ function setOAuthCookie(
   );
 }
 
-
-/*
---------------------------------------------------
-READ COOKIE
---------------------------------------------------
-*/
 
 function getOAuthCookie(req) {
 
@@ -355,11 +374,9 @@ function getOAuthCookie(req) {
 }
 
 
-/*
---------------------------------------------------
-HTML ERROR PAGE
---------------------------------------------------
-*/
+/* =====================================================
+   ERROR PAGE
+===================================================== */
 
 function errorPage(
   res,
@@ -378,7 +395,7 @@ function errorPage(
   res.end(`
 <!doctype html>
 
-<html>
+<html lang="en">
 
 <head>
 
@@ -400,9 +417,9 @@ function errorPage(
 body {
   margin: 0;
   min-height: 100vh;
-  background: #070b10;
-  color: #ffffff;
-  font-family: Arial, sans-serif;
+  background: #080a0d;
+  color: #f1f3f5;
+  font-family: Arial, Helvetica, sans-serif;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -410,29 +427,30 @@ body {
 
 .card {
   width: min(520px, calc(100% - 32px));
-  background: #0d131b;
-  border: 1px solid #26303b;
-  border-radius: 12px;
-  padding: 32px;
+  padding: 35px;
+  background: #0e1218;
+  border: 1px solid #252d37;
   text-align: center;
 }
 
 h1 {
   margin: 0 0 14px;
-  color: #ff6476;
+  font-size: 22px;
 }
 
 p {
-  color: #9ca8b7;
+  color: #8d98a4;
   line-height: 1.6;
 }
 
 a {
   display: inline-block;
-  margin-top: 15px;
-  color: #20d88c;
+  margin-top: 18px;
+  padding: 12px 20px;
+  background: #ffffff;
+  color: #080a0d;
   text-decoration: none;
-  font-weight: 700;
+  font-weight: 800;
 }
 
 </style>
@@ -448,7 +466,7 @@ a {
 <p>${escapeHtml(message)}</p>
 
 <a href="/">
-Return to ProTraders FX
+RETURN TO PROTRADERS FX
 </a>
 
 </div>
@@ -460,15 +478,11 @@ Return to ProTraders FX
 }
 
 
-/*
---------------------------------------------------
-SUCCESS PAGE
---------------------------------------------------
-*/
+/* =====================================================
+   SUCCESS PAGE
+===================================================== */
 
-function successPage(
-  res
-) {
+function successPage(res) {
 
   res.statusCode = 200;
 
@@ -481,7 +495,7 @@ function successPage(
   res.end(`
 <!doctype html>
 
-<html>
+<html lang="en">
 
 <head>
 
@@ -503,9 +517,9 @@ function successPage(
 body {
   margin: 0;
   min-height: 100vh;
-  background: #070b10;
+  background: #080a0d;
   color: #ffffff;
-  font-family: Arial, sans-serif;
+  font-family: Arial, Helvetica, sans-serif;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -513,20 +527,18 @@ body {
 
 .card {
   width: min(460px, calc(100% - 32px));
-  background: #0d131b;
-  border: 1px solid #26303b;
-  border-radius: 12px;
   padding: 35px;
+  background: #0e1218;
+  border: 1px solid #252d37;
   text-align: center;
 }
 
 .status {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   display: inline-block;
   border-radius: 50%;
-  background: #20d88c;
-  box-shadow: 0 0 18px #20d88c;
+  background: #dce5df;
 }
 
 h1 {
@@ -534,16 +546,15 @@ h1 {
 }
 
 p {
-  color: #9ca8b7;
+  color: #8d98a4;
   line-height: 1.6;
 }
 
 button {
   border: 0;
-  border-radius: 7px;
   padding: 13px 22px;
-  background: #20d88c;
-  color: #04120b;
+  background: #ffffff;
+  color: #080a0d;
   font-weight: 800;
   cursor: pointer;
 }
@@ -577,11 +588,9 @@ RETURN TO PROTRADERS FX
 }
 
 
-/*
---------------------------------------------------
-MAIN HANDLER
---------------------------------------------------
-*/
+/* =====================================================
+   MAIN HANDLER
+===================================================== */
 
 async function handler(req, res) {
 
@@ -596,9 +605,66 @@ async function handler(req, res) {
     requestUrl.pathname;
 
 
-  /*
-  HEALTH
-  */
+  /* ===================================================
+     STATIC WEBSITE
+  =================================================== */
+
+  if (
+    pathname === "/" ||
+    pathname === "/index.html"
+  ) {
+
+    return sendFile(
+      res,
+      "index.html",
+      "text/html; charset=utf-8"
+    );
+
+  }
+
+
+  if (
+    pathname === "/style.css"
+  ) {
+
+    return sendFile(
+      res,
+      "style.css",
+      "text/css; charset=utf-8"
+    );
+
+  }
+
+
+  if (
+    pathname === "/app.js"
+  ) {
+
+    return sendFile(
+      res,
+      "app.js",
+      "application/javascript; charset=utf-8"
+    );
+
+  }
+
+
+  if (
+    pathname === "/tracker.js"
+  ) {
+
+    return sendFile(
+      res,
+      "tracker.js",
+      "application/javascript; charset=utf-8"
+    );
+
+  }
+
+
+  /* ===================================================
+     HEALTH
+  =================================================== */
 
   if (
     pathname === "/health"
@@ -610,17 +676,16 @@ async function handler(req, res) {
       {
         ok: true,
         service: "protraders-fx",
-        time:
-          new Date().toISOString()
+        time: new Date().toISOString()
       }
     );
 
   }
 
 
-  /*
-  CONFIG
-  */
+  /* ===================================================
+     CONFIG
+  =================================================== */
 
   if (
     pathname === "/api/config"
@@ -631,6 +696,7 @@ async function handler(req, res) {
       200,
       {
         ok: true,
+
         oauthConfigured:
           Boolean(CLIENT_ID),
 
@@ -650,9 +716,9 @@ async function handler(req, res) {
   }
 
 
-  /*
-  SESSION
-  */
+  /* ===================================================
+     SESSION
+  =================================================== */
 
   if (
     pathname === "/api/session"
@@ -669,9 +735,29 @@ async function handler(req, res) {
   }
 
 
-  /*
-  LOGIN
-  */
+  /* ===================================================
+     ACCOUNTS
+  =================================================== */
+
+  if (
+    pathname === "/api/deriv/accounts"
+  ) {
+
+    return sendJson(
+      res,
+      200,
+      {
+        authenticated: false,
+        accounts: []
+      }
+    );
+
+  }
+
+
+  /* ===================================================
+     LOGIN
+  =================================================== */
 
   if (
     pathname === "/api/deriv/login"
@@ -680,20 +766,12 @@ async function handler(req, res) {
     try {
 
       const oauth =
-        createOAuthRequest(
-          "login"
-        );
+        createOAuthRequest("login");
 
 
       setOAuthCookie(
         res,
         oauth
-      );
-
-
-      console.log(
-        "DERIV LOGIN REDIRECT:",
-        oauth.url
       );
 
 
@@ -715,8 +793,7 @@ async function handler(req, res) {
         500,
         {
           ok: false,
-          error:
-            error.message
+          error: error.message
         }
       );
 
@@ -725,9 +802,9 @@ async function handler(req, res) {
   }
 
 
-  /*
-  SIGNUP
-  */
+  /* ===================================================
+     SIGNUP
+  =================================================== */
 
   if (
     pathname === "/api/deriv/signup"
@@ -736,20 +813,12 @@ async function handler(req, res) {
     try {
 
       const oauth =
-        createOAuthRequest(
-          "signup"
-        );
+        createOAuthRequest("signup");
 
 
       setOAuthCookie(
         res,
         oauth
-      );
-
-
-      console.log(
-        "DERIV SIGNUP REDIRECT:",
-        oauth.url
       );
 
 
@@ -771,8 +840,7 @@ async function handler(req, res) {
         500,
         {
           ok: false,
-          error:
-            error.message
+          error: error.message
         }
       );
 
@@ -781,18 +849,16 @@ async function handler(req, res) {
   }
 
 
-  /*
-  OAUTH CALLBACK
-  */
+  /* ===================================================
+     OAUTH CALLBACK
+  =================================================== */
 
   if (
     pathname === "/oa"
   ) {
 
     const oauthError =
-      requestUrl.searchParams.get(
-        "error"
-      );
+      requestUrl.searchParams.get("error");
 
 
     const description =
@@ -806,23 +872,18 @@ async function handler(req, res) {
       return errorPage(
         res,
         "Deriv Login Failed",
-        description ||
-          oauthError
+        description || oauthError
       );
 
     }
 
 
     const code =
-      requestUrl.searchParams.get(
-        "code"
-      );
+      requestUrl.searchParams.get("code");
 
 
     const state =
-      requestUrl.searchParams.get(
-        "state"
-      );
+      requestUrl.searchParams.get("state");
 
 
     if (!code || !state) {
@@ -854,9 +915,7 @@ async function handler(req, res) {
 
 
       const oauth =
-        decryptSession(
-          cookie
-        );
+        decryptSession(cookie);
 
 
       if (
@@ -871,10 +930,6 @@ async function handler(req, res) {
 
       }
 
-
-      /*
-      Exchange authorization code
-      */
 
       const tokenResponse =
         await fetch(
@@ -912,9 +967,7 @@ async function handler(req, res) {
         await tokenResponse.json();
 
 
-      if (
-        !tokenResponse.ok
-      ) {
+      if (!tokenResponse.ok) {
 
         console.error(
           "DERIV TOKEN ERROR:",
@@ -933,21 +986,12 @@ async function handler(req, res) {
       }
 
 
-      /*
-      OAuth succeeded.
-
-      We deliberately do not expose
-      the access token in the browser.
-      */
-
       console.log(
         "DERIV OAUTH SUCCESS"
       );
 
 
-      return successPage(
-        res
-      );
+      return successPage(res);
 
     } catch (error) {
 
@@ -968,9 +1012,23 @@ async function handler(req, res) {
   }
 
 
-  /*
-  UNKNOWN ROUTE
-  */
+  /* ===================================================
+     FAVICON
+  =================================================== */
+
+  if (
+    pathname === "/favicon.ico"
+  ) {
+
+    res.statusCode = 204;
+    return res.end();
+
+  }
+
+
+  /* ===================================================
+     UNKNOWN ROUTE
+  =================================================== */
 
   return sendJson(
     res,
@@ -981,7 +1039,6 @@ async function handler(req, res) {
       path: pathname
     }
   );
-
 }
 
 
