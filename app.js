@@ -1,122 +1,53 @@
-/* ============================================================
-   PROTRADERS FX
-   LIVE MARKET ENGINE
-   ============================================================ */
-
 (() => {
   "use strict";
 
   console.log("PROTRADERS FX MARKET ENGINE STARTING");
 
-  /* ==========================================================
-     CONFIG
-  ========================================================== */
+  /*
+  ============================================================
+  PROTRADERS FX
+  PUBLIC LIVE MARKET ENGINE
+  ============================================================
+  */
 
-  const CONFIG = {
-    websocketUrl:
-      "wss://ws.derivws.com/websockets/v3",
+  const state = {
+    socket: null,
+    connected: false,
+    connecting: false,
+    reconnectTimer: null,
+    reconnectAttempts: 0,
 
-    appId: null,
+    symbol: "frxEURUSD",
+    symbolName: "EUR/USD",
 
-    reconnectDelay: 3000,
+    price: null,
+    previousPrice: null,
+    openPrice: null,
 
-    maxPrices: 180,
+    prices: [],
+    maxPoints: 180,
 
-    defaultMarket: "EUR/USD",
+    lastTickTime: null,
 
     markets: {
-      "EUR/USD": {
-        symbol: null,
-        aliases: [
-          "frxEURUSD",
-          "EURUSD"
-        ]
-      },
-
-      "GBP/USD": {
-        symbol: null,
-        aliases: [
-          "frxGBPUSD",
-          "GBPUSD"
-        ]
-      },
-
-      "USD/JPY": {
-        symbol: null,
-        aliases: [
-          "frxUSDJPY",
-          "USDJPY"
-        ]
-      },
-
-      "AUD/USD": {
-        symbol: null,
-        aliases: [
-          "frxAUDUSD",
-          "AUDUSD"
-        ]
-      },
-
-      "USD/CAD": {
-        symbol: null,
-        aliases: [
-          "frxUSDCAD",
-          "USDCAD"
-        ]
-      },
-
-      "USD/CHF": {
-        symbol: null,
-        aliases: [
-          "frxUSDCHF",
-          "USDCHF"
-        ]
-      }
+      "EUR/USD": "frxEURUSD",
+      "GBP/USD": "frxGBPUSD",
+      "USD/JPY": "frxUSDJPY",
+      "AUD/USD": "frxAUDUSD",
+      "USD/CAD": "frxUSDCAD",
+      "USD/CHF": "frxUSDCHF"
     }
   };
 
 
-  /* ==========================================================
-     STATE
-  ========================================================== */
-
-  const state = {
-
-    socket: null,
-
-    connected: false,
-
-    connecting: false,
-
-    reconnectTimer: null,
-
-    selectedMarket: CONFIG.defaultMarket,
-
-    selectedSymbol: null,
-
-    prices: {},
-
-    previousPrices: {},
-
-    history: {},
-
-    lastTickTime: null,
-
-    requestId: 0,
-
-    symbolDiscoveryComplete: false
-
-  };
-
-
-  /* ==========================================================
-     DOM HELPERS
-  ========================================================== */
+  /*
+  ============================================================
+  DOM HELPERS
+  ============================================================
+  */
 
   function all(selector) {
-    return Array.from(
-      document.querySelectorAll(selector)
-    );
+    return Array.from(document.querySelectorAll(selector));
   }
 
 
@@ -126,246 +57,180 @@
 
 
   function setText(selector, value) {
-
     all(selector).forEach((element) => {
-
-      element.textContent =
-        value === undefined ||
-        value === null
-          ? "—"
-          : String(value);
-
+      element.textContent = value;
     });
-
   }
 
 
-  /* ==========================================================
-     NUMBER HELPERS
-  ========================================================== */
+  /*
+  ============================================================
+  FORMAT PRICE
+  ============================================================
+  */
 
-  function number(value) {
+  function formatPrice(price) {
 
-    const parsed =
-      Number(value);
-
-    return Number.isFinite(parsed)
-      ? parsed
-      : null;
-
-  }
-
-
-  function decimalsForPrice(value) {
-
-    const n = number(value);
-
-    if (n === null) {
-      return 5;
-    }
-
-    if (Math.abs(n) >= 100) {
-      return 3;
-    }
-
-    if (Math.abs(n) >= 10) {
-      return 3;
-    }
-
-    return 5;
-  }
-
-
-  function formatPrice(value) {
-
-    const n =
-      number(value);
-
-    if (n === null) {
+    if (
+      price === null ||
+      price === undefined ||
+      !Number.isFinite(Number(price))
+    ) {
       return "—";
     }
 
-    return n.toFixed(
-      decimalsForPrice(n)
-    );
+    const number = Number(price);
 
+    if (number >= 100) {
+      return number.toFixed(3);
+    }
+
+    if (number >= 10) {
+      return number.toFixed(4);
+    }
+
+    return number.toFixed(5);
   }
 
 
-  function formatChange(value) {
+  /*
+  ============================================================
+  FORMAT CHANGE
+  ============================================================
+  */
 
-    const n =
-      number(value);
+  function formatChange(current, previous) {
 
-    if (n === null) {
+    if (
+      current === null ||
+      previous === null ||
+      !Number.isFinite(Number(current)) ||
+      !Number.isFinite(Number(previous))
+    ) {
       return "—";
     }
+
+    const change =
+      Number(current) - Number(previous);
+
+    const percentage =
+      previous !== 0
+        ? (change / Number(previous)) * 100
+        : 0;
 
     const sign =
-      n > 0
+      change > 0
         ? "+"
-        : "";
+        : change < 0
+          ? ""
+          : "";
 
-    return sign + n.toFixed(
-      decimalsForPrice(n)
+    return (
+      `${sign}${change.toFixed(5)} ` +
+      `(${sign}${percentage.toFixed(3)}%)`
     );
-
   }
 
 
-  /* ==========================================================
-     MARKET DISPLAY
-  ========================================================== */
+  /*
+  ============================================================
+  CONNECTION STATUS
+  ============================================================
+  */
 
-  function updateMarketNames() {
+  function setConnectionStatus(text, mode) {
+
+    all("[data-market-status]").forEach((element) => {
+
+      element.textContent = text;
+
+      element.classList.remove(
+        "connected",
+        "connecting",
+        "error"
+      );
+
+      if (mode) {
+        element.classList.add(mode);
+      }
+
+    });
+  }
+
+
+  /*
+  ============================================================
+  UPDATE MARKET NAME
+  ============================================================
+  */
+
+  function updateMarketName() {
 
     setText(
       "[data-market]",
-      state.selectedMarket
+      state.symbolName
     );
 
     setText(
       "[data-analysis-market]",
-      state.selectedMarket
+      state.symbolName
     );
 
   }
 
 
-  /* ==========================================================
-     CONNECTION STATUS
-  ========================================================== */
+  /*
+  ============================================================
+  UPDATE PRICE
+  ============================================================
+  */
 
-  function updateConnectionStatus(
-    text,
-    live
-  ) {
+  function updatePrice() {
 
-    all(
-      "[data-market-status]"
-    ).forEach((element) => {
-
-      element.textContent =
-        text;
-
-      element.classList.toggle(
-        "live",
-        Boolean(live)
-      );
-
-    });
-
-  }
-
-
-  /* ==========================================================
-     TICKER PRICES
-  ========================================================== */
-
-  function updateTicker(
-    market,
-    price
-  ) {
-
-    all(
-      `[data-ticker-price="${market}"]`
-    ).forEach((element) => {
-
-      element.textContent =
-        formatPrice(price);
-
-    });
-
-  }
-
-
-  /* ==========================================================
-     MAIN PRICE
-  ========================================================== */
-
-  function updateMainPrice(
-    market,
-    price
-  ) {
-
-    if (
-      market !== state.selectedMarket
-    ) {
-      return;
-    }
-
-
-    const previous =
-      state.previousPrices[market];
-
+    const price =
+      formatPrice(state.price);
 
     setText(
       "[data-price]",
-      formatPrice(price)
+      price
     );
 
+    const movement =
+      formatChange(
+        state.price,
+        state.previousPrice
+      );
 
-    let change = null;
+    setText(
+      "[data-move]",
+      movement
+    );
 
-    if (
-      previous !== undefined &&
-      previous !== null
-    ) {
-
-      change =
-        price - previous;
-
-    }
-
-
-    all(
-      "[data-move]"
-    ).forEach((element) => {
+    all("[data-move]").forEach((element) => {
 
       element.classList.remove(
         "positive",
         "negative"
       );
 
+      if (
+        state.price !== null &&
+        state.previousPrice !== null
+      ) {
 
-      if (change === null) {
+        if (
+          Number(state.price) >
+          Number(state.previousPrice)
+        ) {
+          element.classList.add("positive");
+        }
 
-        element.textContent =
-          "LIVE";
-
-        return;
-
-      }
-
-
-      if (change > 0) {
-
-        element.textContent =
-          "+" +
-          formatPrice(
-            Math.abs(change)
-          );
-
-        element.classList.add(
-          "positive"
-        );
-
-      } else if (change < 0) {
-
-        element.textContent =
-          "-" +
-          formatPrice(
-            Math.abs(change)
-          );
-
-        element.classList.add(
-          "negative"
-        );
-
-      } else {
-
-        element.textContent =
-          "0.00000";
+        if (
+          Number(state.price) <
+          Number(state.previousPrice)
+        ) {
+          element.classList.add("negative");
+        }
 
       }
 
@@ -374,384 +239,88 @@
   }
 
 
-  /* ==========================================================
-     CHART
-  ========================================================== */
+  /*
+  ============================================================
+  CALCULATE MARKET ANALYSIS
+  ============================================================
+  */
 
-  function addHistory(
-    market,
-    price
-  ) {
+  function updateAnalysis() {
 
-    if (
-      !state.history[market]
-    ) {
+    if (state.prices.length < 5) {
 
-      state.history[market] =
-        [];
-
-    }
-
-
-    const history =
-      state.history[market];
-
-
-    history.push(
-      number(price)
-    );
-
-
-    while (
-      history.length >
-      CONFIG.maxPrices
-    ) {
-
-      history.shift();
-
-    }
-
-  }
-
-
-  function drawChart() {
-
-    const line =
-      first(
-        "[data-live-line]"
-      );
-
-
-    if (!line) {
-      return;
-    }
-
-
-    const history =
-      state.history[
-        state.selectedMarket
-      ] || [];
-
-
-    const values =
-      history.filter(
-        (value) =>
-          Number.isFinite(value)
-      );
-
-
-    if (
-      values.length < 2
-    ) {
-
-      line.setAttribute(
-        "points",
-        ""
-      );
-
-      return;
-
-    }
-
-
-    let min =
-      Math.min(...values);
-
-    let max =
-      Math.max(...values);
-
-
-    if (
-      max === min
-    ) {
-
-      max += 0.00001;
-      min -= 0.00001;
-
-    }
-
-
-    const width = 1000;
-    const height = 360;
-
-    const paddingX = 5;
-    const paddingY = 18;
-
-
-    const usableWidth =
-      width -
-      paddingX * 2;
-
-
-    const usableHeight =
-      height -
-      paddingY * 2;
-
-
-    const points =
-      values.map(
-        (value, index) => {
-
-          const x =
-            paddingX +
-            (
-              index /
-              Math.max(
-                1,
-                values.length - 1
-              )
-            ) *
-            usableWidth;
-
-
-          const y =
-            paddingY +
-            (
-              1 -
-              (
-                (value - min) /
-                (max - min)
-              )
-            ) *
-            usableHeight;
-
-
-          return (
-            x.toFixed(2) +
-            "," +
-            y.toFixed(2)
-          );
-
-        }
-      );
-
-
-    line.setAttribute(
-      "points",
-      points.join(" ")
-    );
-
-
-    updateChartAxis(
-      min,
-      max
-    );
-
-  }
-
-
-  function updateChartAxis(
-    min,
-    max
-  ) {
-
-    const values = [
-
-      max,
-
-      max -
-        ((max - min) * 0.25),
-
-      min +
-        ((max - min) * 0.50),
-
-      min +
-        ((max - min) * 0.25),
-
-      min
-
-    ];
-
-
-    const axis =
-      all(".chart-axis span");
-
-
-    axis.forEach(
-      (element, index) => {
-
-        if (
-          values[index] !== undefined
-        ) {
-
-          element.textContent =
-            formatPrice(
-              values[index]
-            );
-
-        }
-
-      }
-    );
-
-  }
-
-
-  /* ==========================================================
-     ANALYSIS ENGINE
-  ========================================================== */
-
-  function calculateAnalysis(
-    market
-  ) {
-
-    const history =
-      state.history[market] || [];
-
-
-    if (
-      history.length < 3
-    ) {
-
-      updateAnalysis(
-        "WAIT",
-        "—",
-        "WAIT",
+      setText(
+        "[data-trend]",
         "WAIT"
       );
 
-      return;
+      setText(
+        "[data-momentum]",
+        "—"
+      );
 
+      setText(
+        "[data-direction]",
+        "WAIT"
+      );
+
+      setText(
+        "[data-signal]",
+        "WAIT"
+      );
+
+      setText(
+        "[data-ai-bias]",
+        "WAIT"
+      );
+
+      setText(
+        "[data-ai-confidence]",
+        "—"
+      );
+
+      return;
     }
 
 
     const recent =
-      history.slice(-20);
-
+      state.prices.slice(-5);
 
     const firstPrice =
-      recent[0];
-
+      Number(recent[0]);
 
     const lastPrice =
-      recent[recent.length - 1];
-
+      Number(recent[recent.length - 1]);
 
     const difference =
-      lastPrice -
-      firstPrice;
+      lastPrice - firstPrice;
 
 
-    const movement =
-      Math.abs(difference);
+    let direction = "WAIT";
+    let trend = "NEUTRAL";
+    let momentum = "FLAT";
+    let signal = "WAIT";
+    let confidence = "—";
 
 
-    let direction =
-      "WAIT";
+    if (difference > 0) {
 
+      direction = "UP";
+      trend = "BULLISH";
+      momentum = "POSITIVE";
+      signal = "BUY";
+      confidence = "HIGH";
 
-    if (
-      difference > 0
-    ) {
+    } else if (difference < 0) {
 
-      direction =
-        "BUY";
-
-    } else if (
-      difference < 0
-    ) {
-
-      direction =
-        "SELL";
-
-    }
-
-
-    let momentum =
-      "NEUTRAL";
-
-
-    if (
-      movement >
-      Math.abs(
-        firstPrice * 0.00005
-      )
-    ) {
-
-      momentum =
-        difference > 0
-          ? "POSITIVE"
-          : "NEGATIVE";
+      direction = "DOWN";
+      trend = "BEARISH";
+      momentum = "NEGATIVE";
+      signal = "SELL";
+      confidence = "HIGH";
 
     }
 
-
-    let trend =
-      "SIDEWAYS";
-
-
-    if (
-      recent.length >= 10
-    ) {
-
-      const midpoint =
-        recent[
-          Math.floor(
-            recent.length / 2
-          )
-        ];
-
-
-      if (
-        lastPrice >
-        midpoint
-      ) {
-
-        trend =
-          "BULLISH";
-
-      } else if (
-        lastPrice <
-        midpoint
-      ) {
-
-        trend =
-          "BEARISH";
-
-      }
-
-    }
-
-
-    let signal =
-      "WAIT";
-
-
-    if (
-      direction === "BUY" &&
-      trend === "BULLISH"
-    ) {
-
-      signal =
-        "BUY";
-
-    } else if (
-      direction === "SELL" &&
-      trend === "BEARISH"
-    ) {
-
-      signal =
-        "SELL";
-
-    }
-
-
-    updateAnalysis(
-      trend,
-      momentum,
-      direction,
-      signal
-    );
-
-  }
-
-
-  function updateAnalysis(
-    trend,
-    momentum,
-    direction,
-    signal
-  ) {
 
     setText(
       "[data-trend]",
@@ -773,168 +342,10 @@
       signal
     );
 
-
-    all(
-      "[data-signal]"
-    ).forEach((element) => {
-
-      element.classList.remove(
-        "wait",
-        "buy",
-        "sell"
-      );
-
-
-      if (
-        signal === "BUY"
-      ) {
-
-        element.classList.add(
-          "buy"
-        );
-
-      } else if (
-        signal === "SELL"
-      ) {
-
-        element.classList.add(
-          "sell"
-        );
-
-      } else {
-
-        element.classList.add(
-          "wait"
-        );
-
-      }
-
-    });
-
-
-    all(
-      "[data-direction]"
-    ).forEach((element) => {
-
-      element.classList.remove(
-        "wait",
-        "buy",
-        "sell"
-      );
-
-
-      if (
-        direction === "BUY"
-      ) {
-
-        element.classList.add(
-          "buy"
-        );
-
-      } else if (
-        direction === "SELL"
-      ) {
-
-        element.classList.add(
-          "sell"
-        );
-
-      } else {
-
-        element.classList.add(
-          "wait"
-        );
-
-      }
-
-    });
-
-
-    const bias =
-      signal === "BUY"
-        ? "BUY"
-        : signal === "SELL"
-          ? "SELL"
-          : "WAIT";
-
-
     setText(
       "[data-ai-bias]",
-      bias
+      signal
     );
-
-
-    const history =
-      state.history[
-        state.selectedMarket
-      ] || [];
-
-
-    let confidence =
-      "—";
-
-
-    if (
-      history.length >= 5
-    ) {
-
-      const recent =
-        history.slice(-20);
-
-
-      let positive = 0;
-      let negative = 0;
-
-
-      for (
-        let i = 1;
-        i < recent.length;
-        i++
-      ) {
-
-        if (
-          recent[i] >
-          recent[i - 1]
-        ) {
-
-          positive++;
-
-        } else if (
-          recent[i] <
-          recent[i - 1]
-        ) {
-
-          negative++;
-
-        }
-
-      }
-
-
-      const total =
-        positive +
-        negative;
-
-
-      if (total > 0) {
-
-        const strongest =
-          Math.max(
-            positive,
-            negative
-          );
-
-
-        confidence =
-          Math.round(
-            (strongest / total) *
-            100
-          ) + "%";
-
-      }
-
-    }
-
 
     setText(
       "[data-ai-confidence]",
@@ -942,165 +353,155 @@
     );
 
 
-    updateLevels();
+    all("[data-signal]").forEach((element) => {
+
+      element.classList.remove(
+        "wait",
+        "buy",
+        "sell"
+      );
+
+      if (signal === "BUY") {
+        element.classList.add("buy");
+      }
+
+      if (signal === "SELL") {
+        element.classList.add("sell");
+      }
+
+      if (signal === "WAIT") {
+        element.classList.add("wait");
+      }
+
+    });
+
+
+    all("[data-direction]").forEach((element) => {
+
+      element.classList.remove(
+        "wait",
+        "buy",
+        "sell"
+      );
+
+      if (direction === "UP") {
+        element.classList.add("buy");
+      }
+
+      if (direction === "DOWN") {
+        element.classList.add("sell");
+      }
+
+      if (direction === "WAIT") {
+        element.classList.add("wait");
+      }
+
+    });
+
+
+    updateTradeLevels();
 
   }
 
 
-  /* ==========================================================
-     TRADE LEVELS
-  ========================================================== */
+  /*
+  ============================================================
+  TRADE LEVELS
+  ============================================================
+  */
 
-  function updateLevels() {
+  function updateTradeLevels() {
+
+    if (
+      state.price === null ||
+      !Number.isFinite(Number(state.price))
+    ) {
+      return;
+    }
+
 
     const price =
-      state.prices[
-        state.selectedMarket
-      ];
+      Number(state.price);
 
 
-    if (
-      !Number.isFinite(price)
-    ) {
-
-      return;
-
-    }
-
-
-    const history =
-      state.history[
-        state.selectedMarket
-      ] || [];
+    const precision =
+      price >= 100
+        ? 3
+        : price >= 10
+          ? 4
+          : 5;
 
 
-    let volatility =
-      price * 0.001;
-
-
-    if (
-      history.length >= 5
-    ) {
-
-      const recent =
-        history.slice(-20);
-
-
-      let total = 0;
-      let count = 0;
-
-
-      for (
-        let i = 1;
-        i < recent.length;
-        i++
-      ) {
-
-        total +=
-          Math.abs(
-            recent[i] -
-            recent[i - 1]
-          );
-
-        count++;
-
-      }
-
-
-      if (
-        count > 0
-      ) {
-
-        volatility =
-          Math.max(
-            total / count * 8,
-            price * 0.0001
-          );
-
-      }
-
-    }
-
-
-    const signalElement =
-      first("[data-signal]");
-
-
-    const signal =
-      signalElement
-        ? signalElement.textContent
-        : "WAIT";
+    const pip =
+      price >= 100
+        ? 0.01
+        : price >= 10
+          ? 0.0001
+          : 0.0001;
 
 
     let entry =
       price;
 
-
     let stop =
-      price -
-      volatility;
-
+      price - (pip * 20);
 
     let target =
-      price +
-      volatility * 2;
+      price + (pip * 40);
 
 
-    if (
-      signal === "SELL"
-    ) {
+    const direction =
+      first("[data-direction]")
+        ? first("[data-direction]").textContent
+        : "WAIT";
+
+
+    if (direction === "DOWN") {
 
       stop =
-        price +
-        volatility;
+        price + (pip * 20);
 
       target =
-        price -
-        volatility * 2;
+        price - (pip * 40);
 
     }
 
 
     setText(
       "[data-entry]",
-      formatPrice(entry)
+      entry.toFixed(precision)
     );
 
     setText(
       "[data-stop]",
-      formatPrice(stop)
+      stop.toFixed(precision)
     );
 
     setText(
       "[data-target]",
-      formatPrice(target)
+      target.toFixed(precision)
     );
 
 
     const message =
       first("#ai-message");
 
-
     if (message) {
 
-      if (
-        signal === "BUY"
-      ) {
+      if (direction === "UP") {
 
         message.textContent =
-          "Short-term market structure is currently bullish.";
+          `${state.symbolName} is showing upward short-term momentum.`;
 
-      } else if (
-        signal === "SELL"
-      ) {
+      } else if (direction === "DOWN") {
 
         message.textContent =
-          "Short-term market structure is currently bearish.";
+          `${state.symbolName} is showing downward short-term momentum.`;
 
       } else {
 
         message.textContent =
-          "Waiting for stronger short-term market confirmation.";
+          "Waiting for stronger short-term market movement.";
 
       }
 
@@ -1109,541 +510,360 @@
   }
 
 
-  /* ==========================================================
-     HANDLE TICK
-  ========================================================== */
+  /*
+  ============================================================
+  CHART
+  ============================================================
+  */
 
-  function handleTick(
-    tick
-  ) {
+  function drawChart() {
 
-    if (
-      !tick ||
-      !tick.symbol ||
-      tick.quote === undefined
-    ) {
+    const svg =
+      first(".price-chart");
+
+    if (!svg) {
+      return;
+    }
+
+
+    const line =
+      svg.querySelector(
+        "[data-live-line]"
+      );
+
+    if (!line) {
+      return;
+    }
+
+
+    if (state.prices.length < 2) {
+
+      line.setAttribute(
+        "points",
+        ""
+      );
 
       return;
+    }
+
+
+    const values =
+      state.prices.slice(-state.maxPoints);
+
+
+    let min =
+      Math.min(...values);
+
+    let max =
+      Math.max(...values);
+
+
+    if (min === max) {
+
+      min -= 0.00001;
+      max += 0.00001;
 
     }
+
+
+    const width = 1000;
+    const height = 360;
+    const padding = 12;
+
+
+    const points =
+      values.map((value, index) => {
+
+        const x =
+          padding +
+          (
+            index /
+            Math.max(values.length - 1, 1)
+          ) *
+          (width - padding * 2);
+
+
+        const y =
+          height -
+          padding -
+          (
+            (Number(value) - min) /
+            (max - min)
+          ) *
+          (height - padding * 2);
+
+
+        return `${x.toFixed(2)},${y.toFixed(2)}`;
+
+      });
+
+
+    line.setAttribute(
+      "points",
+      points.join(" ")
+    );
+
+
+    updateChartAxis(
+      min,
+      max
+    );
+
+  }
+
+
+  /*
+  ============================================================
+  CHART AXIS
+  ============================================================
+  */
+
+  function updateChartAxis(min, max) {
+
+    const axis =
+      first(".chart-axis");
+
+    if (!axis) {
+      return;
+    }
+
+
+    const values = [];
+
+
+    for (let i = 0; i < 5; i++) {
+
+      const value =
+        max -
+        (
+          (max - min) *
+          (i / 4)
+        );
+
+      values.push(value);
+
+    }
+
+
+    const spans =
+      axis.querySelectorAll("span");
+
+
+    spans.forEach(
+      (element, index) => {
+
+        if (values[index] !== undefined) {
+
+          element.textContent =
+            formatPrice(values[index]);
+
+        }
+
+      }
+    );
+
+  }
+
+
+  /*
+  ============================================================
+  PROCESS TICK
+  ============================================================
+  */
+
+  function processTick(message) {
+
+    if (
+      !message ||
+      !message.tick
+    ) {
+      return;
+    }
+
+
+    const tick =
+      message.tick;
 
 
     const quote =
-      number(tick.quote);
+      Number(tick.quote);
 
 
     if (
-      quote === null
+      !Number.isFinite(quote)
     ) {
-
       return;
-
     }
 
 
-    const market =
-      findMarketBySymbol(
-        tick.symbol
-      );
+    state.previousPrice =
+      state.price;
 
 
-    if (!market) {
-
-      return;
-
-    }
-
-
-    state.previousPrices[market] =
-      state.prices[market];
-
-
-    state.prices[market] =
+    state.price =
       quote;
 
 
-    addHistory(
-      market,
-      quote
-    );
+    state.lastTickTime =
+      Date.now();
 
 
-    updateTicker(
-      market,
-      quote
-    );
-
-
-    updateMainPrice(
-      market,
+    state.prices.push(
       quote
     );
 
 
     if (
-      market ===
-      state.selectedMarket
+      state.prices.length >
+      state.maxPoints
     ) {
 
-      state.lastTickTime =
-        Date.now();
-
-
-      drawChart();
-
-      calculateAnalysis(
-        market
-      );
+      state.prices.shift();
 
     }
 
-  }
-
-
-  /* ==========================================================
-     SYMBOL LOOKUP
-  ========================================================== */
-
-  function findMarketBySymbol(
-    symbol
-  ) {
-
-    for (
-      const market of Object.keys(
-        CONFIG.markets
-      )
-    ) {
-
-      const config =
-        CONFIG.markets[market];
-
-
-      if (
-        config.symbol ===
-        symbol
-      ) {
-
-        return market;
-
-      }
-
-
-      if (
-        config.aliases.includes(
-          symbol
-        )
-      ) {
-
-        return market;
-
-      }
-
-    }
-
-
-    return null;
-
-  }
-
-
-  function discoverSymbols(
-    activeSymbols
-  ) {
 
     if (
-      !Array.isArray(
-        activeSymbols
-      )
+      state.openPrice === null
     ) {
 
-      return;
+      state.openPrice =
+        quote;
 
     }
 
 
-    const available =
-      new Map();
+    updatePrice();
 
-
-    activeSymbols.forEach(
-      (item) => {
-
-        if (
-          item &&
-          item.symbol
-        ) {
-
-          available.set(
-            item.symbol,
-            item
-          );
-
-        }
-
-      }
-    );
-
-
-    Object.keys(
-      CONFIG.markets
-    ).forEach(
-      (market) => {
-
-        const config =
-          CONFIG.markets[market];
-
-
-        let found =
-          null;
-
-
-        /*
-        First look for exact aliases.
-        */
-
-        for (
-          const alias of
-          config.aliases
-        ) {
-
-          if (
-            available.has(
-              alias
-            )
-          ) {
-
-            found =
-              alias;
-
-            break;
-
-          }
-
-        }
-
-
-        /*
-        Then look at display names.
-        */
-
-        if (!found) {
-
-          for (
-            const [symbol, item]
-            of available.entries()
-          ) {
-
-            const display =
-              String(
-                item.display_name ||
-                ""
-              ).toUpperCase();
-
-
-            const normalizedMarket =
-              market.replace(
-                "/",
-                ""
-              );
-
-
-            if (
-              display ===
-              market
-                .replace(
-                  "/",
-                  ""
-                )
-                .toUpperCase()
-            ) {
-
-              found =
-                symbol;
-
-              break;
-
-            }
-
-
-            if (
-              display ===
-              market.toUpperCase()
-            ) {
-
-              found =
-                symbol;
-
-              break;
-
-            }
-
-
-            if (
-              symbol
-                .replace(
-                  /^frx/i,
-                  ""
-                )
-                .toUpperCase() ===
-              normalizedMarket
-            ) {
-
-              found =
-                symbol;
-
-              break;
-
-            }
-
-          }
-
-        }
-
-
-        if (found) {
-
-          config.symbol =
-            found;
-
-          console.log(
-            "PROTRADERS FX SYMBOL:",
-            market,
-            "=>",
-            found
-          );
-
-        } else {
-
-          console.warn(
-            "PROTRADERS FX SYMBOL NOT FOUND:",
-            market
-          );
-
-        }
-
-      }
-    );
-
-
-    state.symbolDiscoveryComplete =
-      true;
-
-
-    selectCurrentSymbol();
-
-  }
-
-
-  /* ==========================================================
-     SELECT CURRENT MARKET
-  ========================================================== */
-
-  function selectCurrentSymbol() {
-
-    const config =
-      CONFIG.markets[
-        state.selectedMarket
-      ];
-
-
-    if (!config) {
-      return;
-    }
-
-
-    state.selectedSymbol =
-      config.symbol;
-
-
-    updateMarketNames();
-
-
-    const history =
-      state.history[
-        state.selectedMarket
-      ] || [];
-
+    updateAnalysis();
 
     drawChart();
 
-
-    if (
-      state.prices[
-        state.selectedMarket
-      ] !== undefined
-    ) {
-
-      updateMainPrice(
-        state.selectedMarket,
-        state.prices[
-          state.selectedMarket
-        ]
-      );
-
-      calculateAnalysis(
-        state.selectedMarket
-      );
-
-    } else {
-
-      setText(
-        "[data-price]",
-        "—"
-      );
-
-      setText(
-        "[data-move]",
-        "WAITING FOR PRICE"
-      );
-
-    }
-
-
-    if (
-      state.connected &&
-      state.selectedSymbol
-    ) {
-
-      subscribeToSymbol(
-        state.selectedSymbol
-      );
-
-    }
-
   }
 
 
-  /* ==========================================================
-     SUBSCRIBE
-  ========================================================== */
+  /*
+  ============================================================
+  SEND
+  ============================================================
+  */
 
-  function subscribeToSymbol(
-    symbol
-  ) {
+  function send(data) {
 
     if (
       !state.socket ||
-      state.socket.readyState !==
-      WebSocket.OPEN
+      state.socket.readyState !== WebSocket.OPEN
     ) {
-
-      return;
-
-    }
-
-
-    state.requestId++;
-
-
-    try {
-
-      state.socket.send(
-        JSON.stringify({
-          forget_all: "ticks"
-        })
-      );
-
-    } catch (error) {
-
-      console.warn(
-        "Unable to clear subscriptions:",
-        error
-      );
-
+      return false;
     }
 
 
     try {
 
       state.socket.send(
-        JSON.stringify({
-          ticks: symbol,
-          subscribe: 1,
-          req_id:
-            state.requestId
-        })
+        JSON.stringify(data)
       );
 
-
-      console.log(
-        "PROTRADERS FX SUBSCRIBING:",
-        symbol
-      );
+      return true;
 
     } catch (error) {
 
       console.error(
-        "SUBSCRIBE ERROR:",
+        "PROTRADERS FX SEND ERROR:",
         error
       );
+
+      return false;
 
     }
 
   }
 
 
-  /* ==========================================================
-     WEBSOCKET CONNECT
-     ========================================================== */
+  /*
+  ============================================================
+  SUBSCRIBE TO MARKET
+  ============================================================
+  */
+
+  function subscribe() {
+
+    if (
+      !state.socket ||
+      state.socket.readyState !== WebSocket.OPEN
+    ) {
+      return;
+    }
+
+
+    console.log(
+      "PROTRADERS FX SUBSCRIBING:",
+      state.symbol
+    );
+
+
+    send({
+      forget_all: "ticks"
+    });
+
+
+    setTimeout(() => {
+
+      send({
+        ticks: state.symbol,
+        subscribe: 1
+      });
+
+    }, 150);
+
+  }
+
+
+  /*
+  ============================================================
+  CONNECT
+  ============================================================
+  */
 
   function connect() {
 
-    if (
-      state.connecting
-    ) {
-
+    if (state.connecting) {
       return;
-
     }
 
 
     if (
       state.socket &&
-      state.socket.readyState ===
-      WebSocket.OPEN
+      state.socket.readyState === WebSocket.OPEN
     ) {
-
       return;
-
     }
 
 
-    state.connecting =
-      true;
+    state.connecting = true;
 
-
-    updateConnectionStatus(
+    setConnectionStatus(
       "CONNECTING",
-      false
+      "connecting"
     );
 
 
-    let url =
-      CONFIG.websocketUrl;
-
-
     /*
-    app_id is optional for the public
-    connection. If the server provides one,
-    use it.
+    IMPORTANT:
+    Do NOT add an app_id here.
+
+    Deriv's public websocket endpoint can
+    provide public tick data without OAuth.
     */
 
-    if (
-      CONFIG.appId
-    ) {
 
-      url +=
-        "?app_id=" +
-        encodeURIComponent(
-          CONFIG.appId
-        );
-
-    }
+    const websocketUrl =
+      "wss://ws.derivws.com/websockets/v3";
 
 
     console.log(
       "PROTRADERS FX CONNECTING:",
-      url
+      websocketUrl
     );
 
 
@@ -1651,18 +871,17 @@
 
       state.socket =
         new WebSocket(
-          url
+          websocketUrl
         );
 
     } catch (error) {
 
-      state.connecting =
-        false;
-
       console.error(
-        "WEBSOCKET CREATE ERROR:",
+        "PROTRADERS FX WEBSOCKET CREATE ERROR:",
         error
       );
+
+      state.connecting = false;
 
       scheduleReconnect();
 
@@ -1674,39 +893,23 @@
     state.socket.onopen =
       () => {
 
-        state.connecting =
-          false;
-
-        state.connected =
-          true;
-
-
         console.log(
-          "PROTRADERS FX DERIV WEBSOCKET CONNECTED"
+          "PROTRADERS FX MARKET SOCKET CONNECTED"
         );
 
 
-        updateConnectionStatus(
+        state.connected = true;
+        state.connecting = false;
+        state.reconnectAttempts = 0;
+
+
+        setConnectionStatus(
           "LIVE",
-          true
+          "connected"
         );
 
 
-        /*
-        Ask Deriv which symbols are
-        currently available.
-        */
-
-        state.socket.send(
-          JSON.stringify({
-            active_symbols:
-              "brief",
-            product_type:
-              "basic",
-            req_id:
-              ++state.requestId
-          })
-        );
+        subscribe();
 
       };
 
@@ -1714,20 +917,19 @@
     state.socket.onmessage =
       (event) => {
 
-        let data;
-
+        let message;
 
         try {
 
-          data =
+          message =
             JSON.parse(
               event.data
             );
 
         } catch (error) {
 
-          console.warn(
-            "INVALID DERIV MESSAGE:",
+          console.error(
+            "PROTRADERS FX INVALID MESSAGE:",
             event.data
           );
 
@@ -1736,76 +938,39 @@
         }
 
 
-        /*
-        API error
-        */
-
-        if (
-          data.error
-        ) {
+        if (message.error) {
 
           console.error(
-            "DERIV API ERROR:",
-            data.error
+            "DERIV MARKET ERROR:",
+            message.error
           );
 
 
-          if (
-            data.error.code ===
-            "InvalidSymbol"
-          ) {
+          /*
+          Don't allow one invalid request
+          to kill the whole interface.
+          */
 
-            updateConnectionStatus(
-              "MARKET ERROR",
-              false
-            );
-
-          }
-
+          setConnectionStatus(
+            "MARKET ERROR",
+            "error"
+          );
 
           return;
 
         }
 
 
-        /*
-        Active symbols response
-        */
+        if (message.tick) {
 
-        if (
-          data.msg_type ===
-          "active_symbols"
-        ) {
-
-          console.log(
-            "PROTRADERS FX ACTIVE SYMBOLS RECEIVED"
+          setConnectionStatus(
+            "LIVE",
+            "connected"
           );
 
-
-          discoverSymbols(
-            data.active_symbols
+          processTick(
+            message
           );
-
-
-          return;
-
-        }
-
-
-        /*
-        Tick response
-        */
-
-        if (
-          data.msg_type ===
-          "tick"
-        ) {
-
-          handleTick(
-            data.tick
-          );
-
-          return;
 
         }
 
@@ -1813,21 +978,19 @@
 
 
     state.socket.onerror =
-      (event) => {
+      (error) => {
 
         console.error(
-          "Deriv WebSocket error:",
-          event
+          "DERIV WebSocket error:",
+          error
         );
 
 
-        state.connected =
-          false;
+        state.connected = false;
 
-
-        updateConnectionStatus(
-          "CONNECTION ERROR",
-          false
+        setConnectionStatus(
+          "RECONNECTING",
+          "error"
         );
 
       };
@@ -1836,23 +999,20 @@
     state.socket.onclose =
       (event) => {
 
-        state.connected =
-          false;
-
-        state.connecting =
-          false;
-
-
-        console.warn(
+        console.log(
           "Deriv WebSocket closed:",
           event.code,
-          event.reason
+          event.reason || ""
         );
 
 
-        updateConnectionStatus(
+        state.connected = false;
+        state.connecting = false;
+
+
+        setConnectionStatus(
           "RECONNECTING",
-          false
+          "connecting"
         );
 
 
@@ -1863,241 +1023,280 @@
   }
 
 
-  /* ==========================================================
-     RECONNECT
-  ========================================================== */
+  /*
+  ============================================================
+  RECONNECT
+  ============================================================
+  */
 
   function scheduleReconnect() {
 
-    if (
-      state.reconnectTimer
-    ) {
-
+    if (state.reconnectTimer) {
       return;
-
     }
 
 
-    state.reconnectTimer =
-      setTimeout(
-        () => {
+    state.reconnectAttempts++;
 
-          state.reconnectTimer =
-            null;
 
-          connect();
-
-        },
-        CONFIG.reconnectDelay
+    const delay =
+      Math.min(
+        1000 *
+        Math.pow(
+          1.5,
+          Math.min(
+            state.reconnectAttempts,
+            8
+          )
+        ),
+        15000
       );
+
+
+    state.reconnectTimer =
+      setTimeout(() => {
+
+        state.reconnectTimer =
+          null;
+
+        connect();
+
+      }, delay);
 
   }
 
 
-  /* ==========================================================
-     MARKET BUTTONS
-  ========================================================== */
+  /*
+  ============================================================
+  CHANGE MARKET
+  ============================================================
+  */
 
-  function setupMarketButtons() {
+  function changeMarket(
+    marketName
+  ) {
+
+    const symbol =
+      state.markets[marketName];
+
+
+    if (!symbol) {
+      return;
+    }
+
+
+    console.log(
+      "PROTRADERS FX MARKET CHANGE:",
+      marketName,
+      symbol
+    );
+
+
+    state.symbolName =
+      marketName;
+
+    state.symbol =
+      symbol;
+
+
+    state.price =
+      null;
+
+    state.previousPrice =
+      null;
+
+    state.openPrice =
+      null;
+
+    state.prices =
+      [];
+
+
+    updateMarketName();
+
+    updatePrice();
+
+    updateAnalysis();
+
+    drawChart();
+
+
+    all(".market-item")
+      .forEach((button) => {
+
+        button.classList.toggle(
+          "active",
+          button.dataset.symbol ===
+            marketName
+        );
+
+      });
+
+
+    if (
+      state.socket &&
+      state.socket.readyState ===
+        WebSocket.OPEN
+    ) {
+
+      subscribe();
+
+    }
+
+  }
+
+
+  /*
+  ============================================================
+  MARKET BUTTONS
+  ============================================================
+  */
+
+  function initializeMarketButtons() {
 
     all(
       ".market-item"
-    ).forEach(
-      (button) => {
+    ).forEach((button) => {
 
-        button.addEventListener(
-          "click",
-          () => {
+      button.addEventListener(
+        "click",
+        () => {
 
-            const market =
-              button.dataset.symbol;
+          const market =
+            button.dataset.symbol;
 
+          changeMarket(
+            market
+          );
 
-            if (
-              !CONFIG.markets[
-                market
-              ]
-            ) {
+        }
+      );
 
-              return;
-
-            }
-
-
-            all(
-              ".market-item"
-            ).forEach(
-              (item) => {
-
-                item.classList.toggle(
-                  "active",
-                  item === button
-                );
-
-              }
-            );
-
-
-            state.selectedMarket =
-              market;
-
-
-            selectCurrentSymbol();
-
-          }
-        );
-
-      }
-    );
+    });
 
   }
 
 
-  /* ==========================================================
-     TIMEFRAMES
-     ========================================================== */
+  /*
+  ============================================================
+  TIMEFRAME BUTTONS
+  ============================================================
+  */
 
-  function setupTimeframes() {
+  function initializeTimeframes() {
 
     all(
       ".timeframe"
-    ).forEach(
-      (button) => {
+    ).forEach((button) => {
 
-        button.addEventListener(
-          "click",
-          () => {
+      button.addEventListener(
+        "click",
+        () => {
 
-            all(
-              ".timeframe"
-            ).forEach(
-              (item) => {
+          all(
+            ".timeframe"
+          ).forEach((item) => {
 
-                item.classList.remove(
-                  "active"
-                );
-
-              }
-            );
-
-
-            button.classList.add(
+            item.classList.remove(
               "active"
             );
 
-          }
-        );
+          });
 
-      }
-    );
+
+          button.classList.add(
+            "active"
+          );
+
+
+          /*
+          Keep the live tick stream running.
+          The buttons control how much history
+          is displayed rather than reconnecting.
+          */
+
+          const value =
+            button.textContent
+              .trim()
+              .toUpperCase();
+
+
+          if (value === "1M") {
+            state.maxPoints = 60;
+          }
+
+          if (value === "5M") {
+            state.maxPoints = 100;
+          }
+
+          if (value === "15M") {
+            state.maxPoints = 140;
+          }
+
+          if (value === "1H") {
+            state.maxPoints = 180;
+          }
+
+          if (value === "4H") {
+            state.maxPoints = 180;
+          }
+
+
+          drawChart();
+
+        }
+      );
+
+    });
 
   }
 
 
-  /* ==========================================================
-     TRADE BUTTONS
-     ========================================================== */
+  /*
+  ============================================================
+  LOGIN / TRADING UI
+  ============================================================
+  */
 
-  function setupTrading() {
+  function initializeTradingButtons() {
 
     const buy =
       first("#buy-button");
 
-
     const sell =
       first("#sell-button");
-
 
     const message =
       first("[data-trade-message]");
 
 
-    const stake =
-      first("#stake");
+    function notAuthenticated() {
+
+      if (message) {
+
+        message.textContent =
+          "LOG IN TO TRADE";
+
+      }
+
+    }
 
 
-    if (
-      buy
-    ) {
+    if (buy) {
 
       buy.addEventListener(
         "click",
-        () => {
-
-          if (
-            message
-          ) {
-
-            message.textContent =
-              "LOG IN TO TRADE";
-
-          }
-
-        }
+        notAuthenticated
       );
 
     }
 
 
-    if (
-      sell
-    ) {
+    if (sell) {
 
       sell.addEventListener(
         "click",
-        () => {
-
-          if (
-            message
-          ) {
-
-            message.textContent =
-              "LOG IN TO TRADE";
-
-          }
-
-        }
-      );
-
-    }
-
-
-    if (
-      stake
-    ) {
-
-      stake.addEventListener(
-        "input",
-        () => {
-
-          const risk =
-            first("#risk-stake");
-
-
-          if (
-            risk
-          ) {
-
-            const value =
-              Number(
-                stake.value
-              );
-
-
-            if (
-              Number.isFinite(value) &&
-              value > 0
-            ) {
-
-              risk.textContent =
-                value +
-                " USD";
-
-            }
-
-          }
-
-        }
+        notAuthenticated
       );
 
     }
@@ -2105,30 +1304,29 @@
   }
 
 
-  /* ==========================================================
-     OPTIONAL SERVER CONFIG
-     ========================================================== */
+  /*
+  ============================================================
+  SESSION CHECK
+  ============================================================
+  */
 
-  async function loadServerConfig() {
+  async function checkSession() {
 
     try {
 
       const response =
         await fetch(
-          "/api/config",
+          "/api/session",
           {
-            cache:
-              "no-store"
+            method: "GET",
+            credentials: "same-origin",
+            cache: "no-store"
           }
         );
 
 
-      if (
-        !response.ok
-      ) {
-
+      if (!response.ok) {
         return;
-
       }
 
 
@@ -2136,28 +1334,64 @@
         await response.json();
 
 
-      /*
-      Use an explicitly supplied
-      WebSocket app id if your backend
-      exposes one in the future.
-      */
-
       if (
         data &&
-        data.appId
+        data.authenticated
       ) {
 
-        CONFIG.appId =
-          String(
-            data.appId
+        document.body.classList.add(
+          "authenticated"
+        );
+
+
+        const publicNavigation =
+          first(
+            "#public-navigation"
           );
+
+        const tradingNavigation =
+          first(
+            "#trading-navigation"
+          );
+
+        const loggedOut =
+          first(
+            "#logged-out-actions"
+          );
+
+        const accountPanel =
+          first(
+            "#account-panel"
+          );
+
+
+        if (publicNavigation) {
+          publicNavigation.hidden = true;
+        }
+
+        if (tradingNavigation) {
+          tradingNavigation.hidden = false;
+        }
+
+        if (loggedOut) {
+          loggedOut.hidden = true;
+        }
+
+        if (accountPanel) {
+          accountPanel.hidden = false;
+        }
 
       }
 
     } catch (error) {
 
+      /*
+      Session checking must never stop
+      public market data.
+      */
+
       console.warn(
-        "CONFIG LOAD WARNING:",
+        "PROTRADERS FX SESSION CHECK:",
         error
       );
 
@@ -2166,95 +1400,67 @@
   }
 
 
-  /* ==========================================================
-     INITIAL UI
-     ========================================================== */
+  /*
+  ============================================================
+  INITIAL UI
+  ============================================================
+  */
 
   function initializeUI() {
 
-    updateMarketNames();
+    updateMarketName();
 
+    updatePrice();
 
-    updateConnectionStatus(
-      "CONNECTING",
-      false
-    );
+    updateAnalysis();
 
+    initializeMarketButtons();
 
-    setText(
-      "[data-price]",
-      "—"
-    );
+    initializeTimeframes();
 
-
-    setText(
-      "[data-move]",
-      "WAITING FOR PRICE"
-    );
-
-
-    setText(
-      "[data-trend]",
-      "WAIT"
-    );
-
-
-    setText(
-      "[data-momentum]",
-      "—"
-    );
-
-
-    setText(
-      "[data-direction]",
-      "WAIT"
-    );
-
-
-    setText(
-      "[data-signal]",
-      "WAIT"
-    );
-
-
-    setText(
-      "[data-ai-bias]",
-      "WAIT"
-    );
-
-
-    setText(
-      "[data-ai-confidence]",
-      "—"
-    );
+    initializeTradingButtons();
 
   }
 
 
-  /* ==========================================================
-     INIT
-     ========================================================== */
+  /*
+  ============================================================
+  START
+  ============================================================
+  */
 
   async function init() {
 
+    console.log(
+      "PROTRADERS FX INITIALIZING"
+    );
+
+
     initializeUI();
 
-    setupMarketButtons();
 
-    setupTimeframes();
-
-    setupTrading();
-
-    await loadServerConfig();
+    /*
+    Public market data starts independently
+    of login/OAuth.
+    */
 
     connect();
+
+
+    /*
+    Authentication is optional.
+    */
+
+    checkSession();
 
   }
 
 
-  /* ==========================================================
-     START
-     ========================================================== */
+  /*
+  ============================================================
+  START AFTER DOM
+  ============================================================
+  */
 
   if (
     document.readyState ===
@@ -2271,53 +1477,5 @@
     init();
 
   }
-
-
-  /* ==========================================================
-     DEBUG API
-     ========================================================== */
-
-  window.ProTradersFX = {
-
-    state,
-
-    config: CONFIG,
-
-    reconnect: () => {
-
-      if (
-        state.socket
-      ) {
-
-        try {
-          state.socket.close();
-        } catch (_) {}
-
-      }
-
-      connect();
-
-    },
-
-    selectMarket: (
-      market
-    ) => {
-
-      if (
-        CONFIG.markets[
-          market
-        ]
-      ) {
-
-        state.selectedMarket =
-          market;
-
-        selectCurrentSymbol();
-
-      }
-
-    }
-
-  };
 
 })();
