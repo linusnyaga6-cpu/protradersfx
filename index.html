@@ -5,7 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <title>ProTraders FX</title>
-  <meta name="description" content="ProTraders FX live forex market terminal.">
+
+  <link
+    rel="icon"
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%230b0e12'/%3E%3Ctext x='32' y='40' text-anchor='middle' font-family='Arial' font-size='20' font-weight='bold' fill='white'%3EPFX%3C/text%3E%3C/svg%3E"
+  >
+
+  <meta
+    name="description"
+    content="ProTraders FX live forex market terminal."
+  >
 
   <style>
     * {
@@ -14,28 +23,22 @@
       padding: 0;
     }
 
-    html {
-      scroll-behavior: smooth;
+    html,
+    body {
+      min-height: 100%;
     }
 
     body {
-      min-height: 100vh;
-      background: #07090c;
-      color: #f5f7f9;
+      background: #080a0d;
+      color: #f5f7fa;
       font-family: Arial, Helvetica, sans-serif;
       font-size: 13px;
     }
 
-    body,
     button,
     input,
     select {
-      font-family: Arial, Helvetica, sans-serif;
-    }
-
-    button,
-    a {
-      -webkit-tap-highlight-color: transparent;
+      font: inherit;
     }
 
     button {
@@ -51,414 +54,281 @@
       display: none !important;
     }
 
-    /* =====================================================
-       HEADER
-    ===================================================== */
+    /* HEADER */
 
-    .topbar {
+    .header {
       height: 64px;
       display: flex;
       align-items: center;
-      gap: 38px;
       padding: 0 28px;
-      background: #0b0e12;
-      border-bottom: 1px solid #20252c;
-      position: sticky;
-      top: 0;
-      z-index: 1000;
+      background: #0c0f13;
+      border-bottom: 1px solid #222830;
     }
 
     .brand {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      min-width: 190px;
-    }
-
-    .brand-mark {
-      width: 25px;
-      height: 25px;
-      display: grid;
-      place-items: center;
-      border: 1px solid #59636e;
-      color: #fff;
-      font-size: 10px;
-      font-weight: 900;
-    }
-
-    .brand-name {
-      font-size: 14px;
+      width: 220px;
+      font-size: 16px;
       font-weight: 900;
       letter-spacing: 1.8px;
       white-space: nowrap;
     }
 
-    .main-nav {
-      height: 100%;
+    .nav {
       display: flex;
       align-items: center;
-      gap: 30px;
+      gap: 28px;
       flex: 1;
     }
 
-    .main-nav a {
-      height: 100%;
-      display: flex;
-      align-items: center;
-      color: #737d88;
+    .nav a {
+      color: #8b949e;
       font-size: 10px;
       font-weight: 800;
       letter-spacing: 1px;
-      border-bottom: 2px solid transparent;
     }
 
-    .main-nav a:hover {
+    .nav a:hover {
       color: #fff;
-      border-bottom-color: #fff;
     }
 
-    .top-actions {
+    .header-actions {
       display: flex;
-      align-items: center;
-      gap: 9px;
+      gap: 8px;
     }
 
-    .top-button {
-      height: 36px;
-      padding: 0 15px;
-      border: 1px solid #343c46;
-      background: #10141a;
+    .header-actions a {
+      padding: 10px 15px;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: .7px;
+    }
+
+    .login {
+      border: 1px solid #343b44;
+      background: #11151a;
+    }
+
+    .signup {
+      background: #f3f5f7;
+      color: #080a0d;
+      border: 1px solid #f3f5f7;
+    }
+
+    /* TICKER */
+
+    .ticker {
+      height: 46px;
+      display: flex;
+      overflow-x: auto;
+      background: #090c10;
+      border-bottom: 1px solid #20262e;
+    }
+
+    .ticker button {
+      min-width: 145px;
+      padding: 0 20px;
+      background: transparent;
+      color: #68737f;
+      border: 0;
+      border-right: 1px solid #20262e;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: .7px;
+    }
+
+    .ticker button:hover,
+    .ticker button.active {
       color: #fff;
+      background: #131820;
+    }
+
+    /* PAGE */
+
+    .page {
+      width: min(1500px, calc(100% - 40px));
+      margin: auto;
+      padding: 20px 0 35px;
+    }
+
+    /* TOP MARKET */
+
+    .market-top {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      min-height: 125px;
+      padding: 24px;
+      background: #0d1116;
+      border: 1px solid #252c34;
+    }
+
+    .eyebrow {
+      color: #68727d;
+      font-size: 9px;
+      font-weight: 900;
+      letter-spacing: 1.2px;
+      margin-bottom: 8px;
+    }
+
+    .market-name {
+      font-size: 28px;
+      font-weight: 900;
+    }
+
+    .status {
+      margin-top: 8px;
+      color: #697580;
       font-size: 9px;
       font-weight: 900;
       letter-spacing: 1px;
     }
 
-    .top-button:hover {
-      background: #171c23;
-    }
-
-    .top-button.primary {
-      background: #f2f4f5;
-      color: #090b0e;
-      border-color: #f2f4f5;
-    }
-
-    /* =====================================================
-       MARKET TICKER
-    ===================================================== */
-
-    .ticker {
-      height: 47px;
-      overflow-x: auto;
-      background: #090c10;
-      border-bottom: 1px solid #1e242b;
-      scrollbar-width: none;
-    }
-
-    .ticker::-webkit-scrollbar {
-      display: none;
-    }
-
-    .ticker-inner {
-      min-width: max-content;
-      height: 100%;
-      display: flex;
-      padding-left: 18px;
-    }
-
-    .market-item {
-      min-width: 128px;
-      height: 100%;
-      padding: 0 18px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border: 0;
-      border-left: 1px solid #1d232a;
-      background: transparent;
-      color: #707a85;
-      font-size: 10px;
-      font-weight: 900;
-      letter-spacing: .8px;
-    }
-
-    .market-item:last-child {
-      border-right: 1px solid #1d232a;
-    }
-
-    .market-item:hover,
-    .market-item.active {
-      background: #141920;
-      color: #fff;
-    }
-
-    /* =====================================================
-       PAGE
-    ===================================================== */
-
-    .page {
-      width: min(1500px, calc(100% - 36px));
-      margin: 0 auto;
-      padding: 20px 0 40px;
-    }
-
-    /* =====================================================
-       MARKET HEADER
-    ===================================================== */
-
-    .market-header {
-      min-height: 122px;
-      display: grid;
-      grid-template-columns: 1fr auto;
-      align-items: center;
-      padding: 23px 25px;
-      background: #0c1015;
-      border: 1px solid #242b33;
-    }
-
-    .market-left {
-      display: flex;
-      flex-direction: column;
-      gap: 7px;
-    }
-
-    .eyebrow {
-      color: #68737e;
-      font-size: 8px;
-      font-weight: 900;
-      letter-spacing: 1.5px;
-    }
-
-    .market-name {
-      font-size: 27px;
-      line-height: 1;
-      font-weight: 900;
-      letter-spacing: -.5px;
-    }
-
-    .market-status {
-      display: flex;
-      align-items: center;
-      gap: 7px;
-      margin-top: 3px;
-      color: #77828d;
-      font-size: 8px;
-      font-weight: 800;
-      letter-spacing: 1px;
-    }
-
-    .status-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: #78838e;
-    }
-
-    .market-right {
+    .price-box {
       text-align: right;
     }
 
-    .quote {
-      font-size: 35px;
-      line-height: 1;
+    .price {
+      font-size: 38px;
       font-weight: 900;
+      line-height: 1;
       font-variant-numeric: tabular-nums;
-      letter-spacing: -.8px;
     }
 
     .move {
-      display: block;
-      margin-top: 9px;
+      margin-top: 8px;
       color: #7e8994;
-      font-size: 10px;
+      font-size: 11px;
       font-weight: 800;
-      font-variant-numeric: tabular-nums;
     }
 
     .move.positive {
-      color: #cbd8d0;
+      color: #d4e0d9;
     }
 
     .move.negative {
-      color: #d8c9cb;
+      color: #dfd0d1;
     }
 
-    /* =====================================================
-       TERMINAL
-    ===================================================== */
+    /* CHART */
 
-    .terminal {
+    .panel {
       margin-top: 15px;
-      background: #0b0f14;
-      border: 1px solid #242b33;
+      background: #0d1116;
+      border: 1px solid #252c34;
     }
 
-    .terminal-bar {
-      height: 51px;
+    .panel-head {
+      height: 52px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 0 15px 0 18px;
-      border-bottom: 1px solid #242b33;
+      padding: 0 16px;
+      border-bottom: 1px solid #252c34;
     }
 
-    .terminal-title {
-      display: flex;
-      align-items: center;
-      gap: 10px;
+    .panel-title {
+      color: #9aa3ad;
       font-size: 10px;
       font-weight: 900;
       letter-spacing: 1px;
     }
 
-    .live {
-      padding: 4px 7px;
-      border: 1px solid #39434e;
-      color: #9aa4ae;
-      font-size: 7px;
-      font-weight: 900;
-      letter-spacing: 1px;
-    }
-
-    .timeframes {
+    .chart-tools {
       display: flex;
-      height: 100%;
     }
 
-    .timeframe {
-      min-width: 43px;
-      height: 100%;
+    .chart-tools button {
+      min-width: 42px;
+      height: 30px;
       border: 0;
-      border-left: 1px solid #242b33;
+      border-left: 1px solid #252c34;
       background: transparent;
-      color: #66717c;
-      font-size: 8px;
+      color: #626d78;
+      font-size: 9px;
       font-weight: 900;
     }
 
-    .timeframe:last-child {
-      border-right: 1px solid #242b33;
-    }
-
-    .timeframe:hover,
-    .timeframe.active {
-      background: #161c23;
+    .chart-tools button:hover,
+    .chart-tools button.active {
       color: #fff;
-    }
-
-    /* =====================================================
-       CHART
-    ===================================================== */
-
-    .chart-wrap {
-      height: 455px;
-      display: flex;
-      background:
-        linear-gradient(
-          to bottom,
-          transparent 19.8%,
-          #171d24 20%,
-          transparent 20.2%,
-          transparent 39.8%,
-          #171d24 40%,
-          transparent 40.2%,
-          transparent 59.8%,
-          #171d24 60%,
-          transparent 60.2%,
-          transparent 79.8%,
-          #171d24 80%,
-          transparent 80.2%
-        ),
-        linear-gradient(
-          to right,
-          transparent 19.8%,
-          #151b22 20%,
-          transparent 20.2%,
-          transparent 39.8%,
-          #151b22 40%,
-          transparent 40.2%,
-          transparent 59.8%,
-          #151b22 60%,
-          transparent 60.2%,
-          transparent 79.8%,
-          #151b22 80%,
-          transparent 80.2%
-        ),
-        #0b0f14;
-    }
-
-    .axis {
-      width: 82px;
-      flex-shrink: 0;
-      padding: 18px 9px;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      border-right: 1px solid #242b33;
-      color: #5d6873;
-      text-align: right;
-      font-size: 8px;
-      font-variant-numeric: tabular-nums;
+      background: #151a21;
     }
 
     .chart-area {
+      height: 450px;
       position: relative;
-      flex: 1;
-      min-width: 0;
       overflow: hidden;
+      background:
+        linear-gradient(
+          rgba(255,255,255,.035) 1px,
+          transparent 1px
+        ),
+        linear-gradient(
+          90deg,
+          rgba(255,255,255,.035) 1px,
+          transparent 1px
+        );
+      background-size: 20% 25%;
+    }
+
+    .chart-axis {
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: 78px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 16px 9px;
+      border-left: 1px solid #252c34;
+      background: rgba(8,10,13,.75);
+      color: #59646f;
+      text-align: right;
+      font-size: 9px;
+      font-variant-numeric: tabular-nums;
+      z-index: 2;
     }
 
     .price-chart {
-      width: 100%;
+      width: calc(100% - 78px);
       height: 100%;
       display: block;
-      color: #e1e6ea;
-      overflow: visible;
+      color: #e1e6eb;
     }
 
-    /* =====================================================
-       DATA GRID
-    ===================================================== */
+    /* WORKSPACE */
 
-    .section-grid {
+    .workspace {
       display: grid;
       grid-template-columns: 1fr 1fr 1fr;
       gap: 15px;
       margin-top: 15px;
     }
 
-    .panel {
-      background: #0c1015;
-      border: 1px solid #242b33;
-      min-height: 245px;
+    .card {
+      background: #0d1116;
+      border: 1px solid #252c34;
+      min-height: 250px;
     }
 
-    .panel-head {
-      height: 48px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 17px;
-      border-bottom: 1px solid #242b33;
-      color: #7e8994;
+    .card-head {
+      padding: 15px 17px;
+      border-bottom: 1px solid #252c34;
+      color: #818c97;
       font-size: 9px;
       font-weight: 900;
-      letter-spacing: 1.2px;
+      letter-spacing: 1.1px;
     }
 
-    .panel-body {
-      padding: 0;
-    }
-
-    .symbol-large {
-      padding: 19px 17px;
+    .card-market {
+      padding: 18px 17px;
       font-size: 17px;
       font-weight: 900;
     }
 
     .row {
-      min-height: 44px;
+      min-height: 43px;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -467,308 +337,205 @@
     }
 
     .row span {
-      color: #68737e;
-      font-size: 8px;
-      font-weight: 900;
-      letter-spacing: .9px;
+      color: #65717d;
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: .8px;
     }
 
     .row strong {
-      color: #e3e7ea;
       font-size: 10px;
       font-weight: 900;
       font-variant-numeric: tabular-nums;
     }
 
-    .signal-box {
-      margin: 16px;
-      min-height: 53px;
+    .signal {
       display: flex;
-      align-items: center;
       justify-content: space-between;
-      padding: 0 14px;
-      background: #11161c;
-      border: 1px solid #2a333d;
-    }
-
-    .signal-box span {
-      color: #68737e;
-      font-size: 8px;
-      font-weight: 900;
-      letter-spacing: 1px;
-    }
-
-    .signal-box strong {
-      font-size: 10px;
-      font-weight: 900;
-    }
-
-    .signal-box strong.wait {
-      color: #aab2b9;
-    }
-
-    .signal-box strong.buy {
-      color: #d5e0d9;
-    }
-
-    .signal-box strong.sell {
-      color: #dfd0d2;
-    }
-
-    .note {
       margin: 16px;
-      padding: 13px;
-      border: 1px solid #202831;
+      padding: 14px;
+      border: 1px solid #29323b;
+      background: #12171d;
+    }
+
+    .signal span {
       color: #68737e;
-      font-size: 8px;
-      line-height: 1.6;
+      font-size: 9px;
+      font-weight: 900;
     }
 
-    /* =====================================================
-       TRADE PANEL
-    ===================================================== */
-
-    .trade-panel {
-      min-height: 245px;
+    .signal strong {
+      font-size: 10px;
     }
 
-    .field {
-      padding: 13px 17px 0;
+    .wait {
+      color: #aeb6be;
     }
 
-    .field label {
+    .buy {
+      color: #d5e2da;
+    }
+
+    .sell {
+      color: #e0d1d2;
+    }
+
+    /* TRADE */
+
+    .trade label {
       display: block;
-      margin-bottom: 7px;
+      margin: 16px 17px 6px;
       color: #68737e;
       font-size: 8px;
       font-weight: 900;
       letter-spacing: 1px;
     }
 
-    .field input,
-    .field select {
-      width: 100%;
-      height: 39px;
+    .trade input,
+    .trade select {
+      width: calc(100% - 34px);
+      height: 40px;
+      margin: 0 17px;
       padding: 0 11px;
-      background: #080b0f;
+      background: #080b0e;
       color: #fff;
-      border: 1px solid #2a333d;
+      border: 1px solid #29323b;
       outline: none;
-      font-size: 10px;
-    }
-
-    .field input:focus,
-    .field select:focus {
-      border-color: #697580;
     }
 
     .trade-actions {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 8px;
-      margin: 15px 17px 10px;
+      margin: 17px;
     }
 
-    .trade-action {
+    .trade-actions button {
       height: 43px;
-      border: 1px solid #3a4550;
-      font-size: 9px;
+      border: 1px solid #3a444f;
+      font-size: 10px;
       font-weight: 900;
       letter-spacing: 1px;
     }
 
-    .trade-action.buy {
-      background: #e0e6e2;
+    .trade-buy {
+      background: #dce6e0;
       color: #0b100d;
     }
 
-    .trade-action.sell {
-      background: #e0d4d5;
-      color: #110d0e;
+    .trade-sell {
+      background: #ded1d2;
+      color: #100c0d;
     }
 
     .trade-message {
-      min-height: 32px;
-      margin: 0 17px 14px;
-      padding: 9px 10px;
+      margin: 0 17px 17px;
+      padding: 10px;
       border: 1px solid #202831;
       color: #68737e;
       font-size: 8px;
       font-weight: 800;
     }
 
-    /* =====================================================
-       LOWER ANALYSIS
-    ===================================================== */
+    /* ACCOUNT */
 
-    .lower-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 15px;
+    .account {
       margin-top: 15px;
-    }
-
-    .lower-panel {
-      min-height: 205px;
-      background: #0c1015;
-      border: 1px solid #242b33;
-    }
-
-    /* =====================================================
-       ACCOUNT
-    ===================================================== */
-
-    .account-panel {
-      margin-top: 15px;
-      background: #0c1015;
-      border: 1px solid #242b33;
-    }
-
-    .account-head {
-      height: 47px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 0 17px;
-      border-bottom: 1px solid #242b33;
-    }
-
-    .account-head strong {
-      color: #7e8994;
-      font-size: 9px;
-      letter-spacing: 1px;
-    }
-
-    .account-head span {
-      color: #68737e;
-      font-size: 8px;
-      font-weight: 800;
     }
 
     .account-grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 1px;
-      background: #242b33;
+      grid-template-columns: repeat(3,1fr);
     }
 
     .account-stat {
-      padding: 16px 17px;
-      background: #0c1015;
+      padding: 17px;
+      border-right: 1px solid #252c34;
+    }
+
+    .account-stat:last-child {
+      border-right: 0;
     }
 
     .account-stat span {
       display: block;
-      margin-bottom: 8px;
-      color: #68737e;
+      color: #65717d;
       font-size: 8px;
       font-weight: 900;
-      letter-spacing: .9px;
+      letter-spacing: .8px;
+      margin-bottom: 7px;
     }
 
     .account-stat strong {
       font-size: 12px;
-      font-variant-numeric: tabular-nums;
     }
 
-    /* =====================================================
-       FOOTER
-    ===================================================== */
+    /* FOOTER */
 
     footer {
-      margin-top: 25px;
-      padding: 18px 5px;
+      min-height: 58px;
       display: flex;
-      justify-content: space-between;
+      justify-content: center;
       align-items: center;
-      color: #56616c;
+      gap: 25px;
+      border-top: 1px solid #222830;
+      color: #58636e;
       font-size: 8px;
       font-weight: 800;
       letter-spacing: .8px;
     }
 
-    footer .footer-links {
-      display: flex;
-      gap: 22px;
-    }
+    /* MOBILE */
 
-    footer a:hover {
-      color: #fff;
-    }
-
-    /* =====================================================
-       MOBILE
-    ===================================================== */
-
-    @media (max-width: 1050px) {
-      .topbar {
-        gap: 20px;
-      }
-
+    @media (max-width: 900px) {
       .brand {
-        min-width: auto;
+        width: auto;
+        margin-right: 20px;
       }
 
-      .main-nav {
-        gap: 18px;
+      .nav {
+        gap: 15px;
       }
 
-      .section-grid,
-      .lower-grid {
+      .workspace {
         grid-template-columns: 1fr 1fr;
       }
 
-      .trade-panel {
+      .trade {
         grid-column: 1 / -1;
       }
     }
 
-    @media (max-width: 700px) {
-      .topbar {
+    @media (max-width: 650px) {
+      .header {
         height: auto;
         min-height: 62px;
-        padding: 12px 14px;
         flex-wrap: wrap;
-        gap: 13px;
+        gap: 12px;
+        padding: 12px;
       }
 
       .brand {
         flex: 1;
       }
 
-      .main-nav {
-        order: 4;
+      .nav {
+        order: 3;
         width: 100%;
-        height: 34px;
-        justify-content: space-around;
-        border-top: 1px solid #1d232a;
+        justify-content: center;
       }
 
-      .main-nav a {
-        height: 34px;
-      }
-
-      .top-button {
-        height: 32px;
-        padding: 0 10px;
+      .header-actions a {
+        padding: 8px 10px;
         font-size: 8px;
-      }
-
-      .ticker-inner {
-        padding-left: 0;
-      }
-
-      .market-item {
-        min-width: 108px;
       }
 
       .page {
         width: calc(100% - 16px);
-        padding-top: 10px;
+        padding-top: 8px;
       }
 
-      .market-header {
-        min-height: 105px;
+      .market-top {
         padding: 17px;
       }
 
@@ -776,35 +543,19 @@
         font-size: 22px;
       }
 
-      .quote {
+      .price {
         font-size: 25px;
       }
 
-      .terminal-bar {
-        height: 47px;
-        padding-left: 12px;
+      .chart-area {
+        height: 330px;
       }
 
-      .timeframe {
-        min-width: 33px;
-        font-size: 7px;
-      }
-
-      .chart-wrap {
-        height: 350px;
-      }
-
-      .axis {
-        width: 65px;
-        padding-right: 7px;
-      }
-
-      .section-grid,
-      .lower-grid {
+      .workspace {
         grid-template-columns: 1fr;
       }
 
-      .trade-panel {
+      .trade {
         grid-column: auto;
       }
 
@@ -812,9 +563,9 @@
         grid-template-columns: 1fr;
       }
 
-      footer {
-        flex-direction: column;
-        gap: 14px;
+      .account-stat {
+        border-right: 0;
+        border-bottom: 1px solid #252c34;
       }
     }
   </style>
@@ -822,547 +573,276 @@
 
 <body>
 
-  <!-- =====================================================
-       HEADER
-  ===================================================== -->
+<header class="header">
 
-  <header class="topbar">
+  <div class="brand">PROTRADERS FX</div>
 
-    <div class="brand">
-      <div class="brand-mark">PFX</div>
-      <div class="brand-name">PROTRADERS FX</div>
-    </div>
+  <nav class="nav">
+    <a href="#markets">MARKETS</a>
+    <a href="#analysis">ANALYSIS</a>
+    <a href="#trading">TRADING</a>
+  </nav>
 
-    <nav class="main-nav">
-      <a href="#markets">MARKETS</a>
-      <a href="#analysis">ANALYSIS</a>
-      <a href="#trading">TRADING</a>
-    </nav>
+  <div class="header-actions">
+    <a class="login" href="/api/deriv/login">LOGIN</a>
+    <a class="signup" href="/api/deriv/signup">CREATE ACCOUNT</a>
+  </div>
 
-    <div class="top-actions">
-      <a class="top-button" href="/api/deriv/login">
-        LOGIN
-      </a>
+</header>
 
-      <a class="top-button primary" href="/api/deriv/signup">
-        CREATE ACCOUNT
-      </a>
-    </div>
+<section class="ticker" id="markets">
 
-  </header>
+  <button class="active market-item" data-symbol="EUR/USD">EUR/USD</button>
+  <button class="market-item" data-symbol="GBP/USD">GBP/USD</button>
+  <button class="market-item" data-symbol="USD/JPY">USD/JPY</button>
+  <button class="market-item" data-symbol="AUD/USD">AUD/USD</button>
+  <button class="market-item" data-symbol="USD/CAD">USD/CAD</button>
+  <button class="market-item" data-symbol="USD/CHF">USD/CHF</button>
 
+</section>
 
-  <!-- =====================================================
-       MARKETS
-  ===================================================== -->
+<main class="page">
 
-  <section class="ticker" id="markets">
+  <section class="market-top">
 
-    <div class="ticker-inner">
+    <div>
+      <div class="eyebrow">MARKET</div>
 
-      <button class="market-item active" type="button" data-symbol="EUR/USD">
+      <div class="market-name" data-market>
         EUR/USD
-      </button>
+      </div>
 
-      <button class="market-item" type="button" data-symbol="GBP/USD">
-        GBP/USD
-      </button>
+      <div class="status" data-market-status>
+        CONNECTING
+      </div>
+    </div>
 
-      <button class="market-item" type="button" data-symbol="USD/JPY">
-        USD/JPY
-      </button>
+    <div class="price-box">
 
-      <button class="market-item" type="button" data-symbol="AUD/USD">
-        AUD/USD
-      </button>
+      <div class="price" data-price>—</div>
 
-      <button class="market-item" type="button" data-symbol="USD/CAD">
-        USD/CAD
-      </button>
-
-      <button class="market-item" type="button" data-symbol="USD/CHF">
-        USD/CHF
-      </button>
+      <div class="move" data-move>—</div>
 
     </div>
 
   </section>
 
+  <section class="panel">
 
-  <!-- =====================================================
-       PAGE
-  ===================================================== -->
+    <div class="panel-head">
 
-  <main class="page">
+      <div class="panel-title">
+        <span data-market>EUR/USD</span>
+        &nbsp; / &nbsp; LIVE MARKET
+      </div>
 
+      <div class="chart-tools">
 
-    <!-- ===================================================
-         MARKET QUOTE
-    ==================================================== -->
-
-    <section class="market-header">
-
-      <div class="market-left">
-
-        <span class="eyebrow">
-          FOREX MARKET
-        </span>
-
-        <h1 class="market-name" data-market>
-          EUR/USD
-        </h1>
-
-        <div class="market-status">
-          <span class="status-dot"></span>
-          <span data-market-status>CONNECTING</span>
-        </div>
+        <button class="active timeframe">1M</button>
+        <button class="timeframe">5M</button>
+        <button class="timeframe">15M</button>
+        <button class="timeframe">1H</button>
+        <button class="timeframe">4H</button>
 
       </div>
 
-      <div class="market-right">
+    </div>
 
-        <span class="quote" data-price>—</span>
+    <div class="chart-area">
 
-        <span class="move" data-move>—</span>
+      <svg
+        class="price-chart"
+        viewBox="0 0 1000 400"
+        preserveAspectRatio="none"
+      >
+        <polyline
+          data-live-line
+          points=""
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          vector-effect="non-scaling-stroke"
+        />
+      </svg>
 
+      <div class="chart-axis">
+        <span>—</span>
+        <span>—</span>
+        <span>—</span>
+        <span>—</span>
+        <span>—</span>
       </div>
 
-    </section>
+    </div>
 
+  </section>
 
-    <!-- ===================================================
-         CHART TERMINAL
-    ==================================================== -->
+  <section class="workspace" id="analysis">
 
-    <section class="terminal">
+    <article class="card">
 
-      <div class="terminal-bar">
-
-        <div class="terminal-title">
-
-          <span data-market>
-            EUR/USD
-          </span>
-
-          <span class="live">
-            LIVE
-          </span>
-
-        </div>
-
-        <div class="timeframes">
-
-          <button class="timeframe active" type="button">
-            1M
-          </button>
-
-          <button class="timeframe" type="button">
-            5M
-          </button>
-
-          <button class="timeframe" type="button">
-            15M
-          </button>
-
-          <button class="timeframe" type="button">
-            1H
-          </button>
-
-          <button class="timeframe" type="button">
-            4H
-          </button>
-
-        </div>
-
+      <div class="card-head">
+        MARKET ANALYSIS
       </div>
 
-
-      <div class="chart-wrap">
-
-        <div class="axis">
-
-          <span>—</span>
-          <span>—</span>
-          <span>—</span>
-          <span>—</span>
-          <span>—</span>
-
-        </div>
-
-        <div class="chart-area">
-
-          <svg
-            class="price-chart"
-            viewBox="0 0 1000 360"
-            preserveAspectRatio="none"
-            aria-label="Live forex price chart"
-          >
-
-            <polyline
-              data-live-line
-              points=""
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              vector-effect="non-scaling-stroke"
-            />
-
-          </svg>
-
-        </div>
-
+      <div class="card-market" data-analysis-market>
+        EUR/USD
       </div>
 
-    </section>
+      <div class="row">
+        <span>TREND</span>
+        <strong data-trend>WAIT</strong>
+      </div>
 
+      <div class="row">
+        <span>MOMENTUM</span>
+        <strong data-momentum>—</strong>
+      </div>
 
-    <!-- ===================================================
-         ANALYSIS / LEVELS / TRADING
-    ==================================================== -->
+      <div class="row">
+        <span>DIRECTION</span>
+        <strong data-direction>WAIT</strong>
+      </div>
 
-    <section
-      class="section-grid"
-      id="analysis"
-    >
+      <div class="signal">
+        <span>SIGNAL</span>
+        <strong class="wait" data-signal>WAIT</strong>
+      </div>
 
+    </article>
 
-      <!-- MARKET ANALYSIS -->
+    <article class="card">
 
-      <article class="panel">
+      <div class="card-head">
+        TRADE LEVELS
+      </div>
 
-        <div class="panel-head">
-          MARKET ANALYSIS
-        </div>
+      <div class="row">
+        <span>ENTRY</span>
+        <strong data-entry>—</strong>
+      </div>
 
-        <div class="panel-body">
+      <div class="row">
+        <span>STOP</span>
+        <strong data-stop>—</strong>
+      </div>
 
-          <div
-            class="symbol-large"
-            data-analysis-market
-          >
-            EUR/USD
-          </div>
+      <div class="row">
+        <span>TARGET</span>
+        <strong data-target>—</strong>
+      </div>
 
-          <div class="row">
-            <span>TREND</span>
-            <strong data-trend>WAIT</strong>
-          </div>
+      <div class="signal">
+        <span>MARKET</span>
+        <strong data-market>EUR/USD</strong>
+      </div>
 
-          <div class="row">
-            <span>MOMENTUM</span>
-            <strong data-momentum>—</strong>
-          </div>
+    </article>
 
-          <div class="row">
-            <span>DIRECTION</span>
-            <strong data-direction>WAIT</strong>
-          </div>
+    <article class="card trade" id="trading">
 
-          <div class="signal-box">
-            <span>SIGNAL</span>
-            <strong class="wait" data-signal>WAIT</strong>
-          </div>
+      <div class="card-head">
+        TRADE
+      </div>
 
-        </div>
+      <label for="account-select">
+        ACCOUNT
+      </label>
 
-      </article>
+      <select id="account-select">
+        <option value="">ACCOUNT</option>
+      </select>
 
+      <label for="stake">
+        STAKE
+      </label>
 
-      <!-- TRADE LEVELS -->
-
-      <article class="panel">
-
-        <div class="panel-head">
-          TRADE LEVELS
-        </div>
-
-        <div class="panel-body">
-
-          <div class="row">
-            <span>ENTRY</span>
-            <strong data-entry>—</strong>
-          </div>
-
-          <div class="row">
-            <span>STOP</span>
-            <strong data-stop>—</strong>
-          </div>
-
-          <div class="row">
-            <span>TARGET</span>
-            <strong data-target>—</strong>
-          </div>
-
-          <div class="note">
-            Levels update automatically from live market movement.
-          </div>
-
-        </div>
-
-      </article>
-
-
-      <!-- TRADING -->
-
-      <article
-        class="panel trade-panel"
-        id="trading"
+      <input
+        id="stake"
+        type="number"
+        min="1"
+        step="1"
+        value="10"
       >
 
-        <div class="panel-head">
-          TRADE
-        </div>
+      <div class="trade-actions">
 
-        <div class="panel-body">
-
-          <div class="field">
-
-            <label for="account-select">
-              ACCOUNT
-            </label>
-
-            <select id="account-select">
-              <option value="">
-                ACCOUNT
-              </option>
-            </select>
-
-          </div>
-
-          <div class="field">
-
-            <label for="stake">
-              STAKE
-            </label>
-
-            <input
-              id="stake"
-              type="number"
-              min="1"
-              step="1"
-              value="10"
-            >
-
-          </div>
-
-          <div class="trade-actions">
-
-            <button
-              class="trade-action buy"
-              id="buy-button"
-              type="button"
-            >
-              BUY
-            </button>
-
-            <button
-              class="trade-action sell"
-              id="sell-button"
-              type="button"
-            >
-              SELL
-            </button>
-
-          </div>
-
-          <div
-            class="trade-message"
-            data-trade-message
-          >
-            LOG IN TO TRADE
-          </div>
-
-        </div>
-
-      </article>
-
-    </section>
-
-
-    <!-- ===================================================
-         MARKET INTELLIGENCE
-    ==================================================== -->
-
-    <section class="lower-grid">
-
-
-      <!-- BIAS -->
-
-      <article class="lower-panel">
-
-        <div class="panel-head">
-          MARKET BIAS
-        </div>
-
-        <div class="row">
-          <span>AI BIAS</span>
-          <strong data-ai-bias>WAIT</strong>
-        </div>
-
-        <div class="row">
-          <span>CONFIDENCE</span>
-          <strong data-ai-confidence>—</strong>
-        </div>
-
-        <div class="signal-box">
-          <span>DIRECTION</span>
-          <strong class="wait" data-direction>WAIT</strong>
-        </div>
-
-      </article>
-
-
-      <!-- SIGNAL -->
-
-      <article class="lower-panel">
-
-        <div class="panel-head">
-          MARKET SIGNAL
-        </div>
-
-        <div class="symbol-large">
-          <span data-market>
-            EUR/USD
-          </span>
-        </div>
-
-        <div class="row">
-          <span>SIGNAL</span>
-          <strong data-signal>WAIT</strong>
-        </div>
-
-        <div class="row">
-          <span>MOMENTUM</span>
-          <strong data-momentum>—</strong>
-        </div>
-
-      </article>
-
-
-      <!-- MARKET VIEW -->
-
-      <article class="lower-panel">
-
-        <div class="panel-head">
-          MARKET VIEW
-        </div>
-
-        <div
-          class="note"
-          id="ai-message"
+        <button
+          id="buy-button"
+          class="trade-buy"
+          type="button"
         >
-          Waiting for live market data.
-        </div>
+          BUY
+        </button>
 
-        <div class="row">
-          <span>ENTRY</span>
-          <strong data-entry>—</strong>
-        </div>
-
-        <div class="row">
-          <span>TARGET</span>
-          <strong data-target>—</strong>
-        </div>
-
-      </article>
-
-    </section>
-
-
-    <!-- ===================================================
-         ACCOUNT
-    ==================================================== -->
-
-    <section
-      class="account-panel"
-      id="account-panel"
-      hidden
-    >
-
-      <div class="account-head">
-
-        <strong>
-          ACCOUNT
-        </strong>
-
-        <span id="account-status">
-          CONNECTED
-        </span>
+        <button
+          id="sell-button"
+          class="trade-sell"
+          type="button"
+        >
+          SELL
+        </button>
 
       </div>
 
-      <div class="account-grid">
-
-        <div class="account-stat">
-
-          <span>
-            ACCOUNT
-          </span>
-
-          <strong id="account-id">
-            —
-          </strong>
-
-        </div>
-
-        <div class="account-stat">
-
-          <span>
-            BALANCE
-          </span>
-
-          <strong id="account-balance">
-            —
-          </strong>
-
-        </div>
-
-        <div class="account-stat">
-
-          <span>
-            RISK STAKE
-          </span>
-
-          <strong id="risk-stake">
-            10 USD
-          </strong>
-
-        </div>
-
+      <div
+        class="trade-message"
+        data-trade-message
+      >
+        LOG IN TO TRADE
       </div>
 
-    </section>
+    </article>
 
+  </section>
 
-    <!-- ===================================================
-         FOOTER
-    ==================================================== -->
+  <section class="panel account" hidden id="account-panel">
 
-    <footer>
+    <div class="panel-head">
 
-      <div class="footer-links">
-
-        <a href="#markets">
-          MARKETS
-        </a>
-
-        <a href="#analysis">
-          ANALYSIS
-        </a>
-
-        <a href="#trading">
-          TRADING
-        </a>
-
+      <div class="panel-title">
+        ACCOUNT
       </div>
 
-      <span>
-        PROTRADERS FX
-      </span>
+      <div class="status" id="account-status">
+        CONNECTED
+      </div>
 
-    </footer>
+    </div>
 
-  </main>
+    <div class="account-grid">
+
+      <div class="account-stat">
+        <span>ACCOUNT</span>
+        <strong id="account-id">—</strong>
+      </div>
+
+      <div class="account-stat">
+        <span>BALANCE</span>
+        <strong id="account-balance">—</strong>
+      </div>
+
+      <div class="account-stat">
+        <span>RISK STAKE</span>
+        <strong id="risk-stake">10 USD</strong>
+      </div>
+
+    </div>
+
+  </section>
+
+</main>
+
+<footer>
+
+  <a href="#markets">MARKETS</a>
+  <a href="#analysis">ANALYSIS</a>
+  <a href="#trading">TRADING</a>
+  <span>PROTRADERS FX</span>
+
+</footer>
+
+<script src="/app.js"></script>
 
 </body>
 </html>
