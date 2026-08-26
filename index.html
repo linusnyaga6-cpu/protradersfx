@@ -1,7 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
+
   <meta charset="UTF-8">
+
   <meta
     name="viewport"
     content="width=device-width, initial-scale=1.0"
@@ -11,58 +14,97 @@
 
   <meta
     name="description"
-    content="ProTraders FX — markets, AI analysis and trading tools."
+    content="ProTraders FX — live markets, AI analysis and trading tools."
   >
 
-  <link rel="stylesheet" href="/style.css">
+  <link
+    rel="stylesheet"
+    href="/style.css"
+  >
+
 </head>
+
 
 <body>
 
-  <!-- =========================================================
-       HEADER
-  ========================================================== -->
 
-  <header class="site-header">
+<!-- =========================================================
+     HEADER
+========================================================= -->
+
+<header class="site-header">
+
+
+  <!-- LOGO -->
+
+  <a
+    class="logo"
+    href="/"
+  >
+    PROTRADERS FX
+  </a>
+
+
+  <!-- =======================================================
+       PUBLIC NAV
+       ONLY VISIBLE BEFORE LOGIN
+  ======================================================== -->
+
+  <nav
+    id="public-navigation"
+    class="navigation"
+  >
+
+    <a href="#markets">
+      MARKETS
+    </a>
+
+  </nav>
+
+
+  <!-- =======================================================
+       PUBLIC LOGIN ACTIONS
+  ======================================================== -->
+
+  <div
+    id="logged-out-actions"
+    class="header-actions"
+  >
 
     <a
-      class="logo"
-      href="/"
+      class="login-link"
+      href="/api/deriv/login"
     >
-      PROTRADERS FX
+      LOG IN
     </a>
 
 
-    <!-- =======================================================
-         PUBLIC NAVIGATION
-         VISIBLE BEFORE LOGIN
-    ======================================================== -->
-
-    <nav
-      class="navigation"
-      id="public-navigation"
+    <a
+      class="create-account"
+      href="/api/deriv/signup"
     >
+      CREATE ACCOUNT
+    </a>
 
-      <a href="#markets">
-        MARKETS
-      </a>
-
-      <a href="#analysis">
-        ANALYSIS
-      </a>
-
-    </nav>
+  </div>
 
 
-    <!-- =======================================================
-         LOGGED-IN NAVIGATION
-         HIDDEN UNTIL AUTHENTICATED
-    ======================================================== -->
+  <!-- =======================================================
+       AUTHENTICATED HEADER
+       HIDDEN UNTIL LOGIN
+  ======================================================== -->
+
+  <div
+    id="authenticated-header"
+    hidden
+  >
+
+
+    <!-- AUTHENTICATED NAVIGATION -->
 
     <nav
-      class="navigation logged-in-navigation"
-      id="logged-in-navigation"
-      hidden
+      id="authenticated-navigation"
+      class="navigation"
     >
 
       <a href="#markets">
@@ -100,47 +142,17 @@
     </nav>
 
 
-    <!-- =======================================================
-         LOGGED OUT ACTIONS
-    ======================================================== -->
+    <!-- ACCOUNT -->
 
-    <div
-      class="header-actions"
-      id="logged-out-actions"
-    >
+    <div class="account-panel">
 
-      <a
-        class="login-link"
-        href="/api/deriv/login"
-      >
-        LOG IN
-      </a>
-
-      <a
-        class="create-account"
-        href="/api/deriv/signup"
-      >
-        CREATE ACCOUNT
-      </a>
-
-    </div>
-
-
-    <!-- =======================================================
-         LOGGED IN ACCOUNT PANEL
-    ======================================================== -->
-
-    <div
-      class="account-panel"
-      id="account-panel"
-      hidden
-    >
 
       <div class="account-selector">
 
         <span class="account-label">
           ACCOUNT
         </span>
+
 
         <select id="account-select">
 
@@ -159,6 +171,7 @@
           BALANCE
         </span>
 
+
         <strong id="account-balance">
           —
         </strong>
@@ -173,423 +186,331 @@
         LOG OUT
       </a>
 
+
     </div>
 
-  </header>
+  </div>
+
+</header>
 
 
-  <!-- =========================================================
-       PUBLIC MARKET STRIP
-  ========================================================== -->
 
-  <section
-    id="markets"
-    class="market-strip"
-  >
+<!-- =========================================================
+     PUBLIC MARKET STRIP
+========================================================= -->
 
-    <div class="market-list">
+<section
+  id="markets"
+  class="market-strip"
+>
 
-      <button
-        class="market-item active"
-        data-symbol="EUR/USD"
-        type="button"
-      >
+  <div class="market-list">
+
+
+    <button
+      class="market-item active"
+      data-symbol="EUR/USD"
+      type="button"
+    >
+      EUR/USD
+    </button>
+
+
+    <button
+      class="market-item"
+      data-symbol="GBP/USD"
+      type="button"
+    >
+      GBP/USD
+    </button>
+
+
+    <button
+      class="market-item"
+      data-symbol="USD/JPY"
+      type="button"
+    >
+      USD/JPY
+    </button>
+
+
+    <button
+      class="market-item"
+      data-symbol="AUD/USD"
+      type="button"
+    >
+      AUD/USD
+    </button>
+
+
+    <button
+      class="market-item"
+      data-symbol="USD/CAD"
+      type="button"
+    >
+      USD/CAD
+    </button>
+
+
+    <button
+      class="market-item"
+      data-symbol="USD/CHF"
+      type="button"
+    >
+      USD/CHF
+    </button>
+
+
+  </div>
+
+</section>
+
+
+
+<!-- =========================================================
+     MAIN
+========================================================= -->
+
+<main class="main-container">
+
+
+  <!-- =======================================================
+       MARKET SUMMARY
+  ======================================================== -->
+
+  <section class="market-summary">
+
+
+    <div class="market-info">
+
+      <span class="small-label">
+        MARKET
+      </span>
+
+
+      <h1 data-market>
         EUR/USD
-      </button>
+      </h1>
 
-      <button
-        class="market-item"
-        data-symbol="GBP/USD"
-        type="button"
-      >
-        GBP/USD
-      </button>
 
-      <button
-        class="market-item"
-        data-symbol="USD/JPY"
-        type="button"
+      <span
+        class="connection-status"
+        data-market-status
       >
-        USD/JPY
-      </button>
+        CONNECTING
+      </span>
 
-      <button
-        class="market-item"
-        data-symbol="AUD/USD"
-        type="button"
-      >
-        AUD/USD
-      </button>
+    </div>
 
-      <button
-        class="market-item"
-        data-symbol="USD/CAD"
-        type="button"
-      >
-        USD/CAD
-      </button>
 
-      <button
-        class="market-item"
-        data-symbol="USD/CHF"
-        type="button"
+    <div class="price-info">
+
+      <span class="small-label">
+        PRICE
+      </span>
+
+
+      <strong
+        class="current-price"
+        data-price
       >
-        USD/CHF
-      </button>
+        —
+      </strong>
+
+
+      <span
+        class="price-movement"
+        data-move
+      >
+        —
+      </span>
+
+    </div>
+
+
+  </section>
+
+
+
+  <!-- =======================================================
+       CHART
+  ======================================================== -->
+
+  <section class="chart-container">
+
+
+    <div class="chart-header">
+
+
+      <div class="chart-market">
+
+        <strong data-analysis-market>
+          EUR/USD
+        </strong>
+
+
+        <span class="live-badge">
+          LIVE
+        </span>
+
+      </div>
+
+
+      <div class="timeframe-buttons">
+
+
+        <button
+          class="timeframe active"
+          data-timeframe="1m"
+          type="button"
+        >
+          1M
+        </button>
+
+
+        <button
+          class="timeframe"
+          data-timeframe="5m"
+          type="button"
+        >
+          5M
+        </button>
+
+
+        <button
+          class="timeframe"
+          data-timeframe="15m"
+          type="button"
+        >
+          15M
+        </button>
+
+
+        <button
+          class="timeframe"
+          data-timeframe="1h"
+          type="button"
+        >
+          1H
+        </button>
+
+
+        <button
+          class="timeframe"
+          data-timeframe="4h"
+          type="button"
+        >
+          4H
+        </button>
+
+
+        <button
+          class="timeframe"
+          data-timeframe="1d"
+          type="button"
+        >
+          1D
+        </button>
+
+
+      </div>
+
+    </div>
+
+
+
+    <div class="chart">
+
+
+      <div class="chart-axis">
+
+        <span>—</span>
+        <span>—</span>
+        <span>—</span>
+        <span>—</span>
+        <span>—</span>
+
+      </div>
+
+
+      <svg
+        class="price-chart"
+        viewBox="0 0 1000 400"
+        preserveAspectRatio="none"
+      >
+
+        <polyline
+          data-live-line
+          points=""
+          fill="none"
+          stroke="currentColor"
+          stroke-width="3"
+          vector-effect="non-scaling-stroke"
+        />
+
+      </svg>
+
 
     </div>
 
   </section>
 
 
-  <!-- =========================================================
-       MAIN
-  ========================================================== -->
 
-  <main class="main-container">
+  <!-- =======================================================
+       EVERYTHING BELOW HERE IS AUTHENTICATED
+  ======================================================== -->
 
+  <div
+    id="authenticated-workspace"
+    hidden
+  >
 
-    <!-- =======================================================
-         MARKET SUMMARY
-    ======================================================== -->
 
-    <section class="market-summary">
-
-      <div class="market-info">
-
-        <span class="small-label">
-          MARKET
-        </span>
-
-        <h1 data-market>
-          EUR/USD
-        </h1>
-
-        <span
-          class="connection-status"
-          data-market-status
-        >
-          CONNECTING
-        </span>
-
-      </div>
-
-
-      <div class="price-info">
-
-        <span class="small-label">
-          PRICE
-        </span>
-
-        <strong
-          class="current-price"
-          data-price
-        >
-          —
-        </strong>
-
-        <span
-          class="price-movement"
-          data-move
-        >
-          —
-        </span>
-
-      </div>
-
-    </section>
-
-
-    <!-- =======================================================
-         CHART
-    ======================================================== -->
-
-    <section class="chart-container">
-
-      <div class="chart-header">
-
-        <div class="chart-market">
-
-          <strong data-analysis-market>
-            EUR/USD
-          </strong>
-
-          <span class="live-badge">
-            LIVE
-          </span>
-
-        </div>
-
-
-        <div class="timeframe-buttons">
-
-          <button
-            class="timeframe active"
-            data-timeframe="1m"
-            type="button"
-          >
-            1M
-          </button>
-
-          <button
-            class="timeframe"
-            data-timeframe="5m"
-            type="button"
-          >
-            5M
-          </button>
-
-          <button
-            class="timeframe"
-            data-timeframe="15m"
-            type="button"
-          >
-            15M
-          </button>
-
-          <button
-            class="timeframe"
-            data-timeframe="1h"
-            type="button"
-          >
-            1H
-          </button>
-
-          <button
-            class="timeframe"
-            data-timeframe="4h"
-            type="button"
-          >
-            4H
-          </button>
-
-          <button
-            class="timeframe"
-            data-timeframe="1d"
-            type="button"
-          >
-            1D
-          </button>
-
-        </div>
-
-      </div>
-
-
-      <div class="chart">
-
-        <div class="chart-axis">
-
-          <span>—</span>
-          <span>—</span>
-          <span>—</span>
-          <span>—</span>
-          <span>—</span>
-
-        </div>
-
-
-        <svg
-          class="price-chart"
-          viewBox="0 0 1000 400"
-          preserveAspectRatio="none"
-        >
-
-          <polyline
-            data-live-line
-            points=""
-            fill="none"
-            stroke="currentColor"
-            stroke-width="3"
-            vector-effect="non-scaling-stroke"
-          />
-
-        </svg>
-
-      </div>
-
-    </section>
-
-
-    <!-- =======================================================
-         LOGGED-OUT ANALYSIS
-    ======================================================== -->
-
-    <section
-      id="analysis"
-      class="workspace"
-    >
-
-      <div class="workspace-card">
-
-        <div class="card-title">
-          ANALYSIS
-        </div>
-
-        <div class="analysis-symbol">
-
-          <span data-analysis-market>
-            EUR/USD
-          </span>
-
-        </div>
-
-
-        <div class="data-row">
-
-          <span>
-            TREND
-          </span>
-
-          <strong data-trend>
-            WAIT
-          </strong>
-
-        </div>
-
-
-        <div class="data-row">
-
-          <span>
-            MOMENTUM
-          </span>
-
-          <strong data-momentum>
-            WAIT
-          </strong>
-
-        </div>
-
-
-        <div class="data-row">
-
-          <span>
-            DIRECTION
-          </span>
-
-          <strong data-direction>
-            —
-          </strong>
-
-        </div>
-
-
-        <div class="signal">
-
-          <span>
-            SIGNAL
-          </span>
-
-          <strong
-            class="wait"
-            data-signal
-          >
-            WAIT
-          </strong>
-
-        </div>
-
-      </div>
-
-
-      <!-- =====================================================
-           TRADE LEVELS
-      ====================================================== -->
-
-      <div class="workspace-card">
-
-        <div class="card-title">
-          TRADE LEVELS
-        </div>
-
-
-        <div class="data-row">
-
-          <span>
-            ENTRY
-          </span>
-
-          <strong data-entry>
-            —
-          </strong>
-
-        </div>
-
-
-        <div class="data-row">
-
-          <span>
-            STOP
-          </span>
-
-          <strong data-stop>
-            —
-          </strong>
-
-        </div>
-
-
-        <div class="data-row">
-
-          <span>
-            TARGET
-          </span>
-
-          <strong data-target>
-            —
-          </strong>
-
-        </div>
-
-
-        <div class="levels-note">
-          Market levels update with live price data.
-        </div>
-
-      </div>
-
-    </section>
-
-
-    <!-- =======================================================
-         LOGGED-IN WORKSPACE
-         EVERYTHING BELOW IS HIDDEN UNTIL LOGIN
-    ========================================================== -->
-
-
-    <!-- =======================================================
+    <!-- =====================================================
          AI ANALYSIS
-    ======================================================== -->
+    ====================================================== -->
 
     <section
       id="ai-analysis"
-      class="logged-in-section"
-      hidden
+      class="platform-section"
     >
 
       <div class="section-heading">
-        <span>AI</span>
-        <h2>AI ANALYSIS</h2>
+
+        <span class="section-kicker">
+          PROTRADERS FX
+        </span>
+
+
+        <h2>
+          AI ANALYSIS
+        </h2>
+
+
+        <p>
+          Live market analysis and trading intelligence.
+        </p>
+
       </div>
 
 
       <div class="workspace">
 
+
         <div class="workspace-card">
 
+
           <div class="card-title">
-            MARKET VIEW
+            ANALYSIS
           </div>
 
-          <div class="data-row">
 
-            <span>
-              MARKET
-            </span>
+          <div class="analysis-symbol">
 
-            <strong data-ai-market>
+            <span data-analysis-market>
               EUR/USD
-            </strong>
+            </span>
 
           </div>
 
@@ -600,7 +521,7 @@
               TREND
             </span>
 
-            <strong data-ai-trend>
+            <strong data-trend>
               WAIT
             </strong>
 
@@ -613,7 +534,7 @@
               MOMENTUM
             </span>
 
-            <strong data-ai-momentum>
+            <strong data-momentum>
               WAIT
             </strong>
 
@@ -626,20 +547,12 @@
               DIRECTION
             </span>
 
-            <strong data-ai-direction>
+            <strong data-direction>
               —
             </strong>
 
           </div>
 
-        </div>
-
-
-        <div class="workspace-card">
-
-          <div class="card-title">
-            AI SIGNAL
-          </div>
 
           <div class="signal">
 
@@ -649,7 +562,7 @@
 
             <strong
               class="wait"
-              data-ai-signal
+              data-signal
             >
               WAIT
             </strong>
@@ -657,42 +570,98 @@
           </div>
 
 
-          <div class="levels-note">
-            AI analysis uses live market information and
-            technical conditions. Always manage risk.
+        </div>
+
+
+
+        <div class="workspace-card">
+
+
+          <div class="card-title">
+            TRADE LEVELS
           </div>
 
+
+          <div class="data-row">
+
+            <span>
+              ENTRY
+            </span>
+
+            <strong data-entry>
+              —
+            </strong>
+
+          </div>
+
+
+          <div class="data-row">
+
+            <span>
+              STOP
+            </span>
+
+            <strong data-stop>
+              —
+            </strong>
+
+          </div>
+
+
+          <div class="data-row">
+
+            <span>
+              TARGET
+            </span>
+
+            <strong data-target>
+              —
+            </strong>
+
+          </div>
+
+
         </div>
+
 
       </div>
 
     </section>
 
 
-    <!-- =======================================================
+
+    <!-- =====================================================
          MANUAL TRADE
-    ======================================================== -->
+    ====================================================== -->
 
     <section
       id="manual-trade"
-      class="logged-in-section"
-      hidden
+      class="platform-section"
     >
 
+
       <div class="section-heading">
-        <span>TRADE</span>
-        <h2>MANUAL TRADE</h2>
+
+        <span class="section-kicker">
+          TRADING
+        </span>
+
+
+        <h2>
+          MANUAL TRADE
+        </h2>
+
       </div>
 
 
       <div class="workspace">
 
-        <div
-          class="workspace-card trade-card"
-        >
+
+        <div class="workspace-card trade-card">
+
 
           <div class="card-title">
-            MANUAL ORDER
+            ORDER
           </div>
 
 
@@ -706,9 +675,11 @@
               ACCOUNT
             </span>
 
+
             <strong id="trade-account-type">
               —
             </strong>
+
 
             <strong id="trade-account-balance">
               —
@@ -720,6 +691,7 @@
           <label for="stake">
             STAKE
           </label>
+
 
           <input
             id="stake"
@@ -733,6 +705,7 @@
           <label for="contract-type">
             CONTRACT
           </label>
+
 
           <select id="contract-type">
 
@@ -749,6 +722,7 @@
 
           <div class="trade-actions">
 
+
             <button
               id="buy-button"
               class="buy"
@@ -756,6 +730,7 @@
             >
               BUY
             </button>
+
 
             <button
               id="sell-button"
@@ -765,6 +740,7 @@
               SELL
             </button>
 
+
           </div>
 
 
@@ -772,467 +748,450 @@
             class="trade-message"
             data-trade-message
           >
-            LOG IN TO TRADE
+            LOGIN REQUIRED
           </div>
 
+
         </div>
+
 
       </div>
 
     </section>
 
 
-    <!-- =======================================================
+
+    <!-- =====================================================
          CREATE BOTS
-    ======================================================== -->
+    ====================================================== -->
 
     <section
       id="bots"
-      class="logged-in-section"
-      hidden
+      class="platform-section"
     >
 
+
       <div class="section-heading">
-        <span>AUTOMATION</span>
-        <h2>CREATE BOTS</h2>
+
+        <span class="section-kicker">
+          AUTOMATION
+        </span>
+
+
+        <h2>
+          CREATE BOTS
+        </h2>
+
+
+        <p>
+          Build and configure automated strategies.
+        </p>
+
       </div>
 
 
-      <div class="workspace">
-
-        <div class="workspace-card">
-
-          <div class="card-title">
-            BOT BUILDER
-          </div>
+      <div class="tool-grid">
 
 
-          <label>
-            BOT NAME
-          </label>
+        <div class="tool-card">
 
-          <input
-            type="text"
-            id="bot-name"
-            placeholder="My Trading Bot"
-          >
+          <span class="tool-number">
+            01
+          </span>
 
 
-          <label>
-            MARKET
-          </label>
-
-          <select id="bot-market">
-
-            <option>
-              EUR/USD
-            </option>
-
-            <option>
-              GBP/USD
-            </option>
-
-            <option>
-              USD/JPY
-            </option>
-
-            <option>
-              AUD/USD
-            </option>
-
-            <option>
-              USD/CAD
-            </option>
-
-            <option>
-              USD/CHF
-            </option>
-
-          </select>
+          <h3>
+            STRATEGY BUILDER
+          </h3>
 
 
-          <label>
-            STRATEGY
-          </label>
-
-          <select id="bot-strategy">
-
-            <option>
-              TREND
-            </option>
-
-            <option>
-              MOMENTUM
-            </option>
-
-            <option>
-              BREAKOUT
-            </option>
-
-            <option>
-              AI SIGNAL
-            </option>
-
-          </select>
+          <p>
+            Configure your trading conditions.
+          </p>
 
 
           <button
+            class="tool-button"
             type="button"
-            id="create-bot-button"
           >
             CREATE BOT
           </button>
 
+        </div>
 
-          <div
-            class="trade-message"
-            id="bot-message"
+
+        <div class="tool-card">
+
+          <span class="tool-number">
+            02
+          </span>
+
+
+          <h3>
+            BOT SETTINGS
+          </h3>
+
+
+          <p>
+            Configure stake and execution rules.
+          </p>
+
+
+          <button
+            class="tool-button"
+            type="button"
           >
-            BOT BUILDER READY
-          </div>
+            CONFIGURE
+          </button>
 
         </div>
 
-
-        <div class="workspace-card">
-
-          <div class="card-title">
-            MY BOTS
-          </div>
-
-          <div id="bot-list">
-
-            <div class="levels-note">
-              No bots created yet.
-            </div>
-
-          </div>
-
-        </div>
 
       </div>
 
     </section>
 
 
-    <!-- =======================================================
+
+    <!-- =====================================================
          BULK TRADER
-    ======================================================== -->
+    ====================================================== -->
 
     <section
       id="bulk-trader"
-      class="logged-in-section"
-      hidden
+      class="platform-section"
     >
 
+
       <div class="section-heading">
-        <span>ORDERS</span>
-        <h2>BULK TRADER</h2>
+
+        <span class="section-kicker">
+          EXECUTION
+        </span>
+
+
+        <h2>
+          BULK TRADER
+        </h2>
+
+
+        <p>
+          Prepare multiple trades for execution.
+        </p>
+
       </div>
 
 
-      <div class="workspace">
+      <div class="tool-card wide">
 
-        <div class="workspace-card">
-
-          <div class="card-title">
-            BULK ORDER
-          </div>
+        <div class="bulk-grid">
 
 
           <label>
             MARKET
+
+            <select>
+
+              <option>
+                EUR/USD
+              </option>
+
+              <option>
+                GBP/USD
+              </option>
+
+              <option>
+                USD/JPY
+              </option>
+
+            </select>
+
           </label>
-
-          <select id="bulk-market">
-
-            <option>
-              EUR/USD
-            </option>
-
-            <option>
-              GBP/USD
-            </option>
-
-            <option>
-              USD/JPY
-            </option>
-
-            <option>
-              AUD/USD
-            </option>
-
-            <option>
-              USD/CAD
-            </option>
-
-            <option>
-              USD/CHF
-            </option>
-
-          </select>
 
 
           <label>
-            NUMBER OF ORDERS
-          </label>
+            CONTRACT
 
-          <input
-            id="bulk-count"
-            type="number"
-            min="1"
-            max="100"
-            value="5"
-          >
+            <select>
+
+              <option>
+                CALL
+              </option>
+
+              <option>
+                PUT
+              </option>
+
+            </select>
+
+          </label>
 
 
           <label>
-            STAKE PER ORDER
+            STAKE
+
+            <input
+              type="number"
+              min="0.35"
+              step="0.01"
+              value="1"
+            >
+
           </label>
 
-          <input
-            id="bulk-stake"
-            type="number"
-            min="0.35"
-            step="0.01"
-            value="1"
-          >
 
+          <label>
+            QUANTITY
 
-          <button
-            type="button"
-            id="bulk-trade-button"
-          >
-            PREPARE BULK TRADE
-          </button>
+            <input
+              type="number"
+              min="1"
+              value="1"
+            >
 
+          </label>
 
-          <div
-            class="trade-message"
-            id="bulk-message"
-          >
-            LOGIN REQUIRED FOR TRADING
-          </div>
 
         </div>
+
+
+        <button
+          class="tool-button"
+          type="button"
+        >
+          PREPARE BULK TRADE
+        </button>
+
 
       </div>
 
     </section>
 
 
-    <!-- =======================================================
+
+    <!-- =====================================================
          OPEN TRADES
-    ======================================================== -->
+    ====================================================== -->
 
     <section
       id="open-trades"
-      class="logged-in-section"
-      hidden
+      class="platform-section"
     >
 
+
       <div class="section-heading">
-        <span>POSITIONS</span>
-        <h2>OPEN TRADES</h2>
+
+        <span class="section-kicker">
+          POSITIONS
+        </span>
+
+
+        <h2>
+          OPEN TRADES
+        </h2>
+
       </div>
 
 
-      <div class="workspace-card">
+      <div class="tool-card wide">
 
-        <div class="card-title">
-          ACTIVE POSITIONS
+
+        <div class="empty-state">
+
+          <strong>
+            NO OPEN TRADES
+          </strong>
+
+
+          <span>
+            Active positions will appear here.
+          </span>
+
         </div>
 
-
-        <div
-          id="open-trades-list"
-        >
-
-          <div class="levels-note">
-            No open trades.
-          </div>
-
-        </div>
 
       </div>
 
     </section>
 
 
-    <!-- =======================================================
+
+    <!-- =====================================================
          HISTORY
-    ======================================================== -->
+    ====================================================== -->
 
     <section
       id="history"
-      class="logged-in-section"
-      hidden
+      class="platform-section"
     >
 
+
       <div class="section-heading">
-        <span>RECORDS</span>
-        <h2>HISTORY</h2>
+
+        <span class="section-kicker">
+          ACCOUNT
+        </span>
+
+
+        <h2>
+          HISTORY
+        </h2>
+
       </div>
 
 
-      <div class="workspace-card">
+      <div class="tool-card wide">
 
-        <div class="card-title">
-          TRADE HISTORY
+
+        <div class="empty-state">
+
+          <strong>
+            TRADE HISTORY
+          </strong>
+
+
+          <span>
+            Completed trades will appear here.
+          </span>
+
         </div>
 
-
-        <div
-          id="trade-history"
-        >
-
-          <div class="levels-note">
-            No trade history available.
-          </div>
-
-        </div>
 
       </div>
 
     </section>
 
 
-    <!-- =======================================================
+
+    <!-- =====================================================
          RISK
-    ======================================================== -->
+    ====================================================== -->
 
     <section
       id="risk"
-      class="logged-in-section"
-      hidden
+      class="platform-section"
     >
 
+
       <div class="section-heading">
-        <span>CONTROL</span>
-        <h2>RISK</h2>
+
+        <span class="section-kicker">
+          RISK MANAGEMENT
+        </span>
+
+
+        <h2>
+          RISK
+        </h2>
+
       </div>
 
 
-      <div class="workspace">
-
-        <div class="workspace-card">
-
-          <div class="card-title">
-            RISK SETTINGS
-          </div>
+      <div class="tool-grid">
 
 
-          <div class="data-row">
+        <div class="tool-card">
 
-            <span>
-              ACCOUNT BALANCE
-            </span>
-
-            <strong
-              id="risk-balance"
-            >
-              —
-            </strong>
-
-          </div>
+          <span class="tool-number">
+            RISK
+          </span>
 
 
-          <div class="data-row">
-
-            <span>
-              MAX STAKE
-            </span>
-
-            <strong>
-              —
-            </strong>
-
-          </div>
+          <h3>
+            STAKE CONTROL
+          </h3>
 
 
-          <div class="data-row">
-
-            <span>
-              DAILY LIMIT
-            </span>
-
-            <strong>
-              —
-            </strong>
-
-          </div>
-
-
-          <div class="levels-note">
-            Risk controls will be connected to the
-            authenticated trading account.
-          </div>
+          <p>
+            Monitor individual trade exposure.
+          </p>
 
         </div>
+
+
+        <div class="tool-card">
+
+          <span class="tool-number">
+            LIMIT
+          </span>
+
+
+          <h3>
+            SESSION CONTROL
+          </h3>
+
+
+          <p>
+            Monitor your trading exposure.
+          </p>
+
+        </div>
+
 
       </div>
 
     </section>
 
-  </main>
+
+  </div>
+
+</main>
 
 
-  <!-- =========================================================
-       FOOTER
-  ========================================================== -->
 
-  <footer class="site-footer">
+<!-- =========================================================
+     FOOTER
+========================================================= -->
 
-    <span>
-      PROTRADERS FX
-    </span>
-
-    <span>
-      LIVE MARKETS
-    </span>
+<footer class="site-footer">
 
 
-    <span
-      id="footer-login"
-    >
-
-      <a href="/api/deriv/login">
-        LOG IN
-      </a>
-
-    </span>
+  <span>
+    PROTRADERS FX
+  </span>
 
 
-    <span
-      id="footer-signup"
-    >
-
-      <a href="/api/deriv/signup">
-        CREATE ACCOUNT
-      </a>
-
-    </span>
+  <span>
+    LIVE MARKETS
+  </span>
 
 
-    <span
-      id="footer-account"
-      hidden
-    >
+  <span id="footer-login">
 
-      <a href="/api/logout">
-        LOG OUT
-      </a>
+    <a href="/api/deriv/login">
+      LOG IN
+    </a>
 
-    </span>
-
-  </footer>
+  </span>
 
 
-  <!-- =========================================================
-       JAVASCRIPT
-  ========================================================== -->
+  <span id="footer-signup">
 
-  <script src="/app.js"></script>
+    <a href="/api/deriv/signup">
+      CREATE ACCOUNT
+    </a>
+
+  </span>
+
+
+  <span
+    id="footer-account"
+    hidden
+  >
+
+    <a href="/api/logout">
+      LOG OUT
+    </a>
+
+  </span>
+
+
+</footer>
+
+
+
+<script src="/app.js"></script>
 
 </body>
+
 </html>
