@@ -10,10 +10,15 @@ html {
 
 body {
   min-height: 100vh;
-  background: #080b10;
-  color: #e7edf5;
+  background: #080a0d;
+  color: #f1f3f5;
   font-family: Arial, Helvetica, sans-serif;
   font-size: 14px;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
 }
 
 button,
@@ -22,552 +27,512 @@ select {
   font: inherit;
 }
 
-button,
-a {
-  -webkit-tap-highlight-color: transparent;
-}
+/* =========================
+   HEADER
+========================= */
 
-a {
-  color: inherit;
-  text-decoration: none;
-}
-
-/* =========================================================
-   TOP BAR
-========================================================= */
-
-.topbar {
-  min-height: 68px;
+.site-header {
+  height: 72px;
   display: flex;
   align-items: center;
-  gap: 30px;
-  padding: 0 28px;
-  background: #0d1118;
-  border-bottom: 1px solid #202833;
+  gap: 45px;
+  padding: 0 32px;
+  background: #0d1015;
+  border-bottom: 1px solid #242a32;
   position: sticky;
   top: 0;
   z-index: 100;
 }
 
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-weight: 800;
-  letter-spacing: 1.2px;
+.logo {
+  font-size: 17px;
+  font-weight: 900;
+  letter-spacing: 1.5px;
   white-space: nowrap;
 }
 
-.brand-mark {
-  width: 32px;
-  height: 32px;
-  display: grid;
-  place-items: center;
-  border: 1px solid #465365;
-  background: #151c26;
-  font-weight: 900;
-}
-
-.main-nav {
+.navigation {
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: 30px;
   flex: 1;
 }
 
-.main-nav a {
-  color: #8f9bab;
+.navigation a {
+  color: #929aa5;
   font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.8px;
+  letter-spacing: .5px;
 }
 
-.main-nav a:hover {
+.navigation a:hover {
   color: #ffffff;
 }
 
-.account-area {
+.header-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 
-.account-status {
-  color: #778292;
-  font-size: 10px;
-  letter-spacing: 0.6px;
-}
-
-.account-status strong {
-  color: #cbd4df;
-  margin-left: 3px;
-}
-
-.login-button,
-.signup-button {
-  padding: 9px 14px;
-  border: 1px solid #303b49;
+.login-link,
+.create-account {
+  padding: 11px 17px;
   font-size: 11px;
   font-weight: 800;
-  letter-spacing: 0.5px;
+  letter-spacing: .5px;
 }
 
-.login-button {
-  background: #151c25;
+.login-link {
+  color: #ffffff;
+  border: 1px solid #353d47;
+  background: #12161c;
 }
 
-.signup-button {
-  background: #e7edf5;
-  color: #080b10;
-  border-color: #e7edf5;
+.create-account {
+  color: #080a0d;
+  background: #ffffff;
+  border: 1px solid #ffffff;
 }
 
-/* =========================================================
-   MARKET BAR
-========================================================= */
+/* =========================
+   MARKET STRIP
+========================= */
 
-.market-bar {
-  background: #0a0e14;
-  border-bottom: 1px solid #1c2530;
-  padding: 0 28px;
+.market-strip {
+  background: #0a0d11;
+  border-bottom: 1px solid #20262e;
   overflow-x: auto;
 }
 
-.market-selector {
+.market-list {
   display: flex;
   min-width: max-content;
+  padding: 0 25px;
 }
 
-.market-button {
-  appearance: none;
+.market-item {
   border: 0;
-  border-right: 1px solid #1c2530;
+  border-left: 1px solid #20262e;
   background: transparent;
-  color: #768291;
-  padding: 15px 20px;
+  color: #737d89;
+  padding: 15px 21px;
   cursor: pointer;
   font-size: 11px;
   font-weight: 800;
-  letter-spacing: 0.6px;
+  letter-spacing: .6px;
 }
 
-.market-button:first-child {
-  border-left: 1px solid #1c2530;
+.market-item:last-child {
+  border-right: 1px solid #20262e;
 }
 
-.market-button:hover,
-.market-button.active {
+.market-item:hover,
+.market-item.active {
   color: #ffffff;
-  background: #111721;
+  background: #131820;
 }
 
-/* =========================================================
-   TERMINAL
-========================================================= */
+/* =========================
+   MAIN
+========================= */
 
-.terminal {
-  width: min(1500px, calc(100% - 40px));
-  margin: 0 auto;
-  padding: 24px 0 40px;
+.main-container {
+  width: min(1480px, calc(100% - 40px));
+  margin: auto;
+  padding: 25px 0 45px;
 }
 
-/* =========================================================
-   MARKET HEADER
-========================================================= */
+/* =========================
+   MARKET SUMMARY
+========================= */
 
-.market-header {
-  min-height: 125px;
+.market-summary {
+  min-height: 135px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 30px;
-  padding: 22px 24px;
-  background: #0d1219;
-  border: 1px solid #202a36;
+  padding: 25px;
+  background: #0e1218;
+  border: 1px solid #252d37;
 }
 
-.market-label,
-.price-label {
-  color: #687585;
-  font-size: 10px;
+.small-label {
+  display: block;
+  margin-bottom: 9px;
+  color: #697481;
+  font-size: 9px;
   font-weight: 800;
   letter-spacing: 1px;
-  margin-bottom: 8px;
 }
 
-.market-header h1 {
-  font-size: 28px;
-  line-height: 1;
-  letter-spacing: -0.5px;
+.market-info h1 {
+  font-size: 30px;
+  letter-spacing: -.5px;
 }
 
-.market-status {
-  margin-top: 10px;
-  color: #8290a0;
-  font-size: 10px;
+.connection-status {
+  display: inline-block;
+  margin-top: 9px;
+  color: #84909c;
+  font-size: 9px;
   font-weight: 800;
-  letter-spacing: 0.8px;
+  letter-spacing: .8px;
 }
 
-.price-block {
+.price-info {
   text-align: right;
 }
 
-.live-price {
-  font-size: 34px;
+.current-price {
+  display: block;
+  font-size: 36px;
   line-height: 1;
-  font-weight: 800;
+  font-weight: 900;
   font-variant-numeric: tabular-nums;
 }
 
-.price-change {
-  margin-top: 8px;
+.price-movement {
+  display: block;
+  margin-top: 9px;
+  color: #8c98a4;
   font-size: 12px;
   font-weight: 800;
-  font-variant-numeric: tabular-nums;
 }
 
-.price-change.positive {
-  color: #d7e2dc;
+.price-movement.positive {
+  color: #cddbd2;
 }
 
-.price-change.negative {
-  color: #e1cfd0;
+.price-movement.negative {
+  color: #dccfd0;
 }
 
-/* =========================================================
+/* =========================
    CHART
-========================================================= */
+========================= */
 
-.chart-panel {
+.chart-container {
   margin-top: 18px;
-  background: #0d1219;
-  border: 1px solid #202a36;
+  background: #0e1218;
+  border: 1px solid #252d37;
 }
 
-.chart-toolbar {
-  min-height: 54px;
+.chart-header {
+  min-height: 55px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
   padding: 0 18px;
-  border-bottom: 1px solid #202a36;
+  border-bottom: 1px solid #252d37;
 }
 
-.chart-title {
+.chart-market {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-weight: 800;
   font-size: 12px;
 }
 
-.live-indicator {
+.live-badge {
   padding: 4px 7px;
-  border: 1px solid #35414f;
-  color: #a8b3bf;
+  border: 1px solid #37414d;
+  color: #a6afb9;
   font-size: 8px;
-  letter-spacing: 0.8px;
+  font-weight: 800;
+  letter-spacing: .8px;
 }
 
-.timeframes {
+.timeframe-buttons {
   display: flex;
-  align-items: center;
 }
 
 .timeframe {
+  min-width: 42px;
+  padding: 8px 8px;
   border: 0;
-  border-left: 1px solid #202a36;
+  border-left: 1px solid #252d37;
   background: transparent;
-  color: #687585;
-  padding: 8px 11px;
+  color: #687481;
   cursor: pointer;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 800;
 }
 
 .timeframe:last-child {
-  border-right: 1px solid #202a36;
+  border-right: 1px solid #252d37;
 }
 
 .timeframe:hover,
 .timeframe.active {
   color: #ffffff;
-  background: #151c25;
+  background: #151b23;
 }
 
-.chart-area {
-  height: 430px;
+.chart {
+  height: 440px;
   display: flex;
-  position: relative;
   overflow: hidden;
   background:
     linear-gradient(
       to bottom,
       transparent 24.8%,
-      #18212c 25%,
+      #171e27 25%,
       transparent 25.2%,
       transparent 49.8%,
-      #18212c 50%,
+      #171e27 50%,
       transparent 50.2%,
       transparent 74.8%,
-      #18212c 75%,
+      #171e27 75%,
       transparent 75.2%
     ),
     linear-gradient(
       to right,
       transparent 19.8%,
-      #151e29 20%,
+      #151c24 20%,
       transparent 20.2%,
       transparent 39.8%,
-      #151e29 40%,
+      #151c24 40%,
       transparent 40.2%,
       transparent 59.8%,
-      #151e29 60%,
+      #151c24 60%,
       transparent 60.2%,
       transparent 79.8%,
-      #151e29 80%,
+      #151c24 80%,
       transparent 80.2%
     );
 }
 
-.chart-y-axis {
-  width: 80px;
+.chart-axis {
+  width: 78px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 20px 8px 20px 12px;
-  border-right: 1px solid #202a36;
-  color: #5e6a78;
+  padding: 20px 9px;
+  border-right: 1px solid #252d37;
+  color: #596572;
+  text-align: right;
   font-size: 9px;
   font-variant-numeric: tabular-nums;
-  text-align: right;
 }
 
-.live-chart {
-  width: calc(100% - 80px);
+.price-chart {
+  width: calc(100% - 78px);
   height: 100%;
+  color: #d8e0e8;
   overflow: visible;
-  color: #cdd8e3;
 }
 
-/* =========================================================
-   LOWER GRID
-========================================================= */
+/* =========================
+   WORKSPACE
+========================= */
 
-.terminal-grid {
-  margin-top: 18px;
+.workspace {
   display: grid;
-  grid-template-columns: 1fr 1fr 1.15fr;
+  grid-template-columns: 1fr 1fr 1.1fr;
   gap: 18px;
+  margin-top: 18px;
 }
 
-.panel {
-  background: #0d1219;
-  border: 1px solid #202a36;
-  min-height: 280px;
+.workspace-card {
+  min-height: 285px;
+  background: #0e1218;
+  border: 1px solid #252d37;
 }
 
-.panel-heading {
-  padding: 15px 17px;
-  border-bottom: 1px solid #202a36;
-  color: #8a96a4;
+.card-title {
+  padding: 16px 18px;
+  border-bottom: 1px solid #252d37;
+  color: #87929e;
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 1px;
 }
 
-.analysis-market {
-  padding: 18px 17px 8px;
+.analysis-symbol {
+  padding: 18px;
   font-size: 17px;
   font-weight: 800;
 }
 
-.analysis-row,
-.level-row {
+.data-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 15px;
-  padding: 13px 17px;
-  border-top: 1px solid #171f29;
+  padding: 14px 18px;
+  border-top: 1px solid #181f28;
 }
 
-.analysis-row span,
-.level-row span {
-  color: #687585;
-  font-size: 10px;
+.data-row span {
+  color: #687481;
+  font-size: 9px;
   font-weight: 800;
-  letter-spacing: 0.6px;
+  letter-spacing: .7px;
 }
 
-.analysis-row strong,
-.level-row strong {
-  color: #dbe3eb;
+.data-row strong {
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 
-.signal-box {
-  margin: 15px 17px 17px;
-  padding: 16px;
+.signal {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border: 1px solid #283441;
-  background: #111720;
+  margin: 16px 18px;
+  padding: 15px;
+  border: 1px solid #29333e;
+  background: #12171e;
 }
 
-.signal-box span {
-  color: #687585;
-  font-size: 10px;
+.signal span {
+  color: #697481;
+  font-size: 9px;
   font-weight: 800;
-  letter-spacing: 0.7px;
 }
 
-.signal-box strong {
-  font-size: 12px;
-  letter-spacing: 0.5px;
+.signal strong {
+  font-size: 11px;
 }
 
-.signal-box strong.wait {
-  color: #a5afba;
+.signal strong.wait {
+  color: #aab2bb;
 }
 
-.signal-box strong.buy {
-  color: #d6e2dc;
+.signal strong.buy {
+  color: #d5e0da;
 }
 
-.signal-box strong.sell {
-  color: #e0d0d1;
+.signal strong.sell {
+  color: #decfd0;
 }
 
-/* =========================================================
-   TRADE PANEL
-========================================================= */
+/* =========================
+   LEVELS
+========================= */
 
-.trade-panel {
+.levels-note {
+  margin: 18px;
+  padding: 12px;
+  border: 1px solid #202832;
+  color: #697481;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+/* =========================
+   TRADE
+========================= */
+
+.trade-card {
   padding-bottom: 18px;
 }
 
-.trade-panel label {
+.trade-card label {
   display: block;
-  margin: 18px 17px 7px;
-  color: #687585;
+  margin: 18px 18px 7px;
+  color: #697481;
   font-size: 9px;
   font-weight: 800;
-  letter-spacing: 0.8px;
+  letter-spacing: .8px;
 }
 
-.trade-panel input,
-.trade-panel select {
-  width: calc(100% - 34px);
-  margin: 0 17px;
-  height: 42px;
+.trade-card input,
+.trade-card select {
+  width: calc(100% - 36px);
+  height: 43px;
+  margin: 0 18px;
   padding: 0 12px;
-  background: #080c11;
-  color: #e6edf4;
-  border: 1px solid #293441;
+  background: #080b0f;
+  color: #ffffff;
+  border: 1px solid #2a3440;
   outline: none;
 }
 
-.trade-panel input:focus,
-.trade-panel select:focus {
-  border-color: #596777;
+.trade-card input:focus,
+.trade-card select:focus {
+  border-color: #5a6673;
 }
 
-.trade-buttons {
+.trade-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
-  margin: 18px 17px 12px;
+  margin: 18px;
 }
 
-.trade-buttons button {
+.trade-actions button {
   height: 46px;
-  border: 1px solid #34404d;
+  border: 1px solid #3a4551;
   cursor: pointer;
+  font-size: 11px;
   font-weight: 900;
-  letter-spacing: 0.8px;
+  letter-spacing: .8px;
 }
 
-.buy-button {
-  background: #dce6e0;
-  color: #101512;
+.buy {
+  background: #dce5df;
+  color: #0d1210;
 }
 
-.sell-button {
-  background: #ddd1d2;
-  color: #151011;
-}
-
-.trade-buttons button:hover {
-  filter: brightness(1.08);
+.sell {
+  background: #ded1d2;
+  color: #120e0f;
 }
 
 .trade-message {
-  min-height: 34px;
-  margin: 0 17px;
-  padding: 9px 10px;
-  border: 1px solid #202a36;
-  color: #778493;
+  min-height: 36px;
+  margin: 0 18px;
+  padding: 10px;
+  border: 1px solid #202832;
+  color: #778390;
   font-size: 9px;
   font-weight: 700;
   line-height: 1.5;
-  letter-spacing: 0.3px;
 }
 
-/* =========================================================
+/* =========================
    FOOTER
-========================================================= */
+========================= */
 
-.footer {
-  min-height: 58px;
+.site-footer {
+  min-height: 65px;
   display: flex;
-  justify-content: center;
   align-items: center;
-  gap: 25px;
-  border-top: 1px solid #202833;
-  color: #586574;
+  justify-content: center;
+  gap: 28px;
+  padding: 15px;
+  border-top: 1px solid #242a32;
+  color: #5f6a76;
   font-size: 9px;
   font-weight: 700;
-  letter-spacing: 0.7px;
+  letter-spacing: .7px;
 }
 
-.footer a:hover {
+.site-footer a:hover {
   color: #ffffff;
 }
 
-/* =========================================================
-   MOBILE
-========================================================= */
+/* =========================
+   RESPONSIVE
+========================= */
 
-@media (max-width: 1000px) {
+@media (max-width: 1050px) {
 
-  .topbar {
-    gap: 16px;
-    padding: 0 16px;
+  .site-header {
+    gap: 20px;
   }
 
-  .main-nav {
-    gap: 14px;
+  .navigation {
+    gap: 18px;
   }
 
-  .account-status {
-    display: none;
-  }
-
-  .terminal {
-    width: min(100% - 24px, 1500px);
-  }
-
-  .terminal-grid {
+  .workspace {
     grid-template-columns: 1fr 1fr;
   }
 
-  .trade-panel {
+  .trade-card {
     grid-column: 1 / -1;
   }
 
@@ -575,86 +540,78 @@ a {
 
 @media (max-width: 700px) {
 
-  .topbar {
-    min-height: auto;
-    padding: 13px 14px;
+  .site-header {
+    height: auto;
+    padding: 14px;
     flex-wrap: wrap;
+    gap: 15px;
   }
 
-  .brand {
+  .logo {
     flex: 1;
   }
 
-  .main-nav {
+  .navigation {
     order: 3;
     width: 100%;
     justify-content: center;
-    padding-top: 4px;
   }
 
-  .login-button,
-  .signup-button {
-    padding: 8px 9px;
+  .header-actions {
+    gap: 7px;
+  }
+
+  .login-link,
+  .create-account {
+    padding: 9px 10px;
     font-size: 9px;
   }
 
-  .market-bar {
-    padding: 0 10px;
-  }
-
-  .market-button {
-    padding: 13px 14px;
-  }
-
-  .terminal {
+  .main-container {
     width: calc(100% - 20px);
     padding-top: 10px;
   }
 
-  .market-header {
+  .market-summary {
     padding: 18px;
   }
 
-  .market-header h1 {
-    font-size: 22px;
+  .market-info h1 {
+    font-size: 23px;
   }
 
-  .live-price {
+  .current-price {
     font-size: 25px;
   }
 
-  .chart-toolbar {
-    padding: 0 10px;
-  }
-
-  .chart-area {
+  .chart {
     height: 330px;
   }
 
-  .chart-y-axis {
+  .chart-axis {
     width: 62px;
   }
 
-  .live-chart {
+  .price-chart {
     width: calc(100% - 62px);
   }
 
   .timeframe {
-    padding: 7px 6px;
+    min-width: 31px;
+    padding: 7px 4px;
     font-size: 8px;
   }
 
-  .terminal-grid {
+  .workspace {
     grid-template-columns: 1fr;
   }
 
-  .trade-panel {
+  .trade-card {
     grid-column: auto;
   }
 
-  .footer {
+  .site-footer {
     flex-wrap: wrap;
-    padding: 15px;
   }
 
 }
