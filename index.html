@@ -6,10 +6,10 @@
 
   <meta
     name="description"
-    content="ProTraders FX — market analysis and Deriv trading terminal."
+    content="ProTraders FX — live markets, market analysis and trading."
   >
 
-  <title>ProTraders FX | Trading Terminal</title>
+  <title>ProTraders FX | Markets</title>
 
   <link rel="stylesheet" href="/style.css">
 </head>
@@ -17,6 +17,7 @@
 <body>
 
 <header class="site-header">
+
   <div class="nav-wrap">
 
     <a class="logo" href="/">
@@ -30,7 +31,11 @@
     </nav>
 
     <div class="nav-actions">
-      <a class="login-link" href="/api/deriv/login">
+
+      <a
+        class="login-link"
+        href="/api/deriv/login"
+      >
         LOGIN
       </a>
 
@@ -40,15 +45,19 @@
       >
         OPEN ACCOUNT
       </a>
+
     </div>
 
   </div>
+
 </header>
 
 
 <main>
 
-  <!-- MARKETS -->
+  <!-- =====================================================
+       MARKETS
+  ====================================================== -->
 
   <section
     class="market-ticker"
@@ -61,7 +70,7 @@
 
     <button
       class="market-button active"
-      data-symbol="EUR/USD"
+      data-symbol="frxEURUSD"
       type="button"
     >
       EUR/USD
@@ -69,7 +78,7 @@
 
     <button
       class="market-button"
-      data-symbol="GBP/USD"
+      data-symbol="frxGBPUSD"
       type="button"
     >
       GBP/USD
@@ -77,7 +86,7 @@
 
     <button
       class="market-button"
-      data-symbol="USD/JPY"
+      data-symbol="frxUSDJPY"
       type="button"
     >
       USD/JPY
@@ -85,7 +94,7 @@
 
     <button
       class="market-button"
-      data-symbol="AUD/USD"
+      data-symbol="frxAUDUSD"
       type="button"
     >
       AUD/USD
@@ -93,7 +102,7 @@
 
     <button
       class="market-button"
-      data-symbol="USD/CAD"
+      data-symbol="frxUSDCAD"
       type="button"
     >
       USD/CAD
@@ -101,7 +110,7 @@
 
     <button
       class="market-button"
-      data-symbol="USD/CHF"
+      data-symbol="frxUSDCHF"
       type="button"
     >
       USD/CHF
@@ -110,14 +119,19 @@
   </section>
 
 
-  <!-- TERMINAL -->
+  <!-- =====================================================
+       TERMINAL
+  ====================================================== -->
 
   <section class="terminal">
 
     <div class="terminal-top">
 
       <div class="instrument-block">
-        <span class="eyebrow">MARKET</span>
+
+        <span class="eyebrow">
+          MARKET
+        </span>
 
         <strong
           class="selected-market"
@@ -125,11 +139,15 @@
         >
           EUR/USD
         </strong>
+
       </div>
 
 
       <div class="terminal-price">
-        <span class="eyebrow">PRICE</span>
+
+        <span class="eyebrow">
+          PRICE
+        </span>
 
         <strong
           class="market-price"
@@ -137,11 +155,15 @@
         >
           —
         </strong>
+
       </div>
 
 
       <div class="terminal-change">
-        <span class="eyebrow">CHANGE</span>
+
+        <span class="eyebrow">
+          CHANGE
+        </span>
 
         <strong
           class="market-move"
@@ -149,6 +171,7 @@
         >
           —
         </strong>
+
       </div>
 
 
@@ -165,7 +188,9 @@
     </div>
 
 
-    <!-- CHART -->
+    <!-- ===================================================
+         CHART
+    ==================================================== -->
 
     <div class="chart-area">
 
@@ -252,7 +277,7 @@
           class="live-chart"
           viewBox="0 0 1000 400"
           preserveAspectRatio="none"
-          aria-label="Live price chart"
+          aria-label="Live market chart"
         >
 
           <polyline
@@ -277,36 +302,53 @@
     </div>
 
 
-    <!-- MARKET STATS -->
+    <!-- ===================================================
+         MARKET DATA
+    ==================================================== -->
 
     <div class="market-stats">
 
       <div>
+
         <span>MARKET</span>
+
         <strong data-market>
           EUR/USD
         </strong>
+
       </div>
 
+
       <div>
+
         <span>PRICE</span>
+
         <strong data-price>
           —
         </strong>
+
       </div>
 
+
       <div>
+
         <span>CHANGE</span>
+
         <strong data-move>
           —
         </strong>
+
       </div>
 
+
       <div>
+
         <span>STATUS</span>
+
         <strong data-market-status>
           CONNECTING
         </strong>
+
       </div>
 
     </div>
@@ -314,7 +356,9 @@
   </section>
 
 
-  <!-- ANALYSIS + TRADE -->
+  <!-- =====================================================
+       ANALYSIS + TRADE
+  ====================================================== -->
 
   <section
     class="workspace"
@@ -350,7 +394,9 @@
     <div class="workspace-grid">
 
 
-      <!-- ANALYSIS -->
+      <!-- =================================================
+           ANALYSIS
+      ================================================== -->
 
       <section class="analysis-panel">
 
@@ -368,6 +414,7 @@
 
 
         <div class="analysis-main">
+
 
           <div class="signal-box">
 
@@ -388,24 +435,41 @@
           <div class="analysis-row">
 
             <div>
-              <span>TREND</span>
+
+              <span>
+                TREND
+              </span>
+
               <strong data-trend>
                 WAIT
               </strong>
+
             </div>
 
+
             <div>
-              <span>MOMENTUM</span>
+
+              <span>
+                MOMENTUM
+              </span>
+
               <strong data-momentum>
                 WAIT
               </strong>
+
             </div>
 
+
             <div>
-              <span>DIRECTION</span>
+
+              <span>
+                DIRECTION
+              </span>
+
               <strong data-direction>
                 —
               </strong>
+
             </div>
 
           </div>
@@ -414,24 +478,41 @@
           <div class="levels">
 
             <div>
-              <span>ENTRY</span>
+
+              <span>
+                ENTRY
+              </span>
+
               <strong data-entry>
                 —
               </strong>
+
             </div>
 
+
             <div>
-              <span>STOP</span>
+
+              <span>
+                STOP
+              </span>
+
               <strong data-stop>
                 —
               </strong>
+
             </div>
 
+
             <div>
-              <span>TARGET</span>
+
+              <span>
+                TARGET
+              </span>
+
               <strong data-target>
                 —
               </strong>
+
             </div>
 
           </div>
@@ -441,7 +522,9 @@
       </section>
 
 
-      <!-- TRADE -->
+      <!-- =================================================
+           TRADE
+      ================================================== -->
 
       <section
         class="trade-panel"
@@ -464,19 +547,28 @@
         <div class="account-row">
 
           <div>
-            <span>BALANCE</span>
 
-            <strong data-balance>
-              —
-            </strong>
-          </div>
-
-          <div>
-            <span>STATUS</span>
+            <span>
+              ACCOUNT
+            </span>
 
             <strong data-account-status>
               NOT CONNECTED
             </strong>
+
+          </div>
+
+
+          <div>
+
+            <span>
+              BALANCE
+            </span>
+
+            <strong data-balance>
+              —
+            </strong>
+
           </div>
 
         </div>
@@ -534,6 +626,7 @@
             BUY
           </button>
 
+
           <button
             class="trade-button sell"
             id="sell-button"
@@ -559,7 +652,9 @@
   </section>
 
 
-  <!-- POSITIONS -->
+  <!-- =====================================================
+       POSITIONS
+  ====================================================== -->
 
   <section class="positions-panel">
 
@@ -586,7 +681,9 @@
   </section>
 
 
-  <!-- ACCOUNT -->
+  <!-- =====================================================
+       ACCOUNT
+  ====================================================== -->
 
   <section class="account-bar">
 
@@ -618,11 +715,16 @@
 <footer class="footer">
 
   <div class="footer-brand">
+
     PROTRADERS<span>FX</span>
+
   </div>
 
+
   <div class="footer-copy">
-    © 2026
+
+    © 2026 ProTraders FX
+
   </div>
 
 </footer>
