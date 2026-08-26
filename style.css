@@ -27,9 +27,18 @@ select {
   font: inherit;
 }
 
-/* =========================
+button {
+  cursor: pointer;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+
+/* =====================================================
    HEADER
-========================= */
+===================================================== */
 
 .site-header {
   height: 72px;
@@ -77,10 +86,14 @@ select {
 
 .login-link,
 .create-account {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 11px 17px;
   font-size: 11px;
   font-weight: 800;
   letter-spacing: .5px;
+  cursor: pointer;
 }
 
 .login-link {
@@ -89,20 +102,34 @@ select {
   background: #12161c;
 }
 
+.login-link:hover {
+  background: #181d24;
+}
+
 .create-account {
   color: #080a0d;
   background: #ffffff;
   border: 1px solid #ffffff;
 }
 
-/* =========================
+.create-account:hover {
+  background: #dfe3e7;
+}
+
+
+/* =====================================================
    MARKET STRIP
-========================= */
+===================================================== */
 
 .market-strip {
   background: #0a0d11;
   border-bottom: 1px solid #20262e;
   overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.market-strip::-webkit-scrollbar {
+  display: none;
 }
 
 .market-list {
@@ -121,6 +148,7 @@ select {
   font-size: 11px;
   font-weight: 800;
   letter-spacing: .6px;
+  white-space: nowrap;
 }
 
 .market-item:last-child {
@@ -133,9 +161,10 @@ select {
   background: #131820;
 }
 
-/* =========================
+
+/* =====================================================
    MAIN
-========================= */
+===================================================== */
 
 .main-container {
   width: min(1480px, calc(100% - 40px));
@@ -143,9 +172,10 @@ select {
   padding: 25px 0 45px;
 }
 
-/* =========================
+
+/* =====================================================
    MARKET SUMMARY
-========================= */
+===================================================== */
 
 .market-summary {
   min-height: 135px;
@@ -208,9 +238,10 @@ select {
   color: #dccfd0;
 }
 
-/* =========================
+
+/* =====================================================
    CHART
-========================= */
+===================================================== */
 
 .chart-container {
   margin-top: 18px;
@@ -249,7 +280,7 @@ select {
 
 .timeframe {
   min-width: 42px;
-  padding: 8px 8px;
+  padding: 8px;
   border: 0;
   border-left: 1px solid #252d37;
   background: transparent;
@@ -324,9 +355,10 @@ select {
   overflow: visible;
 }
 
-/* =========================
+
+/* =====================================================
    WORKSPACE
-========================= */
+===================================================== */
 
 .workspace {
   display: grid;
@@ -408,9 +440,10 @@ select {
   color: #decfd0;
 }
 
-/* =========================
+
+/* =====================================================
    LEVELS
-========================= */
+===================================================== */
 
 .levels-note {
   margin: 18px;
@@ -421,9 +454,10 @@ select {
   line-height: 1.5;
 }
 
-/* =========================
+
+/* =====================================================
    TRADE
-========================= */
+===================================================== */
 
 .trade-card {
   padding-bottom: 18px;
@@ -455,6 +489,10 @@ select {
   border-color: #5a6673;
 }
 
+.trade-card select {
+  appearance: auto;
+}
+
 .trade-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -469,6 +507,10 @@ select {
   font-size: 11px;
   font-weight: 900;
   letter-spacing: .8px;
+}
+
+.trade-actions button:hover {
+  filter: brightness(1.08);
 }
 
 .buy {
@@ -492,9 +534,84 @@ select {
   line-height: 1.5;
 }
 
-/* =========================
+
+/* =====================================================
+   ACCOUNT
+===================================================== */
+
+.account-panel {
+  margin-top: 18px;
+  background: #0e1218;
+  border: 1px solid #252d37;
+}
+
+.account-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid #252d37;
+}
+
+.account-title {
+  color: #87929e;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.account-status {
+  color: #687481;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.account-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1px;
+  background: #20262e;
+}
+
+.account-stat {
+  padding: 16px 18px;
+  background: #0e1218;
+}
+
+.account-stat > span {
+  display: block;
+  margin-bottom: 7px;
+  color: #687481;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .7px;
+}
+
+.account-stat strong {
+  font-size: 13px;
+}
+
+#account-id {
+  color: #e5e9ed;
+}
+
+
+/* =====================================================
+   TRADING WORKSPACE
+===================================================== */
+
+#trading-workspace {
+  margin-top: 18px;
+}
+
+#trading-workspace .workspace-card {
+  min-height: auto;
+}
+
+
+/* =====================================================
    FOOTER
-========================= */
+===================================================== */
 
 .site-footer {
   min-height: 65px;
@@ -514,9 +631,10 @@ select {
   color: #ffffff;
 }
 
-/* =========================
+
+/* =====================================================
    RESPONSIVE
-========================= */
+===================================================== */
 
 @media (max-width: 1050px) {
 
@@ -537,6 +655,7 @@ select {
   }
 
 }
+
 
 @media (max-width: 700px) {
 
@@ -610,8 +729,48 @@ select {
     grid-column: auto;
   }
 
+  .account-grid {
+    grid-template-columns: 1fr;
+  }
+
   .site-footer {
     flex-wrap: wrap;
+  }
+
+}
+
+
+@media (max-width: 430px) {
+
+  .market-summary {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 20px;
+  }
+
+  .price-info {
+    width: 100%;
+    text-align: left;
+  }
+
+  .current-price {
+    font-size: 28px;
+  }
+
+  .chart-header {
+    padding: 0 10px;
+  }
+
+  .chart-market {
+    font-size: 10px;
+  }
+
+  .live-badge {
+    display: none;
+  }
+
+  .timeframe {
+    min-width: 28px;
   }
 
 }
