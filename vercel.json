@@ -6,19 +6,7 @@
       "use": "@vercel/node"
     },
     {
-      "src": "index.html",
-      "use": "@vercel/static"
-    },
-    {
-      "src": "style.css",
-      "use": "@vercel/static"
-    },
-    {
-      "src": "app.js",
-      "use": "@vercel/static"
-    },
-    {
-      "src": "tracker.js",
+      "src": "public/**",
       "use": "@vercel/static"
     }
   ],
@@ -32,28 +20,16 @@
       "dest": "/server.js"
     },
     {
-      "src": "/oauth/(.*)",
-      "dest": "/server.js"
-    },
-    {
       "src": "/health",
       "dest": "/server.js"
     },
     {
       "src": "/",
-      "dest": "/index.html"
+      "dest": "/public/index.html"
     },
     {
-      "src": "/style.css",
-      "dest": "/style.css"
-    },
-    {
-      "src": "/app.js",
-      "dest": "/app.js"
-    },
-    {
-      "src": "/tracker.js",
-      "dest": "/tracker.js"
+      "src": "/(.*)",
+      "dest": "/public/$1"
     }
   ]
 }
