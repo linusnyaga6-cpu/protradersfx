@@ -1,1423 +1,317 @@
 document.addEventListener("DOMContentLoaded", () => {
+
   "use strict";
 
-  console.log("PROTRADERS FX STARTING");
 
-  const DERIV_PUBLIC_WS =
-    "wss://api.derivws.com/trading/v1/options/ws/public";
+  /* =====================================================
+     STATE
+  ====================================================== */
 
   const state = {
-    socket: null,
-    connected: false,
-
-    requestedMarket: "EUR/USD",
-    symbolName: "EUR/USD",
-    symbol: null,
-
-    activeSymbols: [],
-
-    price: null,
-    previousPrice: null,
-    prices: [],
-
-    requestId: 0,
-
-    reconnectTimer: null,
-    reconnectAttempts: 0,
 
     authenticated: false,
-    sessionExpiresAt: null,
 
-    accounts: [],
+    symbol: "EUR/USD",
+
+    price: null,
+
+    previousPrice: null,
+
+    prices: [],
+
+    websocket: null,
+
+    reconnectTimer: null,
+
+    reconnectAttempts: 0,
+
     selectedAccount: null,
 
-    destroyed: false
+    accounts: [],
+
+    timeframe: "1m"
+
   };
 
 
-  /* =========================================================
-     DOM
-  ========================================================= */
+  /* =====================================================
+     ELEMENTS
+  ====================================================== */
 
-  const all = (selector) =>
-    Array.from(
-      document.querySelectorAll(selector)
-    );
+  const el = {
 
+    loggedOutActions:
+      document.getElementById("logged-out-actions"),
 
-  const one = (selector) =>
-    document.querySelector(selector);
+    loggedOutNavigation:
+      document.getElementById("logged-out-navigation"),
 
+    loggedInNavigation:
+      document.getElementById("logged-in-navigation"),
 
-  const setAll = (selector, value) => {
-    all(selector).forEach((element) => {
-      element.textContent = value;
-    });
+    accountPanel:
+      document.getElementById("account-panel"),
+
+    tradingWorkspace:
+      document.getElementById("trading-workspace"),
+
+    footerLogin:
+      document.getElementById("footer-login"),
+
+    footerSignup:
+      document.getElementById("footer-signup"),
+
+    footerAccount:
+      document.getElementById("footer-account"),
+
+    accountSelect:
+      document.getElementById("account-select"),
+
+    accountBalance:
+      document.getElementById("account-balance"),
+
+    tradeAccount:
+      document.getElementById("trade-account"),
+
+    tradeAccountType:
+      document.getElementById("trade-account-type"),
+
+    tradeAccountBalance:
+      document.getElementById("trade-account-balance"),
+
+    market:
+      document.querySelector("[data-market]"),
+
+    marketStatus:
+      document.querySelector("[data-market-status]"),
+
+    price:
+      document.querySelector("[data-price]"),
+
+    move:
+      document.querySelector("[data-move]"),
+
+    chartLine:
+      document.querySelector("[data-live-line]"),
+
+    chartMessage:
+      document.querySelector("[data-chart-message]"),
+
+    analysisMarkets:
+      document.querySelectorAll("[data-analysis-market]"),
+
+    trend:
+      document.querySelector("[data-trend]"),
+
+    momentum:
+      document.querySelector("[data-momentum]"),
+
+    direction:
+      document.querySelector("[data-direction]"),
+
+    signal:
+      document.querySelector("[data-signal]"),
+
+    entry:
+      document.querySelector("[data-entry]"),
+
+    stop:
+      document.querySelector("[data-stop]"),
+
+    target:
+      document.querySelector("[data-target]"),
+
+    aiBias:
+      document.querySelector("[data-ai-bias]"),
+
+    aiConfidence:
+      document.querySelector("[data-ai-confidence]"),
+
+    aiSetup:
+      document.querySelector("[data-ai-setup]"),
+
+    aiMessage:
+      document.querySelector("[data-ai-message]"),
+
+    tradeMessage:
+      document.querySelector("[data-trade-message]"),
+
+    stake:
+      document.getElementById("stake"),
+
+    contract:
+      document.getElementById("contract-type"),
+
+    buy:
+      document.getElementById("buy-button"),
+
+    sell:
+      document.getElementById("sell-button"),
+
+    botName:
+      document.getElementById("bot-name"),
+
+    botStrategy:
+      document.getElementById("bot-strategy"),
+
+    createBot:
+      document.getElementById("create-bot"),
+
+    botStatus:
+      document.getElementById("bot-status"),
+
+    botCurrentStrategy:
+      document.getElementById("bot-current-strategy"),
+
+    bulkStake:
+      document.getElementById("bulk-stake"),
+
+    bulkCount:
+      document.getElementById("bulk-count"),
+
+    bulkContract:
+      document.getElementById("bulk-contract"),
+
+    bulkExecute:
+      document.getElementById("bulk-execute"),
+
+    bulkMessage:
+      document.getElementById("bulk-message")
+
   };
 
 
-  /* =========================================================
-     STATUS
-  ========================================================= */
+  /* =====================================================
+     HELPERS
+  ====================================================== */
 
-  const setStatus = (status) => {
-
-    setAll(
-      "[data-market-status]",
-      status
-    );
-
-    console.log(
-      "MARKET:",
-      status
-    );
-  };
-
-
-  const setTradeMessage = (message) => {
-
-    const element =
-      one("[data-trade-message]");
+  function show(element) {
 
     if (element) {
-      element.textContent = message;
-    }
-  };
-
-
-  /* =========================================================
-     MARKET
-  ========================================================= */
-
-  const supportedMarkets = {
-    "EUR/USD": "EUR/USD",
-    "GBP/USD": "GBP/USD",
-    "USD/JPY": "USD/JPY",
-    "AUD/USD": "AUD/USD",
-    "USD/CAD": "USD/CAD",
-    "USD/CHF": "USD/CHF"
-  };
-
-
-  const normaliseMarketName = (value) => {
-
-    if (!value) {
-      return "";
+      element.hidden = false;
     }
 
-    let text =
-      String(value).trim();
+  }
+
+
+  function hide(element) {
+
+    if (element) {
+      element.hidden = true;
+    }
+
+  }
+
+
+  function setText(element, value) {
+
+    if (element) {
+      element.textContent =
+        value === undefined ||
+        value === null
+          ? "—"
+          : String(value);
+    }
+
+  }
+
+
+  function formatPrice(price) {
 
     if (
-      Object.prototype.hasOwnProperty.call(
-        supportedMarkets,
-        text
-      )
+      price === null ||
+      price === undefined ||
+      !Number.isFinite(Number(price))
     ) {
-      return text;
+      return "—";
     }
-
-    text =
-      text
-        .replace(/^frx/i, "")
-        .replace(/[^A-Za-z]/g, "")
-        .toUpperCase();
-
-    const pairs = [
-      "EURUSD",
-      "GBPUSD",
-      "USDJPY",
-      "AUDUSD",
-      "USDCAD",
-      "USDCHF"
-    ];
-
-    if (pairs.includes(text)) {
-
-      return (
-        text.substring(0, 3) +
-        "/" +
-        text.substring(3, 6)
-      );
-    }
-
-    return String(value).trim();
-  };
-
-
-  const formatPrice = (price) => {
 
     const number =
       Number(price);
 
-    if (!Number.isFinite(number)) {
+    return number >= 100
+      ? number.toFixed(3)
+      : number.toFixed(5);
+
+  }
+
+
+  function formatMoney(value, currency = "USD") {
+
+    if (
+      value === null ||
+      value === undefined ||
+      !Number.isFinite(Number(value))
+    ) {
       return "—";
     }
 
-    if (number >= 100) {
-      return number.toFixed(3);
-    }
+    return `${currency} ${Number(value).toFixed(2)}`;
 
-    return number.toFixed(5);
-  };
+  }
 
 
-  const formatMoney = (
-    balance,
-    currency = "USD"
-  ) => {
-
-    const number =
-      Number(balance);
-
-    if (!Number.isFinite(number)) {
-      return "—";
-    }
-
-    return (
-      currency +
-      " " +
-      number.toFixed(2)
-    );
-  };
-
-
-  const updateMarketDisplay = () => {
-
-    setAll(
-      "[data-market]",
-      state.symbolName
-    );
-
-    setAll(
-      "[data-analysis-market]",
-      state.symbolName
-    );
-  };
-
-
-  /* =========================================================
-     CHART
-  ========================================================= */
-
-  const updateChart = () => {
-
-    const line =
-      one("[data-live-line]");
-
-    if (
-      !line ||
-      state.prices.length < 2
-    ) {
-      return;
-    }
-
-    const width = 1000;
-    const height = 400;
-    const padding = 20;
-
-    const values =
-      state.prices.slice(-60);
-
-    const min =
-      Math.min(...values);
-
-    const max =
-      Math.max(...values);
-
-    const range =
-      max - min || 0.00001;
-
-    const points =
-      values
-        .map((value, index) => {
-
-          const x =
-            padding +
-            (
-              index /
-              Math.max(
-                values.length - 1,
-                1
-              )
-            ) *
-            (
-              width -
-              padding * 2
-            );
-
-          const y =
-            height -
-            padding -
-            (
-              (
-                value - min
-              ) /
-              range
-            ) *
-            (
-              height -
-              padding * 2
-            );
-
-          return (
-            x.toFixed(1) +
-            "," +
-            y.toFixed(1)
-          );
-        })
-        .join(" ");
-
-    line.setAttribute(
-      "points",
-      points
-    );
-
-    const axis =
-      all(".chart-axis span");
-
-    if (axis.length >= 5) {
-
-      axis.forEach(
-        (element, index) => {
-
-          const value =
-            max -
-            (
-              (
-                max - min
-              ) / 4
-            ) *
-            index;
-
-          element.textContent =
-            formatPrice(value);
-        }
-      );
-    }
-  };
-
-
-  /* =========================================================
-     ANALYSIS
-  ========================================================= */
-
-  const updateAnalysis = () => {
-
-    if (
-      state.prices.length < 5
-    ) {
-      return;
-    }
-
-    const recent =
-      state.prices.slice(-5);
-
-    const first =
-      recent[0];
-
-    const last =
-      recent[recent.length - 1];
-
-    const difference =
-      last - first;
-
-    let trend = "NEUTRAL";
-    let momentum = "LOW";
-    let direction = "—";
-    let signal = "WAIT";
-
-    if (difference > 0) {
-
-      trend = "BULLISH";
-      momentum = "POSITIVE";
-      direction = "UP";
-
-      if (state.prices.length >= 10) {
-        signal = "CALL";
-      }
-    }
-
-    if (difference < 0) {
-
-      trend = "BEARISH";
-      momentum = "NEGATIVE";
-      direction = "DOWN";
-
-      if (state.prices.length >= 10) {
-        signal = "PUT";
-      }
-    }
-
-
-    setAll(
-      "[data-trend]",
-      trend
-    );
-
-    setAll(
-      "[data-momentum]",
-      momentum
-    );
-
-    setAll(
-      "[data-direction]",
-      direction
-    );
-
-    setAll(
-      "[data-signal]",
-      signal
-    );
-
-
-    all("[data-signal]").forEach(
-      (element) => {
-
-        element.classList.remove(
-          "wait",
-          "buy",
-          "sell"
-        );
-
-        if (signal === "CALL") {
-
-          element.classList.add(
-            "buy"
-          );
-
-        } else if (signal === "PUT") {
-
-          element.classList.add(
-            "sell"
-          );
-
-        } else {
-
-          element.classList.add(
-            "wait"
-          );
-        }
-      }
-    );
-
-
-    if (state.price !== null) {
-
-      const movement =
-        Math.abs(
-          difference ||
-          state.price * 0.001
-        );
-
-      setAll(
-        "[data-entry]",
-        formatPrice(state.price)
-      );
-
-      setAll(
-        "[data-stop]",
-        formatPrice(
-          state.price - movement
-        )
-      );
-
-      setAll(
-        "[data-target]",
-        formatPrice(
-          state.price + movement
-        )
-      );
-
-
-      /* AI DISPLAY */
-
-      setAll(
-        "[data-ai-bias]",
-        trend === "NEUTRAL"
-          ? "WAIT"
-          : trend
-      );
-
-      setAll(
-        "[data-ai-confidence]",
-        state.prices.length >= 20
-          ? "HIGH"
-          : "BUILDING"
-      );
-
-      setAll(
-        "[data-ai-setup]",
-        signal
-      );
-
-      const aiMessage =
-        one("[data-ai-message]");
-
-      if (aiMessage) {
-
-        aiMessage.textContent =
-          signal === "CALL"
-            ? "Bullish market structure detected."
-            : signal === "PUT"
-            ? "Bearish market structure detected."
-            : "Waiting for a clearer market setup.";
-      }
-    }
-  };
-
-
-  /* =========================================================
-     PRICE
-  ========================================================= */
-
-  const updatePrice = (price) => {
-
-    const numericPrice =
-      Number(price);
-
-    if (
-      !Number.isFinite(
-        numericPrice
-      )
-    ) {
-      return;
-    }
-
-    state.previousPrice =
-      state.price;
-
-    state.price =
-      numericPrice;
-
-    state.prices.push(
-      numericPrice
-    );
-
-    if (
-      state.prices.length > 100
-    ) {
-      state.prices.shift();
-    }
-
-
-    setAll(
-      "[data-price]",
-      formatPrice(
-        numericPrice
-      )
-    );
-
-
-    if (
-      state.previousPrice !== null &&
-      state.previousPrice !== 0
-    ) {
-
-      const change =
-        (
-          (
-            numericPrice -
-            state.previousPrice
-          ) /
-          state.previousPrice
-        ) *
-        100;
-
-      const move =
-        (
-          change >= 0
-            ? "+"
-            : ""
-        ) +
-        change.toFixed(3) +
-        "%";
-
-      setAll(
-        "[data-move]",
-        move
-      );
-
-
-      all("[data-move]").forEach(
-        (element) => {
-
-          element.classList.remove(
-            "positive",
-            "negative"
-          );
-
-          element.classList.add(
-            change >= 0
-              ? "positive"
-              : "negative"
-          );
-        }
-      );
-    }
-
-
-    updateChart();
-    updateAnalysis();
-
-    setStatus("LIVE");
-  };
-
-
-  /* =========================================================
-     RESET
-  ========================================================= */
-
-  const resetMarketState = () => {
-
-    state.price = null;
-    state.previousPrice = null;
-    state.prices = [];
-    state.symbol = null;
-
-    setAll(
-      "[data-price]",
-      "—"
-    );
-
-    setAll(
-      "[data-move]",
-      "—"
-    );
-
-    setAll(
-      "[data-signal]",
-      "WAIT"
-    );
-
-    setAll(
-      "[data-trend]",
-      "WAIT"
-    );
-
-    setAll(
-      "[data-momentum]",
-      "WAIT"
-    );
-
-    setAll(
-      "[data-direction]",
-      "—"
-    );
-
-    setAll(
-      "[data-entry]",
-      "—"
-    );
-
-    setAll(
-      "[data-stop]",
-      "—"
-    );
-
-    setAll(
-      "[data-target]",
-      "—"
-    );
-
-    const line =
-      one("[data-live-line]");
-
-    if (line) {
-      line.setAttribute(
-        "points",
-        ""
-      );
-    }
-  };
-
-
-  /* =========================================================
-     FIND SYMBOL
-  ========================================================= */
-
-  const findSymbol = (
-    requestedMarket
-  ) => {
-
-    const wanted =
-      normaliseMarketName(
-        requestedMarket
-      )
-      .replace(
-        /[^A-Za-z]/g,
-        ""
-      )
-      .toUpperCase();
-
-
-    if (
-      !Array.isArray(
-        state.activeSymbols
-      )
-    ) {
-      return null;
-    }
-
-
-    const byName =
-      state.activeSymbols.find(
-        (item) => {
-
-          const name =
-            String(
-              item.underlying_symbol_name ||
-              item.display_name ||
-              ""
-            )
-            .replace(
-              /[^A-Za-z]/g,
-              ""
-            )
-            .toUpperCase();
-
-          return name === wanted;
-        }
-      );
-
-
-    if (
-      byName &&
-      byName.underlying_symbol
-    ) {
-      return byName;
-    }
-
-
-    const bySymbol =
-      state.activeSymbols.find(
-        (item) => {
-
-          const symbol =
-            String(
-              item.underlying_symbol ||
-              ""
-            )
-            .replace(
-              /^frx/i,
-              ""
-            )
-            .replace(
-              /[^A-Za-z]/g,
-              ""
-            )
-            .toUpperCase();
-
-          return symbol === wanted;
-        }
-      );
-
-
-    if (
-      bySymbol &&
-      bySymbol.underlying_symbol
-    ) {
-      return bySymbol;
-    }
-
-
-    return null;
-  };
-
-
-  /* =========================================================
-     ACTIVE SYMBOLS
-  ========================================================= */
-
-  const requestActiveSymbols = () => {
-
-    if (
-      !state.socket ||
-      state.socket.readyState !==
-      WebSocket.OPEN
-    ) {
-      return;
-    }
-
-    setStatus(
-      "LOADING MARKETS"
-    );
-
-    state.socket.send(
-      JSON.stringify({
-        active_symbols: "brief",
-        req_id: ++state.requestId
-      })
-    );
-  };
-
-
-  /* =========================================================
-     SUBSCRIBE
-  ========================================================= */
-
-  const subscribeToMarket = () => {
-
-    if (
-      !state.socket ||
-      state.socket.readyState !==
-      WebSocket.OPEN
-    ) {
-      return;
-    }
-
-
-    const market =
-      findSymbol(
-        state.requestedMarket
-      );
-
-
-    if (!market) {
-
-      console.error(
-        "MARKET NOT FOUND:",
-        state.requestedMarket
-      );
-
-      setStatus(
-        "MARKET UNAVAILABLE"
-      );
-
-      return;
-    }
-
-
-    const derivSymbol =
-      market.underlying_symbol;
-
-
-    if (
-      typeof derivSymbol !==
-      "string" ||
-      !derivSymbol.trim()
-    ) {
-
-      setStatus(
-        "SYMBOL ERROR"
-      );
-
-      return;
-    }
-
-
-    state.symbol =
-      derivSymbol.trim();
-
-    state.symbolName =
-      market.underlying_symbol_name ||
-      state.requestedMarket;
-
-
-    updateMarketDisplay();
-
-
-    try {
-
-      state.socket.send(
-        JSON.stringify({
-          forget_all: "ticks",
-          req_id: ++state.requestId
-        })
-      );
-
-    } catch (error) {
-
-      console.warn(
-        "FORGET TICKS FAILED:",
-        error
-      );
-    }
-
-
-    try {
-
-      state.socket.send(
-        JSON.stringify({
-          ticks: state.symbol,
-          subscribe: 1,
-          req_id: ++state.requestId
-        })
-      );
-
-      setStatus(
-        "WAITING FOR DATA"
-      );
-
-    } catch (error) {
-
-      console.error(
-        "TICK SUBSCRIPTION FAILED:",
-        error
-      );
-
-      setStatus(
-        "MARKET ERROR"
-      );
-    }
-  };
-
-
-  /* =========================================================
-     CHANGE MARKET
-  ========================================================= */
-
-  const setMarket = (value) => {
-
-    const marketName =
-      normaliseMarketName(
-        value
-      );
-
-    if (!marketName) {
-      return;
-    }
-
-    state.requestedMarket =
-      marketName;
-
-    state.symbolName =
-      marketName;
-
-    resetMarketState();
-    updateMarketDisplay();
-
-
-    all("[data-symbol]").forEach(
-      (button) => {
-
-        const buttonMarket =
-          normaliseMarketName(
-            button.dataset.symbol ||
-            button.textContent
-          );
-
-        button.classList.toggle(
-          "active",
-          buttonMarket === marketName
-        );
-      }
-    );
-
-
-    if (
-      state.connected &&
-      state.activeSymbols.length
-    ) {
-      subscribeToMarket();
-    }
-  };
-
-
-  /* =========================================================
-     MARKET BUTTONS
-  ========================================================= */
-
-  const setupMarketButtons = () => {
-
-    all("[data-symbol]").forEach(
-      (button) => {
-
-        button.addEventListener(
-          "click",
-          () => {
-
-            setMarket(
-              button.dataset.symbol ||
-              button.textContent
-            );
-          }
-        );
-      }
-    );
-  };
-
-
-  /* =========================================================
-     TIMEFRAMES
-  ========================================================= */
-
-  const setupTimeframes = () => {
-
-    all("[data-timeframe]").forEach(
-      (button) => {
-
-        button.addEventListener(
-          "click",
-          () => {
-
-            all("[data-timeframe]").forEach(
-              (item) => {
-                item.classList.remove(
-                  "active"
-                );
-              }
-            );
-
-            button.classList.add(
-              "active"
-            );
-          }
-        );
-      }
-    );
-  };
-
-
-  /* =========================================================
+  /* =====================================================
      AUTH UI
-  ========================================================= */
+  ====================================================== */
 
-  const showLoggedInUI = () => {
+  function setLoggedOutUI() {
+
+    state.authenticated = false;
+
+    show(el.loggedOutActions);
+    show(el.loggedOutNavigation);
+
+    hide(el.loggedInNavigation);
+    hide(el.accountPanel);
+    hide(el.tradingWorkspace);
+
+    show(el.footerLogin);
+    show(el.footerSignup);
+    hide(el.footerAccount);
+
+    if (el.tradeMessage) {
+      el.tradeMessage.textContent =
+        "LOG IN TO TRADE";
+    }
+
+  }
+
+
+  function setLoggedInUI() {
 
     state.authenticated = true;
 
+    /*
+      IMPORTANT:
+      LOGIN + CREATE ACCOUNT are completely removed
+      from the visible header after authentication.
+    */
 
-    const loggedOut =
-      one("#logged-out-actions");
+    hide(el.loggedOutActions);
+    hide(el.loggedOutNavigation);
 
-    const accountPanel =
-      one("#account-panel");
+    show(el.loggedInNavigation);
+    show(el.accountPanel);
+    show(el.tradingWorkspace);
 
-    const navigation =
-      one("#logged-in-navigation");
+    hide(el.footerLogin);
+    hide(el.footerSignup);
+    show(el.footerAccount);
 
-    const workspace =
-      one("#authenticated-workspace");
-
-    const loggedOutMarket =
-      one("#logged-out-market");
-
-
-    if (loggedOut) {
-      loggedOut.hidden = true;
-      loggedOut.style.display = "none";
+    if (el.tradeMessage) {
+      el.tradeMessage.textContent =
+        "READY";
     }
 
+  }
 
-    if (accountPanel) {
-      accountPanel.hidden = false;
-      accountPanel.style.display = "";
-    }
 
+  /* =====================================================
+     SESSION CHECK
+  ====================================================== */
 
-    if (navigation) {
-      navigation.hidden = false;
-      navigation.style.display = "flex";
-    }
-
-
-    if (workspace) {
-      workspace.hidden = false;
-      workspace.style.display = "";
-    }
-
-
-    if (loggedOutMarket) {
-      loggedOutMarket.hidden = true;
-      loggedOutMarket.style.display = "none";
-    }
-
-
-    console.log(
-      "UI: LOGGED IN"
-    );
-  };
-
-
-  const showLoggedOutUI = () => {
-
-    state.authenticated = false;
-    state.accounts = [];
-    state.selectedAccount = null;
-
-
-    const loggedOut =
-      one("#logged-out-actions");
-
-    const accountPanel =
-      one("#account-panel");
-
-    const navigation =
-      one("#logged-in-navigation");
-
-    const workspace =
-      one("#authenticated-workspace");
-
-    const loggedOutMarket =
-      one("#logged-out-market");
-
-
-    if (loggedOut) {
-      loggedOut.hidden = false;
-      loggedOut.style.display = "flex";
-    }
-
-
-    if (accountPanel) {
-      accountPanel.hidden = true;
-      accountPanel.style.display = "none";
-    }
-
-
-    if (navigation) {
-      navigation.hidden = true;
-      navigation.style.display = "none";
-    }
-
-
-    if (workspace) {
-      workspace.hidden = true;
-      workspace.style.display = "none";
-    }
-
-
-    if (loggedOutMarket) {
-      loggedOutMarket.hidden = false;
-      loggedOutMarket.style.display = "";
-    }
-
-
-    const tradeAccount =
-      one("#trade-account");
-
-    if (tradeAccount) {
-      tradeAccount.hidden = true;
-    }
-
-
-    console.log(
-      "UI: LOGGED OUT"
-    );
-  };
-
-
-  /* =========================================================
-     ACCOUNT DISPLAY
-  ========================================================= */
-
-  const updateAccountDisplay = () => {
-
-    const select =
-      one("#account-select");
-
-    const balance =
-      one("#account-balance");
-
-    const tradeAccount =
-      one("#trade-account");
-
-    const tradeType =
-      one("#trade-account-type");
-
-    const tradeBalance =
-      one("#trade-account-balance");
-
-
-    if (!state.selectedAccount) {
-
-      if (balance) {
-        balance.textContent = "—";
-      }
-
-      if (tradeAccount) {
-        tradeAccount.hidden = true;
-      }
-
-      return;
-    }
-
-
-    const account =
-      state.selectedAccount;
-
-
-    const type =
-      String(
-        account.account_type ||
-        ""
-      ).toLowerCase();
-
-
-    const label =
-      type === "real"
-        ? "REAL"
-        : "DEMO";
-
-
-    const money =
-      formatMoney(
-        account.balance,
-        account.currency ||
-        "USD"
-      );
-
-
-    if (select) {
-      select.value =
-        account.account_id;
-    }
-
-
-    if (balance) {
-      balance.textContent =
-        money;
-    }
-
-
-    if (tradeAccount) {
-      tradeAccount.hidden = false;
-    }
-
-
-    if (tradeType) {
-      tradeType.textContent =
-        label;
-    }
-
-
-    if (tradeBalance) {
-      tradeBalance.textContent =
-        money;
-    }
-  };
-
-
-  /* =========================================================
-     LOAD ACCOUNTS
-  ========================================================= */
-
-  const loadAccounts = async () => {
-
-    try {
-
-      const response =
-        await fetch(
-          "/api/deriv/accounts",
-          {
-            method: "GET",
-            credentials: "include",
-            cache: "no-store"
-          }
-        );
-
-
-      if (response.status === 401) {
-
-        showLoggedOutUI();
-
-        return;
-      }
-
-
-      if (!response.ok) {
-
-        throw new Error(
-          "Accounts request failed: " +
-          response.status
-        );
-      }
-
-
-      const data =
-        await response.json();
-
-
-      const accounts =
-        Array.isArray(
-          data.accounts
-        )
-          ? data.accounts
-          : [];
-
-
-      state.accounts =
-        accounts;
-
-
-      const select =
-        one("#account-select");
-
-
-      if (select) {
-
-        select.innerHTML = "";
-
-
-        accounts.forEach(
-          (account) => {
-
-            const option =
-              document.createElement(
-                "option"
-              );
-
-
-            const type =
-              String(
-                account.account_type ||
-                ""
-              ).toLowerCase();
-
-
-            const label =
-              type === "real"
-                ? "REAL"
-                : "DEMO";
-
-
-            option.value =
-              account.account_id;
-
-
-            option.textContent =
-              label +
-              " — " +
-              formatMoney(
-                account.balance,
-                account.currency ||
-                "USD"
-              );
-
-
-            select.appendChild(
-              option
-            );
-          }
-        );
-      }
-
-
-      if (!accounts.length) {
-
-        setTradeMessage(
-          "NO DERIV ACCOUNTS FOUND"
-        );
-
-        return;
-      }
-
-
-      let preferred =
-        accounts.find(
-          (account) =>
-            String(
-              account.account_type ||
-              ""
-            ).toLowerCase() ===
-            "real"
-        );
-
-
-      if (!preferred) {
-
-        preferred =
-          accounts.find(
-            (account) =>
-              String(
-                account.account_type ||
-                ""
-              ).toLowerCase() ===
-              "demo"
-          );
-      }
-
-
-      state.selectedAccount =
-        preferred ||
-        accounts[0];
-
-
-      updateAccountDisplay();
-
-
-      setTradeMessage(
-        "ACCOUNT READY"
-      );
-
-
-    } catch (error) {
-
-      console.error(
-        "ACCOUNT LOAD ERROR:",
-        error
-      );
-
-      setTradeMessage(
-        "ACCOUNT INFORMATION UNAVAILABLE"
-      );
-    }
-  };
-
-
-  /* =========================================================
-     ACCOUNT SELECTOR
-  ========================================================= */
-
-  const setupAccountSelector = () => {
-
-    const select =
-      one("#account-select");
-
-    if (!select) {
-      return;
-    }
-
-
-    select.addEventListener(
-      "change",
-      () => {
-
-        const account =
-          state.accounts.find(
-            (item) =>
-              String(
-                item.account_id
-              ) ===
-              String(
-                select.value
-              )
-          );
-
-
-        if (!account) {
-          return;
-        }
-
-
-        state.selectedAccount =
-          account;
-
-
-        updateAccountDisplay();
-
-
-        const type =
-          String(
-            account.account_type ||
-            ""
-          ).toUpperCase();
-
-
-        setTradeMessage(
-          type +
-          " ACCOUNT SELECTED"
-        );
-      }
-    );
-  };
-
-
-  /* =========================================================
-     SESSION
-  ========================================================= */
-
-  const checkSession = async () => {
+  async function checkSession() {
 
     try {
 
@@ -1431,461 +325,671 @@ document.addEventListener("DOMContentLoaded", () => {
           }
         );
 
-
       if (!response.ok) {
-        throw new Error(
-          "Session request failed"
-        );
+        setLoggedOutUI();
+        return;
       }
-
 
       const data =
         await response.json();
-
 
       if (
         data &&
         data.authenticated === true
       ) {
 
-        state.authenticated =
-          true;
-
-        state.sessionExpiresAt =
-          data.expiresAt ||
-          null;
-
-
-        showLoggedInUI();
-
+        setLoggedInUI();
 
         await loadAccounts();
 
+      } else {
 
-        return true;
+        setLoggedOutUI();
+
       }
-
-
-      showLoggedOutUI();
-
-
-      return false;
-
 
     } catch (error) {
 
       console.error(
-        "SESSION ERROR:",
+        "SESSION CHECK ERROR:",
         error
       );
 
-      showLoggedOutUI();
+      setLoggedOutUI();
 
-      return false;
     }
-  };
+
+  }
 
 
-  /* =========================================================
-     LOGIN
-  ========================================================= */
+  /* =====================================================
+     ACCOUNTS
+  ====================================================== */
 
-  const goToLogin = () => {
-
-    window.location.href =
-      "/api/deriv/login";
-  };
-
-
-  /* =========================================================
-     TRADING
-  ========================================================= */
-
-  const handleTradeAttempt = (
-    side,
-    stakeInput,
-    contractInput
-  ) => {
+  async function loadAccounts() {
 
     if (!state.authenticated) {
-
-      setTradeMessage(
-        "LOGIN REQUIRED"
-      );
-
-      goToLogin();
-
       return;
     }
-
-
-    const stakeValue =
-      Number(
-        stakeInput
-          ? stakeInput.value
-          : 0
-      );
-
-
-    const contractType =
-      contractInput
-        ? contractInput.value
-        : "CALL";
-
-
-    if (
-      !Number.isFinite(
-        stakeValue
-      ) ||
-      stakeValue <= 0
-    ) {
-
-      setTradeMessage(
-        "ENTER A VALID STAKE"
-      );
-
-      return;
-    }
-
-
-    if (!state.symbol) {
-
-      setTradeMessage(
-        "MARKET DATA NOT READY"
-      );
-
-      return;
-    }
-
-
-    if (!state.selectedAccount) {
-
-      setTradeMessage(
-        "SELECT AN ACCOUNT"
-      );
-
-      return;
-    }
-
-
-    const accountType =
-      String(
-        state.selectedAccount.account_type ||
-        ""
-      ).toUpperCase();
-
-
-    console.log(
-      "TRADE REQUEST:",
-      {
-        side,
-        stake: stakeValue,
-        contract: contractType,
-        symbol: state.symbol,
-        accountId:
-          state.selectedAccount.account_id
-      }
-    );
-
-
-    setTradeMessage(
-      accountType +
-      " ACCOUNT — " +
-      side +
-      " READY"
-    );
-
-
-    setAll(
-      "[data-risk-stake]",
-      formatMoney(
-        stakeValue,
-        "USD"
-      )
-    );
-  };
-
-
-  const setupTradingButtons = () => {
-
-    const buy =
-      one("#buy-button");
-
-    const sell =
-      one("#sell-button");
-
-    const stake =
-      one("#stake");
-
-    const contract =
-      one("#contract-type");
-
-
-    if (buy) {
-
-      buy.addEventListener(
-        "click",
-        () => {
-
-          handleTradeAttempt(
-            "BUY",
-            stake,
-            contract
-          );
-        }
-      );
-    }
-
-
-    if (sell) {
-
-      sell.addEventListener(
-        "click",
-        () => {
-
-          handleTradeAttempt(
-            "SELL",
-            stake,
-            contract
-          );
-        }
-      );
-    }
-  };
-
-
-  /* =========================================================
-     BOT UI
-  ========================================================= */
-
-  const setupBotBuilder = () => {
-
-    const button =
-      one("#create-bot-button");
-
-    const message =
-      one("#bot-message");
-
-    if (!button) {
-      return;
-    }
-
-
-    button.addEventListener(
-      "click",
-      () => {
-
-        if (!state.authenticated) {
-          goToLogin();
-          return;
-        }
-
-        const name =
-          one("#bot-name")?.value.trim();
-
-        const strategy =
-          one("#bot-strategy")?.value;
-
-        if (!name) {
-
-          if (message) {
-            message.textContent =
-              "ENTER BOT NAME";
-          }
-
-          return;
-        }
-
-
-        if (message) {
-          message.textContent =
-            `${name} — ${strategy.toUpperCase()} BOT READY`;
-        }
-      }
-    );
-  };
-
-
-  /* =========================================================
-     BULK TRADER
-  ========================================================= */
-
-  const setupBulkTrader = () => {
-
-    const button =
-      one("#bulk-trade-button");
-
-    const message =
-      one("#bulk-message");
-
-    if (!button) {
-      return;
-    }
-
-
-    button.addEventListener(
-      "click",
-      () => {
-
-        if (!state.authenticated) {
-          goToLogin();
-          return;
-        }
-
-
-        const stake =
-          Number(
-            one("#bulk-stake")?.value
-          );
-
-        const count =
-          Number(
-            one("#bulk-count")?.value
-          );
-
-
-        if (
-          !Number.isFinite(stake) ||
-          stake <= 0 ||
-          !Number.isFinite(count) ||
-          count < 1
-        ) {
-
-          if (message) {
-            message.textContent =
-              "ENTER VALID BULK SETTINGS";
-          }
-
-          return;
-        }
-
-
-        if (message) {
-
-          message.textContent =
-            `${count} TRADES PREPARED`;
-        }
-      }
-    );
-  };
-
-
-  /* =========================================================
-     DERIV MESSAGE
-  ========================================================= */
-
-  const handleMessage = (event) => {
-
-    let data;
-
 
     try {
 
-      data =
-        JSON.parse(
-          event.data
+      const response =
+        await fetch(
+          "/api/deriv/accounts",
+          {
+            credentials: "include",
+            cache: "no-store"
+          }
         );
 
-    } catch {
-      return;
-    }
+      if (!response.ok) {
 
+        console.error(
+          "ACCOUNT REQUEST FAILED:",
+          response.status
+        );
 
-    if (data.error) {
-
-      console.error(
-        "DERIV ERROR:",
-        data.error
-      );
-
-      setStatus(
-        "MARKET ERROR"
-      );
-
-      return;
-    }
-
-
-    if (
-      data.msg_type ===
-      "active_symbols"
-    ) {
-
-      state.activeSymbols =
-        Array.isArray(
-          data.active_symbols
-        )
-          ? data.active_symbols
-          : [];
-
-
-      subscribeToMarket();
-
-      return;
-    }
-
-
-    if (
-      data.msg_type ===
-      "tick" &&
-      data.tick
-    ) {
-
-      const tick =
-        data.tick;
-
-
-      if (
-        state.symbol &&
-        tick.symbol &&
-        String(
-          tick.symbol
-        ) !==
-        String(
-          state.symbol
-        )
-      ) {
         return;
       }
 
+      const data =
+        await response.json();
 
-      if (
-        tick.quote !==
-        undefined
-      ) {
+      const accounts =
+        Array.isArray(data.accounts)
+          ? data.accounts
+          : [];
 
-        updatePrice(
-          tick.quote
-        );
-      }
+      state.accounts =
+        accounts;
+
+      renderAccounts();
+
+    } catch (error) {
+
+      console.error(
+        "ACCOUNT LOAD ERROR:",
+        error
+      );
+
     }
+
+  }
+
+
+  function getAccountId(account) {
+
+    return String(
+      account?.id ||
+      account?.account_id ||
+      account?.loginid ||
+      account?.loginId ||
+      account?.accountId ||
+      ""
+    );
+
+  }
+
+
+  function getAccountType(account) {
+
+    const type =
+      String(
+        account?.type ||
+        account?.account_type ||
+        account?.loginid ||
+        ""
+      ).toUpperCase();
+
+    if (
+      type.includes("REAL")
+    ) {
+      return "REAL";
+    }
+
+    if (
+      type.includes("DEMO")
+    ) {
+      return "DEMO";
+    }
+
+    if (
+      String(
+        account?.is_virtual
+      ) === "true"
+    ) {
+      return "DEMO";
+    }
+
+    return type || "ACCOUNT";
+
+  }
+
+
+  function getAccountBalance(account) {
+
+    return (
+      account?.balance ??
+      account?.available_balance ??
+      account?.equity ??
+      account?.amount ??
+      null
+    );
+
+  }
+
+
+  function getAccountCurrency(account) {
+
+    return (
+      account?.currency ||
+      "USD"
+    );
+
+  }
+
+
+  function renderAccounts() {
+
+    if (!el.accountSelect) {
+      return;
+    }
+
+    el.accountSelect.innerHTML = "";
+
+    if (!state.accounts.length) {
+
+      const option =
+        document.createElement("option");
+
+      option.value = "";
+
+      option.textContent =
+        "NO ACCOUNTS";
+
+      el.accountSelect.appendChild(
+        option
+      );
+
+      setText(
+        el.accountBalance,
+        "—"
+      );
+
+      return;
+    }
+
+
+    state.accounts.forEach(
+      (account, index) => {
+
+        const option =
+          document.createElement("option");
+
+        const id =
+          getAccountId(account);
+
+        const type =
+          getAccountType(account);
+
+        const currency =
+          getAccountCurrency(account);
+
+        const balance =
+          getAccountBalance(account);
+
+        option.value = id;
+
+        option.textContent =
+          `${type} — ${currency} ${
+            balance !== null
+              ? Number(balance).toFixed(2)
+              : "—"
+          }`;
+
+        if (
+          state.selectedAccount &&
+          id ===
+            getAccountId(
+              state.selectedAccount
+            )
+        ) {
+
+          option.selected =
+            true;
+
+        } else if (
+          !state.selectedAccount &&
+          index === 0
+        ) {
+
+          option.selected =
+            true;
+
+          state.selectedAccount =
+            account;
+
+        }
+
+        el.accountSelect.appendChild(
+          option
+        );
+
+      }
+    );
+
+    updateSelectedAccount();
+
+  }
+
+
+  function updateSelectedAccount() {
+
+    const account =
+      state.selectedAccount;
+
+    if (!account) {
+      return;
+    }
+
+    const type =
+      getAccountType(account);
+
+    const balance =
+      getAccountBalance(account);
+
+    const currency =
+      getAccountCurrency(account);
+
+    setText(
+      el.accountBalance,
+      formatMoney(
+        balance,
+        currency
+      )
+    );
+
+    setText(
+      el.tradeAccountType,
+      type
+    );
+
+    setText(
+      el.tradeAccountBalance,
+      formatMoney(
+        balance,
+        currency
+      )
+    );
+
+  }
+
+
+  if (el.accountSelect) {
+
+    el.accountSelect.addEventListener(
+      "change",
+      () => {
+
+        const id =
+          el.accountSelect.value;
+
+        state.selectedAccount =
+          state.accounts.find(
+            account =>
+              getAccountId(
+                account
+              ) === id
+          ) || null;
+
+        updateSelectedAccount();
+
+      }
+    );
+
+  }
+
+
+  /* =====================================================
+     MARKET SYMBOLS
+  ====================================================== */
+
+  const symbolMap = {
+
+    "EUR/USD": "frxEURUSD",
+
+    "GBP/USD": "frxGBPUSD",
+
+    "USD/JPY": "frxUSDJPY",
+
+    "AUD/USD": "frxAUDUSD",
+
+    "USD/CAD": "frxUSDCAD",
+
+    "USD/CHF": "frxUSDCHF"
+
   };
 
 
-  /* =========================================================
-     RECONNECT
-  ========================================================= */
-
-  const scheduleReconnect = () => {
+  function selectMarket(symbol) {
 
     if (
-      state.destroyed ||
+      !symbolMap[symbol]
+    ) {
+      return;
+    }
+
+    state.symbol =
+      symbol;
+
+    state.price =
+      null;
+
+    state.previousPrice =
+      null;
+
+    state.prices =
+      [];
+
+    setText(
+      el.market,
+      symbol
+    );
+
+    el.analysisMarkets.forEach(
+      item => {
+        item.textContent =
+          symbol;
+      }
+    );
+
+    setText(
+      el.price,
+      "—"
+    );
+
+    setText(
+      el.move,
+      "—"
+    );
+
+    document
+      .querySelectorAll(
+        ".market-item"
+      )
+      .forEach(button => {
+
+        button.classList.toggle(
+          "active",
+          button.dataset.symbol ===
+            symbol
+        );
+
+      });
+
+    updateAnalysis();
+
+    connectMarket();
+
+  }
+
+
+  document
+    .querySelectorAll(
+      ".market-item"
+    )
+    .forEach(button => {
+
+      button.addEventListener(
+        "click",
+        () => {
+
+          selectMarket(
+            button.dataset.symbol
+          );
+
+        }
+      );
+
+    });
+
+
+  /* =====================================================
+     MARKET WEBSOCKET
+  ====================================================== */
+
+  function closeSocket() {
+
+    if (
+      state.websocket
+    ) {
+
+      try {
+        state.websocket.close();
+      } catch {}
+
+      state.websocket =
+        null;
+
+    }
+
+  }
+
+
+  function websocketUrl() {
+
+    return (
+      "wss://ws.derivws.com/websockets/v3"
+    );
+
+  }
+
+
+  function connectMarket() {
+
+    closeSocket();
+
+    if (state.reconnectTimer) {
+
+      clearTimeout(
+        state.reconnectTimer
+      );
+
+      state.reconnectTimer =
+        null;
+
+    }
+
+    setText(
+      el.marketStatus,
+      "CONNECTING"
+    );
+
+    if (el.marketStatus) {
+      el.marketStatus.classList.remove(
+        "connected"
+      );
+    }
+
+    try {
+
+      const ws =
+        new WebSocket(
+          websocketUrl()
+        );
+
+      state.websocket =
+        ws;
+
+
+      ws.addEventListener(
+        "open",
+        () => {
+
+          state.reconnectAttempts =
+            0;
+
+          setText(
+            el.marketStatus,
+            "CONNECTED"
+          );
+
+          if (el.marketStatus) {
+            el.marketStatus.classList.add(
+              "connected"
+            );
+          }
+
+          setText(
+            el.chartMessage,
+            "LIVE"
+          );
+
+          ws.send(
+            JSON.stringify({
+              ticks:
+                symbolMap[
+                  state.symbol
+                ],
+              subscribe: 1
+            })
+          );
+
+        }
+      );
+
+
+      ws.addEventListener(
+        "message",
+        event => {
+
+          try {
+
+            const data =
+              JSON.parse(
+                event.data
+              );
+
+            if (
+              data.error
+            ) {
+
+              console.error(
+                "MARKET ERROR:",
+                data.error
+              );
+
+              setText(
+                el.marketStatus,
+                "MARKET ERROR"
+              );
+
+              return;
+            }
+
+            if (
+              data.tick
+            ) {
+
+              const quote =
+                Number(
+                  data.tick.quote
+                );
+
+              if (
+                Number.isFinite(
+                  quote
+                )
+              ) {
+
+                updatePrice(
+                  quote
+                );
+
+              }
+
+            }
+
+          } catch (error) {
+
+            console.error(
+              "TICK PARSE ERROR:",
+              error
+            );
+
+          }
+
+        }
+      );
+
+
+      ws.addEventListener(
+        "close",
+        () => {
+
+          setText(
+            el.marketStatus,
+            "DISCONNECTED"
+          );
+
+          scheduleReconnect();
+
+        }
+      );
+
+
+      ws.addEventListener(
+        "error",
+        error => {
+
+          console.error(
+            "WEBSOCKET ERROR:",
+            error
+          );
+
+          setText(
+            el.marketStatus,
+            "CONNECTION ERROR"
+          );
+
+        }
+      );
+
+    } catch (error) {
+
+      console.error(
+        "WEBSOCKET CREATE ERROR:",
+        error
+      );
+
+      scheduleReconnect();
+
+    }
+
+  }
+
+
+  function scheduleReconnect() {
+
+    if (
       state.reconnectTimer
     ) {
       return;
     }
 
-
-    state.reconnectAttempts += 1;
-
-
     const delay =
       Math.min(
-        3000 *
-        state.reconnectAttempts,
-        15000
+        30000,
+        2000 *
+          Math.max(
+            1,
+            state.reconnectAttempts + 1
+          )
       );
 
+    state.reconnectAttempts +=
+      1;
 
     state.reconnectTimer =
       setTimeout(
@@ -1894,318 +998,733 @@ document.addEventListener("DOMContentLoaded", () => {
           state.reconnectTimer =
             null;
 
-          connectToDeriv();
+          connectMarket();
 
         },
         delay
       );
-  };
+
+  }
 
 
-  /* =========================================================
-     CONNECT DERIV
-  ========================================================= */
+  /* =====================================================
+     PRICE
+  ====================================================== */
 
-  const connectToDeriv = () => {
+  function updatePrice(price) {
 
-    if (state.destroyed) {
+    state.previousPrice =
+      state.price;
+
+    state.price =
+      price;
+
+    state.prices.push(
+      price
+    );
+
+    if (
+      state.prices.length >
+      80
+    ) {
+
+      state.prices.shift();
+
+    }
+
+    setText(
+      el.price,
+      formatPrice(price)
+    );
+
+    updateMovement();
+
+    drawChart();
+
+    updateAnalysis();
+
+  }
+
+
+  function updateMovement() {
+
+    if (
+      state.price === null ||
+      state.previousPrice === null
+    ) {
+
+      setText(
+        el.move,
+        "—"
+      );
+
       return;
     }
 
+    const difference =
+      state.price -
+      state.previousPrice;
+
+    const percentage =
+      state.previousPrice !== 0
+        ? (
+            difference /
+            state.previousPrice
+          ) * 100
+        : 0;
+
+    const sign =
+      difference >= 0
+        ? "+"
+        : "";
+
+    setText(
+      el.move,
+      `${sign}${percentage.toFixed(3)}%`
+    );
+
+    if (el.move) {
+
+      el.move.classList.toggle(
+        "positive",
+        difference > 0
+      );
+
+      el.move.classList.toggle(
+        "negative",
+        difference < 0
+      );
+
+    }
+
+  }
+
+
+  /* =====================================================
+     CHART
+  ====================================================== */
+
+  function drawChart() {
 
     if (
-      state.socket &&
-      (
-        state.socket.readyState ===
-        WebSocket.OPEN ||
-        state.socket.readyState ===
-        WebSocket.CONNECTING
-      )
+      !el.chartLine ||
+      state.prices.length < 2
     ) {
       return;
     }
 
+    const width =
+      1000;
 
-    setStatus(
-      "CONNECTING"
+    const height =
+      400;
+
+    const padding =
+      20;
+
+    const values =
+      state.prices;
+
+    const min =
+      Math.min(
+        ...values
+      );
+
+    const max =
+      Math.max(
+        ...values
+      );
+
+    const range =
+      max - min || 1;
+
+    const points =
+      values
+        .map(
+          (value, index) => {
+
+            const x =
+              padding +
+              (
+                index /
+                (values.length - 1)
+              ) *
+              (
+                width -
+                padding * 2
+              );
+
+            const y =
+              height -
+              padding -
+              (
+                (
+                  value -
+                  min
+                ) /
+                range
+              ) *
+              (
+                height -
+                padding * 2
+              );
+
+            return `${x.toFixed(2)},${y.toFixed(2)}`;
+
+          }
+        )
+        .join(" ");
+
+    el.chartLine.setAttribute(
+      "points",
+      points
     );
 
+  }
 
-    let socket;
 
+  /* =====================================================
+     ANALYSIS ENGINE
+  ====================================================== */
 
-    try {
+  function updateAnalysis() {
 
-      socket =
-        new WebSocket(
-          DERIV_PUBLIC_WS
-        );
+    if (
+      state.prices.length < 5
+    ) {
 
-    } catch (error) {
-
-      console.error(
-        "WEBSOCKET ERROR:",
-        error
+      setText(
+        el.trend,
+        "WAIT"
       );
 
-      state.connected =
-        false;
-
-      setStatus(
-        "OFFLINE"
+      setText(
+        el.momentum,
+        "WAIT"
       );
 
-      scheduleReconnect();
+      setText(
+        el.direction,
+        "—"
+      );
+
+      setText(
+        el.signal,
+        "WAIT"
+      );
+
+      setText(
+        el.aiBias,
+        "WAIT"
+      );
+
+      setText(
+        el.aiConfidence,
+        "—"
+      );
+
+      setText(
+        el.aiSetup,
+        "NO SETUP"
+      );
+
+      updateLevels();
 
       return;
     }
 
 
-    state.socket =
-      socket;
+    const prices =
+      state.prices;
+
+    const latest =
+      prices[
+        prices.length - 1
+      ];
+
+    const previous =
+      prices[
+        prices.length - 5
+      ];
+
+    const movement =
+      latest -
+      previous;
 
 
-    socket.addEventListener(
-      "open",
-      () => {
+    let trend =
+      "SIDEWAYS";
 
-        if (
-          state.socket !==
-          socket
-        ) {
-          return;
-        }
+    let direction =
+      "NEUTRAL";
+
+    let signal =
+      "WAIT";
 
 
-        state.connected =
-          true;
+    if (
+      movement > 0
+    ) {
 
-        state.reconnectAttempts =
-          0;
+      trend =
+        "BULLISH";
+
+      direction =
+        "UP";
+
+      signal =
+        "CALL";
+
+    } else if (
+      movement < 0
+    ) {
+
+      trend =
+        "BEARISH";
+
+      direction =
+        "DOWN";
+
+      signal =
+        "PUT";
+
+    }
 
 
-        console.log(
-          "DERIV MARKET DATA CONNECTED"
-        );
+    setText(
+      el.trend,
+      trend
+    );
 
+    setText(
+      el.momentum,
+      movement > 0
+        ? "POSITIVE"
+        : movement < 0
+        ? "NEGATIVE"
+        : "NEUTRAL"
+    );
 
-        requestActiveSymbols();
-      }
+    setText(
+      el.direction,
+      direction
+    );
+
+    setText(
+      el.signal,
+      signal
     );
 
 
-    socket.addEventListener(
-      "message",
-      handleMessage
+    setText(
+      el.aiBias,
+      trend
+    );
+
+    setText(
+      el.aiConfidence,
+      `${Math.min(
+        95,
+        55 +
+          Math.round(
+            Math.abs(
+              movement /
+                previous
+            ) *
+              100000
+          )
+      )}%`
+    );
+
+    setText(
+      el.aiSetup,
+      signal === "WAIT"
+        ? "NO SETUP"
+        : `${signal} SETUP`
     );
 
 
-    socket.addEventListener(
-      "error",
-      () => {
+    if (el.aiMessage) {
 
-        state.connected =
-          false;
+      el.aiMessage.textContent =
+        signal === "WAIT"
+          ? "Market conditions are currently neutral. Waiting for confirmation."
+          : `Current market structure suggests a ${trend.toLowerCase()} bias. Confirm risk before execution.`;
 
-        setStatus(
-          "OFFLINE"
-        );
-      }
+    }
+
+
+    updateLevels();
+
+  }
+
+
+  function updateLevels() {
+
+    if (
+      state.price === null
+    ) {
+
+      setText(
+        el.entry,
+        "—"
+      );
+
+      setText(
+        el.stop,
+        "—"
+      );
+
+      setText(
+        el.target,
+        "—"
+      );
+
+      return;
+    }
+
+
+    const price =
+      state.price;
+
+    const decimals =
+      price >= 100
+        ? 3
+        : 5;
+
+    const movement =
+      price *
+      0.001;
+
+
+    setText(
+      el.entry,
+      price.toFixed(
+        decimals
+      )
     );
 
 
-    socket.addEventListener(
-      "close",
-      () => {
-
-        if (
-          state.socket ===
-          socket
-        ) {
-          state.socket =
-            null;
-        }
+    setText(
+      el.stop,
+      (
+        price -
+        movement
+      ).toFixed(
+        decimals
+      )
+    );
 
 
-        state.connected =
-          false;
+    setText(
+      el.target,
+      (
+        price +
+        movement * 2
+      ).toFixed(
+        decimals
+      )
+    );
+
+  }
 
 
-        if (!state.destroyed) {
+  /* =====================================================
+     TIMEFRAMES
+  ====================================================== */
 
-          setStatus(
-            "RECONNECTING"
+  document
+    .querySelectorAll(
+      ".timeframe"
+    )
+    .forEach(button => {
+
+      button.addEventListener(
+        "click",
+        () => {
+
+          document
+            .querySelectorAll(
+              ".timeframe"
+            )
+            .forEach(
+              item =>
+                item.classList.remove(
+                  "active"
+                )
+            );
+
+          button.classList.add(
+            "active"
           );
 
-          scheduleReconnect();
+          state.timeframe =
+            button.dataset.timeframe;
+
         }
+      );
+
+    });
+
+
+  /* =====================================================
+     MANUAL TRADE UI
+  ====================================================== */
+
+  function manualTrade(side) {
+
+    if (
+      !state.authenticated
+    ) {
+
+      if (el.tradeMessage) {
+        el.tradeMessage.textContent =
+          "LOG IN TO TRADE";
+      }
+
+      return;
+
+    }
+
+
+    const stake =
+      Number(
+        el.stake?.value
+      );
+
+    if (
+      !Number.isFinite(
+        stake
+      ) ||
+      stake <= 0
+    ) {
+
+      el.tradeMessage.textContent =
+        "ENTER A VALID STAKE";
+
+      return;
+    }
+
+
+    const contract =
+      el.contract?.value ||
+      "CALL";
+
+
+    /*
+      This UI prepares the trade action.
+      Actual contract execution should remain
+      connected to the authenticated Deriv
+      WebSocket/account execution layer.
+    */
+
+    el.tradeMessage.textContent =
+      `${side} ${contract} — ${stake.toFixed(2)} READY`;
+
+  }
+
+
+  if (el.buy) {
+
+    el.buy.addEventListener(
+      "click",
+      () => manualTrade(
+        "BUY"
+      )
+    );
+
+  }
+
+
+  if (el.sell) {
+
+    el.sell.addEventListener(
+      "click",
+      () => manualTrade(
+        "SELL"
+      )
+    );
+
+  }
+
+
+  /* =====================================================
+     BOT BUILDER
+  ====================================================== */
+
+  if (el.createBot) {
+
+    el.createBot.addEventListener(
+      "click",
+      () => {
+
+        const name =
+          (
+            el.botName?.value ||
+            "Trading Bot"
+          ).trim();
+
+        const strategy =
+          el.botStrategy?.value ||
+          "trend";
+
+        if (el.botStatus) {
+
+          el.botStatus.textContent =
+            "READY";
+
+        }
+
+        if (
+          el.botCurrentStrategy
+        ) {
+
+          el.botCurrentStrategy.textContent =
+            strategy.toUpperCase();
+
+        }
+
+        el.createBot.textContent =
+          "BOT CREATED";
+
+        setTimeout(
+          () => {
+
+            el.createBot.textContent =
+              "CREATE BOT";
+
+          },
+          1500
+        );
+
+        console.log(
+          "BOT CREATED:",
+          {
+            name,
+            strategy
+          }
+        );
+
       }
     );
-  };
+
+  }
 
 
-  /* =========================================================
-     OAUTH RESULT
-  ========================================================= */
+  /* =====================================================
+     BULK TRADER
+  ====================================================== */
 
-  const handleOAuthResult = () => {
+  if (el.bulkExecute) {
+
+    el.bulkExecute.addEventListener(
+      "click",
+      () => {
+
+        const stake =
+          Number(
+            el.bulkStake?.value
+          );
+
+        const count =
+          Number(
+            el.bulkCount?.value
+          );
+
+        const contract =
+          el.bulkContract?.value ||
+          "CALL";
+
+
+        if (
+          !Number.isFinite(
+            stake
+          ) ||
+          stake <= 0
+        ) {
+
+          el.bulkMessage.textContent =
+            "ENTER A VALID STAKE";
+
+          return;
+
+        }
+
+
+        if (
+          !Number.isInteger(
+            count
+          ) ||
+          count < 1 ||
+          count > 50
+        ) {
+
+          el.bulkMessage.textContent =
+            "TRADES MUST BE BETWEEN 1 AND 50";
+
+          return;
+
+        }
+
+
+        el.bulkMessage.textContent =
+          `${count} ${contract} TRADES READY — TOTAL STAKE ${(
+            stake *
+            count
+          ).toFixed(2)}`;
+
+      }
+    );
+
+  }
+
+
+  /* =====================================================
+     OAUTH ERROR
+  ====================================================== */
+
+  function showOAuthError() {
 
     const params =
       new URLSearchParams(
         window.location.search
       );
 
-
-    const oauthError =
+    const error =
       params.get(
         "oauth_error"
       );
 
-
-    if (!oauthError) {
+    if (!error) {
       return;
     }
 
-
     console.error(
       "OAUTH ERROR:",
-      oauthError
+      error
     );
 
+    if (el.marketStatus) {
 
-    const notice =
-      document.createElement(
-        "div"
-      );
+      el.marketStatus.textContent =
+        "LOGIN ERROR";
 
-
-    notice.id =
-      "protraders-notice";
-
-
-    notice.textContent =
-      "Deriv authentication was not completed. Please try again.";
-
-
-    document.body.appendChild(
-      notice
-    );
-
-
-    setTimeout(
-      () => {
-        notice.remove();
-      },
-      6000
-    );
-
-
-    const cleanUrl =
-      window.location.origin +
-      window.location.pathname;
-
-
-    window.history.replaceState(
-      {},
-      document.title,
-      cleanUrl
-    );
-  };
-
-
-  /* =========================================================
-     INITIALISE
-  ========================================================= */
-
-  const initialise = async () => {
-
-    state.requestedMarket =
-      "EUR/USD";
-
-    state.symbolName =
-      "EUR/USD";
-
-
-    updateMarketDisplay();
-
-
-    setAll(
-      "[data-price]",
-      "—"
-    );
-
-    setAll(
-      "[data-move]",
-      "—"
-    );
-
-
-    setupMarketButtons();
-    setupTimeframes();
-    setupTradingButtons();
-    setupAccountSelector();
-    setupBotBuilder();
-    setupBulkTrader();
-
-
-    handleOAuthResult();
-
-
-    /*
-     * THIS IS THE IMPORTANT PART:
-     *
-     * The page checks the server session FIRST.
-     *
-     * If there is no authenticated session,
-     * the complete trading workspace remains hidden.
-     *
-     * If authentication exists,
-     * the logged-in navigation/workspace is revealed.
-     */
-
-    await checkSession();
-
-
-    connectToDeriv();
-  };
-
-
-  /* =========================================================
-     START
-  ========================================================= */
-
-  initialise();
-
-
-  /* =========================================================
-     CLEANUP
-  ========================================================= */
-
-  window.addEventListener(
-    "beforeunload",
-    () => {
-
-      state.destroyed =
-        true;
-
-
-      if (
-        state.reconnectTimer
-      ) {
-
-        clearTimeout(
-          state.reconnectTimer
-        );
-      }
-
-
-      if (state.socket) {
-
-        try {
-          state.socket.close();
-        } catch {}
-      }
     }
-  );
+
+  }
+
+
+  /* =====================================================
+     INITIALIZATION
+  ====================================================== */
+
+  setLoggedOutUI();
+
+  showOAuthError();
+
+  checkSession();
+
+  connectMarket();
+
 
 });
