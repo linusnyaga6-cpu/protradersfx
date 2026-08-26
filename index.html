@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -5,11 +6,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <title>ProTraders FX</title>
-
-  <link
-    rel="icon"
-    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%230b0e12'/%3E%3Ctext x='32' y='40' text-anchor='middle' font-family='Arial' font-size='20' font-weight='bold' fill='white'%3EPFX%3C/text%3E%3C/svg%3E"
-  >
 
   <meta
     name="description"
@@ -23,26 +19,39 @@
       padding: 0;
     }
 
+    :root {
+      --bg: #070b12;
+      --panel: #0c121c;
+      --panel2: #101722;
+      --border: #1d2735;
+      --text: #f2f5f8;
+      --muted: #7f8b9b;
+      --green: #16c784;
+      --red: #ea3943;
+      --blue: #3b82f6;
+      --yellow: #f5b942;
+    }
+
     html,
     body {
       min-height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family:
+        Inter,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
     }
 
     body {
-      background: #080a0d;
-      color: #f5f7fa;
-      font-family: Arial, Helvetica, sans-serif;
-      font-size: 13px;
+      overflow-x: hidden;
     }
 
     button,
-    input,
-    select {
+    a {
       font: inherit;
-    }
-
-    button {
-      cursor: pointer;
     }
 
     a {
@@ -50,522 +59,599 @@
       text-decoration: none;
     }
 
-    [hidden] {
-      display: none !important;
+    .app {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
     }
 
     /* HEADER */
 
-    .header {
+    .topbar {
       height: 64px;
+      border-bottom: 1px solid var(--border);
+      background: #080d15;
       display: flex;
       align-items: center;
-      padding: 0 28px;
-      background: #0c0f13;
-      border-bottom: 1px solid #222830;
+      justify-content: space-between;
+      padding: 0 24px;
+      position: sticky;
+      top: 0;
+      z-index: 20;
     }
 
     .brand {
-      width: 220px;
-      font-size: 16px;
-      font-weight: 900;
-      letter-spacing: 1.8px;
-      white-space: nowrap;
-    }
-
-    .nav {
       display: flex;
       align-items: center;
-      gap: 28px;
+      gap: 12px;
+      font-weight: 800;
+      letter-spacing: 1.4px;
+      font-size: 17px;
+    }
+
+    .brand-mark {
+      width: 30px;
+      height: 30px;
+      border: 2px solid var(--green);
+      display: grid;
+      place-items: center;
+      color: var(--green);
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .top-link {
+      padding: 9px 15px;
+      border: 1px solid var(--border);
+      color: #dce2e9;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .5px;
+    }
+
+    .top-link:hover {
+      border-color: #405064;
+    }
+
+    .top-link.primary {
+      background: var(--green);
+      border-color: var(--green);
+      color: #04130d;
+    }
+
+    /* MARKET TAPE */
+
+    .market-tape {
+      height: 44px;
+      display: flex;
+      align-items: center;
+      gap: 0;
+      border-bottom: 1px solid var(--border);
+      background: #090f17;
+      overflow-x: auto;
+    }
+
+    .market-item {
+      height: 44px;
+      min-width: 120px;
+      padding: 0 18px;
+      border: 0;
+      border-right: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .4px;
+    }
+
+    .market-item:hover {
+      color: var(--text);
+      background: #0d141f;
+    }
+
+    .market-item.active {
+      color: var(--text);
+      background: #111925;
+      box-shadow: inset 0 -2px 0 var(--green);
+    }
+
+    /* MAIN */
+
+    .terminal {
+      width: 100%;
+      max-width: 1500px;
+      margin: 0 auto;
+      padding: 18px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 310px;
+      gap: 14px;
       flex: 1;
     }
 
-    .nav a {
-      color: #8b949e;
-      font-size: 10px;
-      font-weight: 800;
-      letter-spacing: 1px;
-    }
-
-    .nav a:hover {
-      color: #fff;
-    }
-
-    .header-actions {
+    .workspace {
+      min-width: 0;
       display: flex;
-      gap: 8px;
+      flex-direction: column;
+      gap: 14px;
     }
 
-    .header-actions a {
-      padding: 10px 15px;
-      font-size: 10px;
-      font-weight: 900;
-      letter-spacing: .7px;
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
     }
 
-    .login {
-      border: 1px solid #343b44;
-      background: #11151a;
-    }
+    /* MARKET HEADER */
 
-    .signup {
-      background: #f3f5f7;
-      color: #080a0d;
-      border: 1px solid #f3f5f7;
-    }
-
-    /* TICKER */
-
-    .ticker {
-      height: 46px;
+    .market-header {
+      min-height: 104px;
+      padding: 20px 22px;
       display: flex;
-      overflow-x: auto;
-      background: #090c10;
-      border-bottom: 1px solid #20262e;
-    }
-
-    .ticker button {
-      min-width: 145px;
-      padding: 0 20px;
-      background: transparent;
-      color: #68737f;
-      border: 0;
-      border-right: 1px solid #20262e;
-      font-size: 10px;
-      font-weight: 900;
-      letter-spacing: .7px;
-    }
-
-    .ticker button:hover,
-    .ticker button.active {
-      color: #fff;
-      background: #131820;
-    }
-
-    /* PAGE */
-
-    .page {
-      width: min(1500px, calc(100% - 40px));
-      margin: auto;
-      padding: 20px 0 35px;
-    }
-
-    /* TOP MARKET */
-
-    .market-top {
-      display: grid;
-      grid-template-columns: 1fr auto;
+      justify-content: space-between;
       align-items: center;
-      min-height: 125px;
-      padding: 24px;
-      background: #0d1116;
-      border: 1px solid #252c34;
+      gap: 20px;
     }
 
-    .eyebrow {
-      color: #68727d;
-      font-size: 9px;
-      font-weight: 900;
-      letter-spacing: 1.2px;
-      margin-bottom: 8px;
+    .market-title {
+      display: flex;
+      align-items: center;
+      gap: 14px;
     }
 
-    .market-name {
-      font-size: 28px;
-      font-weight: 900;
+    .pair-icon {
+      width: 44px;
+      height: 44px;
+      border: 1px solid var(--border);
+      background: var(--panel2);
+      display: grid;
+      place-items: center;
+      font-size: 13px;
+      font-weight: 800;
+      color: var(--green);
     }
 
-    .status {
-      margin-top: 8px;
-      color: #697580;
-      font-size: 9px;
-      font-weight: 900;
+    .pair-name {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: .2px;
+    }
+
+    .pair-sub {
+      color: var(--muted);
+      font-size: 11px;
+      margin-top: 5px;
+      text-transform: uppercase;
       letter-spacing: 1px;
     }
 
-    .price-box {
+    .live-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--green);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: .7px;
+    }
+
+    .live-dot {
+      width: 7px;
+      height: 7px;
+      background: var(--green);
+      border-radius: 50%;
+      box-shadow: 0 0 9px rgba(22,199,132,.55);
+    }
+
+    .quote-block {
       text-align: right;
     }
 
-    .price {
-      font-size: 38px;
-      font-weight: 900;
+    .quote {
+      font-size: clamp(27px, 4vw, 40px);
       line-height: 1;
+      font-weight: 800;
+      letter-spacing: -1px;
       font-variant-numeric: tabular-nums;
     }
 
     .move {
-      margin-top: 8px;
-      color: #7e8994;
-      font-size: 11px;
+      margin-top: 7px;
+      font-size: 12px;
       font-weight: 800;
+      font-variant-numeric: tabular-nums;
     }
 
-    .move.positive {
-      color: #d4e0d9;
+    .positive {
+      color: var(--green) !important;
     }
 
-    .move.negative {
-      color: #dfd0d1;
+    .negative {
+      color: var(--red) !important;
     }
 
     /* CHART */
 
-    .panel {
-      margin-top: 15px;
-      background: #0d1116;
-      border: 1px solid #252c34;
+    .chart-panel {
+      min-height: 455px;
+      display: flex;
+      flex-direction: column;
     }
 
-    .panel-head {
-      height: 52px;
+    .chart-toolbar {
+      height: 50px;
+      border-bottom: 1px solid var(--border);
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 0 16px;
-      border-bottom: 1px solid #252c34;
+      padding: 0 14px;
     }
 
-    .panel-title {
-      color: #9aa3ad;
-      font-size: 10px;
-      font-weight: 900;
-      letter-spacing: 1px;
-    }
-
-    .chart-tools {
+    .timeframes {
       display: flex;
+      gap: 4px;
     }
 
-    .chart-tools button {
-      min-width: 42px;
-      height: 30px;
+    .timeframe {
       border: 0;
-      border-left: 1px solid #252c34;
       background: transparent;
-      color: #626d78;
-      font-size: 9px;
-      font-weight: 900;
+      color: var(--muted);
+      padding: 7px 10px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 700;
     }
 
-    .chart-tools button:hover,
-    .chart-tools button.active {
-      color: #fff;
-      background: #151a21;
+    .timeframe:hover,
+    .timeframe.active {
+      color: var(--text);
+      background: var(--panel2);
+    }
+
+    .chart-label {
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
     }
 
     .chart-area {
-      height: 450px;
       position: relative;
+      min-height: 400px;
+      flex: 1;
       overflow: hidden;
       background:
         linear-gradient(
-          rgba(255,255,255,.035) 1px,
-          transparent 1px
-        ),
-        linear-gradient(
-          90deg,
-          rgba(255,255,255,.035) 1px,
+          to bottom,
+          rgba(255,255,255,.025) 1px,
           transparent 1px
         );
-      background-size: 20% 25%;
+      background-size: 100% 25%;
+    }
+
+    .chart-grid {
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(
+          to right,
+          rgba(255,255,255,.025) 1px,
+          transparent 1px
+        );
+      background-size: 10% 100%;
+      pointer-events: none;
+    }
+
+    .chart-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      padding: 20px 55px 25px 10px;
+    }
+
+    .chart-line {
+      fill: none;
+      stroke: var(--green);
+      stroke-width: 3;
+      stroke-linejoin: round;
+      stroke-linecap: round;
+      vector-effect: non-scaling-stroke;
+      filter: drop-shadow(0 0 5px rgba(22,199,132,.28));
     }
 
     .chart-axis {
       position: absolute;
-      top: 0;
-      right: 0;
-      bottom: 0;
-      width: 78px;
+      top: 20px;
+      right: 8px;
+      bottom: 25px;
+      width: 48px;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      padding: 16px 9px;
-      border-left: 1px solid #252c34;
-      background: rgba(8,10,13,.75);
-      color: #59646f;
       text-align: right;
+      pointer-events: none;
+    }
+
+    .chart-axis span {
+      color: #687587;
       font-size: 9px;
       font-variant-numeric: tabular-nums;
-      z-index: 2;
     }
 
-    .price-chart {
-      width: calc(100% - 78px);
-      height: 100%;
-      display: block;
-      color: #e1e6eb;
-    }
-
-    /* WORKSPACE */
-
-    .workspace {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 15px;
-      margin-top: 15px;
-    }
-
-    .card {
-      background: #0d1116;
-      border: 1px solid #252c34;
-      min-height: 250px;
-    }
-
-    .card-head {
-      padding: 15px 17px;
-      border-bottom: 1px solid #252c34;
-      color: #818c97;
+    .chart-bottom {
+      position: absolute;
+      left: 14px;
+      right: 55px;
+      bottom: 6px;
+      display: flex;
+      justify-content: space-between;
+      color: #586575;
       font-size: 9px;
-      font-weight: 900;
-      letter-spacing: 1.1px;
     }
 
-    .card-market {
-      padding: 18px 17px;
-      font-size: 17px;
-      font-weight: 900;
+    /* BOTTOM DATA */
+
+    .data-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1px;
+      background: var(--border);
     }
 
-    .row {
-      min-height: 43px;
+    .data-box {
+      min-height: 86px;
+      background: var(--panel);
+      padding: 15px;
+    }
+
+    .data-label {
+      color: var(--muted);
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .data-value {
+      margin-top: 10px;
+      font-size: 18px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* SIDEBAR */
+
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .side-title {
+      height: 46px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 0 17px;
-      border-top: 1px solid #181e25;
-    }
-
-    .row span {
-      color: #65717d;
-      font-size: 9px;
+      padding: 0 15px;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
       font-weight: 800;
-      letter-spacing: .8px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
     }
 
-    .row strong {
-      font-size: 10px;
-      font-weight: 900;
-      font-variant-numeric: tabular-nums;
+    .side-content {
+      padding: 15px;
     }
 
     .signal {
-      display: flex;
-      justify-content: space-between;
-      margin: 16px;
-      padding: 14px;
-      border: 1px solid #29323b;
-      background: #12171d;
+      padding: 18px;
+      background: #0a1018;
+      border: 1px solid var(--border);
+      text-align: center;
     }
 
-    .signal span {
-      color: #68737e;
+    .signal-label {
+      color: var(--muted);
       font-size: 9px;
-      font-weight: 900;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
     }
 
-    .signal strong {
-      font-size: 10px;
-    }
-
-    .wait {
-      color: #aeb6be;
-    }
-
-    .buy {
-      color: #d5e2da;
-    }
-
-    .sell {
-      color: #e0d1d2;
-    }
-
-    /* TRADE */
-
-    .trade label {
+    [data-signal] {
       display: block;
-      margin: 16px 17px 6px;
-      color: #68737e;
-      font-size: 8px;
+      margin-top: 10px;
+      font-size: 28px;
       font-weight: 900;
-      letter-spacing: 1px;
     }
 
-    .trade input,
-    .trade select {
-      width: calc(100% - 34px);
-      height: 40px;
-      margin: 0 17px;
-      padding: 0 11px;
-      background: #080b0e;
-      color: #fff;
-      border: 1px solid #29323b;
-      outline: none;
+    [data-signal].buy {
+      color: var(--green);
     }
 
-    .trade-actions {
+    [data-signal].sell {
+      color: var(--red);
+    }
+
+    [data-signal].wait {
+      color: var(--yellow);
+    }
+
+    .metric-list {
+      margin-top: 14px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .metric {
+      min-height: 45px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      gap: 12px;
+    }
+
+    .metric:last-child {
+      border-bottom: 0;
+    }
+
+    .metric span:first-child {
+      color: var(--muted);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .7px;
+    }
+
+    .metric span:last-child {
+      font-size: 12px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .trade-panel {
+      overflow: hidden;
+    }
+
+    .trade-buttons {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 8px;
-      margin: 17px;
+      padding: 15px;
     }
 
-    .trade-actions button {
-      height: 43px;
-      border: 1px solid #3a444f;
-      font-size: 10px;
+    .trade-btn {
+      min-height: 48px;
+      border: 0;
+      color: white;
+      cursor: pointer;
+      font-size: 11px;
       font-weight: 900;
-      letter-spacing: 1px;
+      letter-spacing: .8px;
     }
 
-    .trade-buy {
-      background: #dce6e0;
-      color: #0b100d;
+    .trade-btn.buy {
+      background: var(--green);
+      color: #03130c;
     }
 
-    .trade-sell {
-      background: #ded1d2;
-      color: #100c0d;
+    .trade-btn.sell {
+      background: var(--red);
+    }
+
+    .trade-btn:hover {
+      filter: brightness(1.08);
     }
 
     .trade-message {
-      margin: 0 17px 17px;
-      padding: 10px;
-      border: 1px solid #202831;
-      color: #68737e;
-      font-size: 8px;
-      font-weight: 800;
+      min-height: 35px;
+      padding: 0 15px 15px;
+      color: var(--muted);
+      font-size: 9px;
+      text-align: center;
+      letter-spacing: .7px;
     }
 
-    /* ACCOUNT */
-
-    .account {
-      margin-top: 15px;
-    }
-
-    .account-grid {
-      display: grid;
-      grid-template-columns: repeat(3,1fr);
-    }
-
-    .account-stat {
-      padding: 17px;
-      border-right: 1px solid #252c34;
-    }
-
-    .account-stat:last-child {
-      border-right: 0;
-    }
-
-    .account-stat span {
-      display: block;
-      color: #65717d;
-      font-size: 8px;
-      font-weight: 900;
-      letter-spacing: .8px;
-      margin-bottom: 7px;
-    }
-
-    .account-stat strong {
-      font-size: 12px;
+    .ai-message {
+      color: #b9c2ce;
+      font-size: 11px;
+      line-height: 1.65;
     }
 
     /* FOOTER */
 
-    footer {
-      min-height: 58px;
+    .footer {
+      min-height: 42px;
+      border-top: 1px solid var(--border);
       display: flex;
-      justify-content: center;
       align-items: center;
-      gap: 25px;
-      border-top: 1px solid #222830;
-      color: #58636e;
-      font-size: 8px;
-      font-weight: 800;
-      letter-spacing: .8px;
+      justify-content: space-between;
+      padding: 0 24px;
+      color: #596575;
+      font-size: 9px;
+      letter-spacing: .6px;
+      text-transform: uppercase;
     }
 
-    /* MOBILE */
+    .footer-right {
+      color: var(--green);
+    }
 
-    @media (max-width: 900px) {
-      .brand {
-        width: auto;
-        margin-right: 20px;
+    /* RESPONSIVE */
+
+    @media (max-width: 1050px) {
+      .terminal {
+        grid-template-columns: 1fr;
       }
 
-      .nav {
-        gap: 15px;
+      .sidebar {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
       }
 
-      .workspace {
-        grid-template-columns: 1fr 1fr;
-      }
-
-      .trade {
-        grid-column: 1 / -1;
+      .trade-panel {
+        grid-column: span 2;
       }
     }
 
-    @media (max-width: 650px) {
-      .header {
-        height: auto;
-        min-height: 62px;
-        flex-wrap: wrap;
-        gap: 12px;
-        padding: 12px;
+    @media (max-width: 700px) {
+      .topbar {
+        padding: 0 12px;
+      }
+
+      .top-link {
+        padding: 8px 9px;
+        font-size: 10px;
       }
 
       .brand {
-        flex: 1;
+        font-size: 14px;
       }
 
-      .nav {
-        order: 3;
-        width: 100%;
-        justify-content: center;
+      .terminal {
+        padding: 9px;
       }
 
-      .header-actions a {
-        padding: 8px 10px;
-        font-size: 8px;
+      .market-header {
+        padding: 15px;
+        align-items: flex-start;
       }
 
-      .page {
-        width: calc(100% - 16px);
-        padding-top: 8px;
-      }
-
-      .market-top {
-        padding: 17px;
-      }
-
-      .market-name {
-        font-size: 22px;
-      }
-
-      .price {
+      .quote {
         font-size: 25px;
       }
 
-      .chart-area {
-        height: 330px;
+      .pair-name {
+        font-size: 18px;
       }
 
-      .workspace {
-        grid-template-columns: 1fr;
+      .data-row {
+        grid-template-columns: repeat(2, 1fr);
       }
 
-      .trade {
+      .sidebar {
+        display: flex;
+      }
+
+      .trade-panel {
         grid-column: auto;
       }
 
-      .account-grid {
-        grid-template-columns: 1fr;
+      .chart-panel {
+        min-height: 350px;
       }
 
-      .account-stat {
-        border-right: 0;
-        border-bottom: 1px solid #252c34;
+      .chart-area {
+        min-height: 295px;
+      }
+
+      .footer {
+        padding: 0 12px;
       }
     }
   </style>
@@ -573,276 +659,531 @@
 
 <body>
 
-<header class="header">
+<div class="app">
 
-  <div class="brand">PROTRADERS FX</div>
+  <!-- HEADER -->
 
-  <nav class="nav">
-    <a href="#markets">MARKETS</a>
-    <a href="#analysis">ANALYSIS</a>
-    <a href="#trading">TRADING</a>
+  <header class="topbar">
+
+    <a
+      class="brand"
+      href="/"
+      aria-label="ProTraders FX"
+    >
+      <span class="brand-mark">P</span>
+      <span>PROTRADERS FX</span>
+    </a>
+
+    <div class="top-actions">
+
+      <a
+        class="top-link"
+        href="/api/deriv/login"
+      >
+        LOG IN
+      </a>
+
+      <a
+        class="top-link primary"
+        href="/api/deriv/signup"
+      >
+        CREATE ACCOUNT
+      </a>
+
+    </div>
+
+  </header>
+
+
+  <!-- MARKET TAPE -->
+
+  <nav
+    class="market-tape"
+    aria-label="Markets"
+  >
+
+    <button
+      class="market-item active"
+      data-symbol="EUR/USD"
+      type="button"
+    >
+      EUR/USD
+    </button>
+
+    <button
+      class="market-item"
+      data-symbol="GBP/USD"
+      type="button"
+    >
+      GBP/USD
+    </button>
+
+    <button
+      class="market-item"
+      data-symbol="USD/JPY"
+      type="button"
+    >
+      USD/JPY
+    </button>
+
+    <button
+      class="market-item"
+      data-symbol="AUD/USD"
+      type="button"
+    >
+      AUD/USD
+    </button>
+
+    <button
+      class="market-item"
+      data-symbol="USD/CAD"
+      type="button"
+    >
+      USD/CAD
+    </button>
+
+    <button
+      class="market-item"
+      data-symbol="USD/CHF"
+      type="button"
+    >
+      USD/CHF
+    </button>
+
   </nav>
 
-  <div class="header-actions">
-    <a class="login" href="/api/deriv/login">LOGIN</a>
-    <a class="signup" href="/api/deriv/signup">CREATE ACCOUNT</a>
-  </div>
 
-</header>
+  <!-- TERMINAL -->
 
-<section class="ticker" id="markets">
+  <main class="terminal">
 
-  <button class="active market-item" data-symbol="EUR/USD">EUR/USD</button>
-  <button class="market-item" data-symbol="GBP/USD">GBP/USD</button>
-  <button class="market-item" data-symbol="USD/JPY">USD/JPY</button>
-  <button class="market-item" data-symbol="AUD/USD">AUD/USD</button>
-  <button class="market-item" data-symbol="USD/CAD">USD/CAD</button>
-  <button class="market-item" data-symbol="USD/CHF">USD/CHF</button>
+    <section class="workspace">
 
-</section>
+      <!-- MARKET HEADER -->
 
-<main class="page">
+      <div class="panel market-header">
 
-  <section class="market-top">
+        <div class="market-title">
 
-    <div>
-      <div class="eyebrow">MARKET</div>
+          <div class="pair-icon">
+            FX
+          </div>
 
-      <div class="market-name" data-market>
-        EUR/USD
+          <div>
+
+            <div
+              class="pair-name"
+              data-market
+            >
+              EUR/USD
+            </div>
+
+            <div class="pair-sub">
+              Forex · Live Market
+            </div>
+
+            <div class="live-status">
+
+              <span class="live-dot"></span>
+
+              <span data-market-status>
+                CONNECTING
+              </span>
+
+            </div>
+
+          </div>
+
+        </div>
+
+        <div class="quote-block">
+
+          <div
+            class="quote"
+            data-price
+          >
+            —
+          </div>
+
+          <div
+            class="move"
+            data-move
+          >
+            —
+          </div>
+
+        </div>
+
       </div>
 
-      <div class="status" data-market-status>
-        CONNECTING
-      </div>
-    </div>
 
-    <div class="price-box">
+      <!-- CHART -->
 
-      <div class="price" data-price>—</div>
+      <div class="panel chart-panel">
 
-      <div class="move" data-move>—</div>
+        <div class="chart-toolbar">
 
-    </div>
+          <div class="timeframes">
 
-  </section>
+            <button
+              class="timeframe active"
+              type="button"
+            >
+              LIVE
+            </button>
 
-  <section class="panel">
+            <button
+              class="timeframe"
+              type="button"
+            >
+              1M
+            </button>
 
-    <div class="panel-head">
+            <button
+              class="timeframe"
+              type="button"
+            >
+              5M
+            </button>
 
-      <div class="panel-title">
-        <span data-market>EUR/USD</span>
-        &nbsp; / &nbsp; LIVE MARKET
-      </div>
+            <button
+              class="timeframe"
+              type="button"
+            >
+              15M
+            </button>
 
-      <div class="chart-tools">
+            <button
+              class="timeframe"
+              type="button"
+            >
+              1H
+            </button>
 
-        <button class="active timeframe">1M</button>
-        <button class="timeframe">5M</button>
-        <button class="timeframe">15M</button>
-        <button class="timeframe">1H</button>
-        <button class="timeframe">4H</button>
+          </div>
 
-      </div>
+          <div class="chart-label">
+            LIVE PRICE
+          </div>
 
-    </div>
+        </div>
 
-    <div class="chart-area">
 
-      <svg
-        class="price-chart"
-        viewBox="0 0 1000 400"
-        preserveAspectRatio="none"
-      >
-        <polyline
-          data-live-line
-          points=""
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          vector-effect="non-scaling-stroke"
-        />
-      </svg>
+        <div class="chart-area">
 
-      <div class="chart-axis">
-        <span>—</span>
-        <span>—</span>
-        <span>—</span>
-        <span>—</span>
-        <span>—</span>
-      </div>
+          <div class="chart-grid"></div>
 
-    </div>
+          <svg
+            class="chart-svg"
+            viewBox="0 0 1000 360"
+            preserveAspectRatio="none"
+            aria-label="Live market chart"
+          >
 
-  </section>
+            <polyline
+              class="chart-line"
+              data-live-line
+              points=""
+            ></polyline>
 
-  <section class="workspace" id="analysis">
+          </svg>
 
-    <article class="card">
 
-      <div class="card-head">
-        MARKET ANALYSIS
-      </div>
+          <div class="chart-axis">
 
-      <div class="card-market" data-analysis-market>
-        EUR/USD
-      </div>
+            <span>—</span>
+            <span>—</span>
+            <span>—</span>
+            <span>—</span>
+            <span>—</span>
 
-      <div class="row">
-        <span>TREND</span>
-        <strong data-trend>WAIT</strong>
-      </div>
+          </div>
 
-      <div class="row">
-        <span>MOMENTUM</span>
-        <strong data-momentum>—</strong>
-      </div>
 
-      <div class="row">
-        <span>DIRECTION</span>
-        <strong data-direction>WAIT</strong>
-      </div>
+          <div class="chart-bottom">
 
-      <div class="signal">
-        <span>SIGNAL</span>
-        <strong class="wait" data-signal>WAIT</strong>
+            <span>LIVE</span>
+            <span>NOW</span>
+
+          </div>
+
+        </div>
+
       </div>
 
-    </article>
 
-    <article class="card">
+      <!-- MARKET DATA -->
 
-      <div class="card-head">
-        TRADE LEVELS
+      <div class="data-row">
+
+        <div class="data-box">
+
+          <div class="data-label">
+            Direction
+          </div>
+
+          <div
+            class="data-value"
+            data-direction
+          >
+            —
+          </div>
+
+        </div>
+
+
+        <div class="data-box">
+
+          <div class="data-label">
+            Momentum
+          </div>
+
+          <div
+            class="data-value"
+            data-momentum
+          >
+            —
+          </div>
+
+        </div>
+
+
+        <div class="data-box">
+
+          <div class="data-label">
+            Trend
+          </div>
+
+          <div
+            class="data-value"
+            data-trend
+          >
+            —
+          </div>
+
+        </div>
+
+
+        <div class="data-box">
+
+          <div class="data-label">
+            Market
+          </div>
+
+          <div
+            class="data-value"
+            data-analysis-market
+          >
+            EUR/USD
+          </div>
+
+        </div>
+
       </div>
 
-      <div class="row">
-        <span>ENTRY</span>
-        <strong data-entry>—</strong>
+    </section>
+
+
+    <!-- SIDEBAR -->
+
+    <aside class="sidebar">
+
+
+      <!-- SIGNAL -->
+
+      <div class="panel">
+
+        <div class="side-title">
+          <span>Market Signal</span>
+          <span
+            class="live-status"
+            style="font-size:9px"
+          >
+            LIVE
+          </span>
+        </div>
+
+        <div class="side-content">
+
+          <div class="signal">
+
+            <div class="signal-label">
+              Current Direction
+            </div>
+
+            <span
+              data-signal
+              class="wait"
+            >
+              WAIT
+            </span>
+
+          </div>
+
+        </div>
+
       </div>
 
-      <div class="row">
-        <span>STOP</span>
-        <strong data-stop>—</strong>
+
+      <!-- LEVELS -->
+
+      <div class="panel">
+
+        <div class="side-title">
+          <span>Levels</span>
+        </div>
+
+        <div class="side-content">
+
+          <div class="metric-list">
+
+            <div class="metric">
+
+              <span>Entry</span>
+
+              <span data-entry>
+                —
+              </span>
+
+            </div>
+
+            <div class="metric">
+
+              <span>Stop</span>
+
+              <span data-stop>
+                —
+              </span>
+
+            </div>
+
+            <div class="metric">
+
+              <span>Target</span>
+
+              <span data-target>
+                —
+              </span>
+
+            </div>
+
+          </div>
+
+        </div>
+
       </div>
 
-      <div class="row">
-        <span>TARGET</span>
-        <strong data-target>—</strong>
+
+      <!-- MARKET VIEW -->
+
+      <div class="panel">
+
+        <div class="side-title">
+          <span>Market View</span>
+        </div>
+
+        <div class="side-content">
+
+          <div class="metric-list">
+
+            <div class="metric">
+
+              <span>Bias</span>
+
+              <span data-ai-bias>
+                —
+              </span>
+
+            </div>
+
+            <div class="metric">
+
+              <span>Confidence</span>
+
+              <span data-ai-confidence>
+                —
+              </span>
+
+            </div>
+
+          </div>
+
+          <p
+            class="ai-message"
+            id="ai-message"
+            style="margin-top:14px"
+          >
+            Waiting for live market data.
+          </p>
+
+        </div>
+
       </div>
 
-      <div class="signal">
-        <span>MARKET</span>
-        <strong data-market>EUR/USD</strong>
-      </div>
 
-    </article>
+      <!-- TRADE -->
 
-    <article class="card trade" id="trading">
+      <div class="panel trade-panel">
 
-      <div class="card-head">
-        TRADE
-      </div>
+        <div class="side-title">
+          <span>Trade</span>
+        </div>
 
-      <label for="account-select">
-        ACCOUNT
-      </label>
+        <div class="trade-buttons">
 
-      <select id="account-select">
-        <option value="">ACCOUNT</option>
-      </select>
+          <button
+            id="buy-button"
+            class="trade-btn buy"
+            type="button"
+          >
+            BUY
+          </button>
 
-      <label for="stake">
-        STAKE
-      </label>
+          <button
+            id="sell-button"
+            class="trade-btn sell"
+            type="button"
+          >
+            SELL
+          </button>
 
-      <input
-        id="stake"
-        type="number"
-        min="1"
-        step="1"
-        value="10"
-      >
+        </div>
 
-      <div class="trade-actions">
-
-        <button
-          id="buy-button"
-          class="trade-buy"
-          type="button"
+        <div
+          class="trade-message"
+          data-trade-message
         >
-          BUY
-        </button>
-
-        <button
-          id="sell-button"
-          class="trade-sell"
-          type="button"
-        >
-          SELL
-        </button>
+          LOG IN TO TRADE
+        </div>
 
       </div>
 
-      <div
-        class="trade-message"
-        data-trade-message
-      >
-        LOG IN TO TRADE
-      </div>
+    </aside>
 
-    </article>
+  </main>
 
-  </section>
 
-  <section class="panel account" hidden id="account-panel">
+  <!-- FOOTER -->
 
-    <div class="panel-head">
+  <footer class="footer">
 
-      <div class="panel-title">
-        ACCOUNT
-      </div>
+    <span>
+      PROTRADERS FX · LIVE MARKET TERMINAL
+    </span>
 
-      <div class="status" id="account-status">
-        CONNECTED
-      </div>
+    <span class="footer-right">
+      PUBLIC MARKET DATA
+    </span>
 
-    </div>
+  </footer>
 
-    <div class="account-grid">
+</div>
 
-      <div class="account-stat">
-        <span>ACCOUNT</span>
-        <strong id="account-id">—</strong>
-      </div>
 
-      <div class="account-stat">
-        <span>BALANCE</span>
-        <strong id="account-balance">—</strong>
-      </div>
-
-      <div class="account-stat">
-        <span>RISK STAKE</span>
-        <strong id="risk-stake">10 USD</strong>
-      </div>
-
-    </div>
-
-  </section>
-
-</main>
-
-<footer>
-
-  <a href="#markets">MARKETS</a>
-  <a href="#analysis">ANALYSIS</a>
-  <a href="#trading">TRADING</a>
-  <span>PROTRADERS FX</span>
-
-</footer>
+<!-- IMPORTANT: KEEP APP.JS LAST -->
 
 <script src="/app.js"></script>
 
 </body>
 </html>
+```
