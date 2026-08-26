@@ -4,6 +4,22 @@
     {
       "src": "server.js",
       "use": "@vercel/node"
+    },
+    {
+      "src": "index.html",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "style.css",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "app.js",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "tracker.js",
+      "use": "@vercel/static"
     }
   ],
   "routes": [
@@ -12,11 +28,11 @@
       "dest": "/server.js"
     },
     {
-      "src": "/oauth/(.*)",
+      "src": "/oa",
       "dest": "/server.js"
     },
     {
-      "src": "/oa",
+      "src": "/oauth/(.*)",
       "dest": "/server.js"
     },
     {
@@ -24,8 +40,20 @@
       "dest": "/server.js"
     },
     {
-      "src": "/(.*)",
-      "dest": "/server.js"
+      "src": "/",
+      "dest": "/index.html"
+    },
+    {
+      "src": "/style.css",
+      "dest": "/style.css"
+    },
+    {
+      "src": "/app.js",
+      "dest": "/app.js"
+    },
+    {
+      "src": "/tracker.js",
+      "dest": "/tracker.js"
     }
   ]
 }
