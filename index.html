@@ -1,28 +1,31 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>ProTraders FX</title>
 
   <meta
     name="description"
-    content="ProTraders FX — live markets, analysis and trading."
+    content="ProTraders FX live markets, analysis and trading terminal."
   >
-
-  <title>ProTraders FX</title>
 
   <link rel="stylesheet" href="/style.css">
 </head>
 
 <body>
 
-<header class="site-header">
+  <!-- =========================================================
+       TOP BAR
+  ========================================================== -->
 
-  <div class="nav-wrap">
+  <header class="topbar">
 
-    <a class="logo" href="/">
-      PROTRADERS<span>FX</span>
-    </a>
+    <div class="brand">
+      <span class="brand-mark">P</span>
+      <span>PROTRADERS FX</span>
+    </div>
 
     <nav class="main-nav">
       <a href="#markets">MARKETS</a>
@@ -30,178 +33,162 @@
       <a href="#trade">TRADE</a>
     </nav>
 
-    <div class="nav-actions">
+    <div class="account-area">
+
+      <span class="account-status">
+        ACCOUNT:
+        <strong data-account-status>CHECKING</strong>
+      </span>
 
       <a
-        class="login-link"
+        class="login-button"
         href="/api/deriv/login"
       >
         LOGIN
       </a>
 
       <a
-        class="nav-button"
+        class="signup-button"
         href="/api/deriv/signup"
       >
-        OPEN ACCOUNT
+        CREATE ACCOUNT
       </a>
 
     </div>
 
-  </div>
-
-</header>
+  </header>
 
 
-<main>
-
-  <!-- MARKETS -->
+  <!-- =========================================================
+       MARKET BAR
+  ========================================================== -->
 
   <section
-    class="market-ticker"
     id="markets"
+    class="market-bar"
   >
 
-    <div class="ticker-label">
-      MARKETS
+    <div class="market-selector">
+
+      <button
+        class="market-button active"
+        data-symbol="EUR/USD"
+      >
+        EUR/USD
+      </button>
+
+      <button
+        class="market-button"
+        data-symbol="GBP/USD"
+      >
+        GBP/USD
+      </button>
+
+      <button
+        class="market-button"
+        data-symbol="USD/JPY"
+      >
+        USD/JPY
+      </button>
+
+      <button
+        class="market-button"
+        data-symbol="AUD/USD"
+      >
+        AUD/USD
+      </button>
+
+      <button
+        class="market-button"
+        data-symbol="USD/CAD"
+      >
+        USD/CAD
+      </button>
+
+      <button
+        class="market-button"
+        data-symbol="USD/CHF"
+      >
+        USD/CHF
+      </button>
+
     </div>
-
-    <button
-      class="market-button active"
-      data-symbol="frxEURUSD"
-      data-name="EUR/USD"
-    >
-      EUR/USD
-    </button>
-
-    <button
-      class="market-button"
-      data-symbol="frxGBPUSD"
-      data-name="GBP/USD"
-    >
-      GBP/USD
-    </button>
-
-    <button
-      class="market-button"
-      data-symbol="frxUSDJPY"
-      data-name="USD/JPY"
-    >
-      USD/JPY
-    </button>
-
-    <button
-      class="market-button"
-      data-symbol="frxAUDUSD"
-      data-name="AUD/USD"
-    >
-      AUD/USD
-    </button>
-
-    <button
-      class="market-button"
-      data-symbol="frxUSDCAD"
-      data-name="USD/CAD"
-    >
-      USD/CAD
-    </button>
-
-    <button
-      class="market-button"
-      data-symbol="frxUSDCHF"
-      data-name="USD/CHF"
-    >
-      USD/CHF
-    </button>
 
   </section>
 
 
-  <!-- TERMINAL -->
+  <!-- =========================================================
+       MAIN TERMINAL
+  ========================================================== -->
 
-  <section class="terminal">
+  <main class="terminal">
 
-    <div class="terminal-top">
+    <!-- MARKET HEADER -->
 
-      <div class="instrument-block">
+    <section class="market-header">
 
-        <span class="eyebrow">
+      <div>
+
+        <div class="market-label">
           MARKET
-        </span>
+        </div>
 
-        <strong
-          class="selected-market"
-          data-market
-        >
+        <h1 data-market>
           EUR/USD
-        </strong>
+        </h1>
+
+        <div
+          class="market-status"
+          data-market-status
+        >
+          CONNECTING
+        </div>
 
       </div>
 
 
-      <div class="terminal-price">
+      <div class="price-block">
 
-        <span class="eyebrow">
+        <div class="price-label">
           PRICE
-        </span>
+        </div>
 
-        <strong
-          class="market-price"
+        <div
+          class="live-price"
           data-price
         >
           —
-        </strong>
+        </div>
 
-      </div>
-
-
-      <div class="terminal-change">
-
-        <span class="eyebrow">
-          CHANGE
-        </span>
-
-        <strong
-          class="market-move"
+        <div
+          class="price-change"
           data-move
         >
           —
-        </strong>
-
-      </div>
-
-
-      <div class="terminal-status">
-
-        <span class="live-dot"></span>
-
-        <span data-market-status>
-          CONNECTING
-        </span>
-
-      </div>
-
-    </div>
-
-
-    <!-- CHART -->
-
-    <div class="chart-area">
-
-      <div class="chart-header">
-
-        <div class="chart-symbol">
-
-          <strong data-market>
-            EUR/USD
-          </strong>
-
-          <span>
-            DERIV
-          </span>
-
         </div>
 
+      </div>
+
+    </section>
+
+
+    <!-- =======================================================
+         CHART
+    ======================================================== -->
+
+    <section class="chart-panel">
+
+      <div class="chart-toolbar">
+
+        <div class="chart-title">
+          <span data-analysis-market>
+            EUR/USD
+          </span>
+
+          <span class="live-indicator">
+            LIVE
+          </span>
+        </div>
 
         <div class="timeframes">
 
@@ -209,21 +196,21 @@
             class="timeframe active"
             data-timeframe="1m"
           >
-            1m
+            1M
           </button>
 
           <button
             class="timeframe"
             data-timeframe="5m"
           >
-            5m
+            5M
           </button>
 
           <button
             class="timeframe"
             data-timeframe="15m"
           >
-            15m
+            15M
           </button>
 
           <button
@@ -240,280 +227,226 @@
             4H
           </button>
 
+          <button
+            class="timeframe"
+            data-timeframe="1d"
+          >
+            1D
+          </button>
+
         </div>
 
       </div>
 
 
-      <div class="chart">
-
-        <div class="chart-grid"></div>
+      <div class="chart-area">
 
         <div class="chart-y-axis">
-          <span data-axis-1>—</span>
-          <span data-axis-2>—</span>
-          <span data-axis-3>—</span>
-          <span data-axis-4>—</span>
-          <span data-axis-5>—</span>
+
+          <span>—</span>
+          <span>—</span>
+          <span>—</span>
+          <span>—</span>
+          <span>—</span>
+
         </div>
 
         <svg
-          id="live-chart"
           class="live-chart"
           viewBox="0 0 1000 400"
           preserveAspectRatio="none"
         >
+
           <polyline
             data-live-line
             points=""
             fill="none"
+            stroke="currentColor"
+            stroke-width="3"
+            vector-effect="non-scaling-stroke"
           />
+
         </svg>
 
-        <div class="chart-live">
+      </div>
 
-          <span class="live-dot"></span>
+    </section>
 
-          LIVE
 
+    <!-- =======================================================
+         LOWER GRID
+    ======================================================== -->
+
+    <section
+      id="analysis"
+      class="terminal-grid"
+    >
+
+
+      <!-- ANALYSIS -->
+
+      <div class="panel analysis-panel">
+
+        <div class="panel-heading">
+          MARKET ANALYSIS
         </div>
 
-      </div>
-
-    </div>
-
-
-    <!-- STATS -->
-
-    <div class="market-stats">
-
-      <div>
-        <span>MARKET</span>
-        <strong data-market>EUR/USD</strong>
-      </div>
-
-      <div>
-        <span>PRICE</span>
-        <strong data-price>—</strong>
-      </div>
-
-      <div>
-        <span>CHANGE</span>
-        <strong data-move>—</strong>
-      </div>
-
-      <div>
-        <span>STATUS</span>
-        <strong data-market-status>CONNECTING</strong>
-      </div>
-
-    </div>
-
-  </section>
-
-
-  <!-- ANALYSIS -->
-
-  <section
-    class="workspace"
-    id="analysis"
-  >
-
-    <div class="workspace-heading">
-
-      <div>
-
-        <span class="eyebrow green">
-          ANALYSIS
-        </span>
-
-        <h1>
-          Market Scanner
-        </h1>
-
-      </div>
-
-      <div class="scanner-status">
-
-        <span class="live-dot"></span>
-
-        SCANNING
-
-      </div>
-
-    </div>
-
-
-    <div class="workspace-grid">
-
-
-      <section class="analysis-panel">
-
-        <div class="panel-header">
-
-          <span>ANALYSIS</span>
-
-          <strong data-analysis-market>
+        <div class="analysis-market">
+          <span data-analysis-market>
             EUR/USD
+          </span>
+        </div>
+
+
+        <div class="analysis-row">
+
+          <span>TREND</span>
+
+          <strong data-trend>
+            WAIT
           </strong>
 
         </div>
 
 
-        <div class="analysis-main">
+        <div class="analysis-row">
 
-          <div class="signal-box">
+          <span>MOMENTUM</span>
 
-            <span class="eyebrow">
-              SIGNAL
-            </span>
-
-            <strong
-              class="signal-value wait"
-              data-signal
-            >
-              WAIT
-            </strong>
-
-          </div>
-
-
-          <div class="analysis-row">
-
-            <div>
-              <span>TREND</span>
-              <strong data-trend>WAIT</strong>
-            </div>
-
-            <div>
-              <span>MOMENTUM</span>
-              <strong data-momentum>WAIT</strong>
-            </div>
-
-            <div>
-              <span>DIRECTION</span>
-              <strong data-direction>—</strong>
-            </div>
-
-          </div>
-
-
-          <div class="levels">
-
-            <div>
-              <span>ENTRY</span>
-              <strong data-entry>—</strong>
-            </div>
-
-            <div>
-              <span>STOP</span>
-              <strong data-stop>—</strong>
-            </div>
-
-            <div>
-              <span>TARGET</span>
-              <strong data-target>—</strong>
-            </div>
-
-          </div>
+          <strong data-momentum>
+            WAIT
+          </strong>
 
         </div>
 
-      </section>
+
+        <div class="analysis-row">
+
+          <span>DIRECTION</span>
+
+          <strong data-direction>
+            —
+          </strong>
+
+        </div>
+
+
+        <div class="signal-box">
+
+          <span>SIGNAL</span>
+
+          <strong
+            class="wait"
+            data-signal
+          >
+            WAIT
+          </strong>
+
+        </div>
+
+      </div>
+
+
+      <!-- LEVELS -->
+
+      <div class="panel levels-panel">
+
+        <div class="panel-heading">
+          TRADE LEVELS
+        </div>
+
+
+        <div class="level-row">
+
+          <span>ENTRY</span>
+
+          <strong data-entry>
+            —
+          </strong>
+
+        </div>
+
+
+        <div class="level-row">
+
+          <span>STOP</span>
+
+          <strong data-stop>
+            —
+          </strong>
+
+        </div>
+
+
+        <div class="level-row">
+
+          <span>TARGET</span>
+
+          <strong data-target>
+            —
+          </strong>
+
+        </div>
+
+      </div>
 
 
       <!-- TRADE -->
 
-      <section
-        class="trade-panel"
+      <div
         id="trade"
+        class="panel trade-panel"
       >
 
-        <div class="panel-header">
-
-          <span>TRADE</span>
-
-          <strong>DERIV</strong>
-
+        <div class="panel-heading">
+          TRADE
         </div>
 
 
-        <div class="account-row">
+        <label for="stake">
+          STAKE
+        </label>
 
-          <div>
-
-            <span>BALANCE</span>
-
-            <strong data-balance>
-              —
-            </strong>
-
-          </div>
-
-          <div>
-
-            <span>ACCOUNT</span>
-
-            <strong data-account-status>
-              NOT CONNECTED
-            </strong>
-
-          </div>
-
-        </div>
+        <input
+          id="stake"
+          type="number"
+          min="0.35"
+          step="0.01"
+          value="1"
+          placeholder="Stake"
+        >
 
 
-        <div class="trade-form">
+        <label for="contract-type">
+          CONTRACT
+        </label>
 
-          <label>
+        <select id="contract-type">
 
-            <span>STAKE</span>
+          <option value="CALL">
+            CALL
+          </option>
 
-            <input
-              id="stake"
-              type="number"
-              min="0.35"
-              step="0.01"
-              placeholder="10.00"
-            >
+          <option value="PUT">
+            PUT
+          </option>
 
-          </label>
-
-
-          <label>
-
-            <span>CONTRACT</span>
-
-            <select id="contract-type">
-
-              <option value="CALL">
-                RISE
-              </option>
-
-              <option value="PUT">
-                FALL
-              </option>
-
-            </select>
-
-          </label>
-
-        </div>
+        </select>
 
 
-        <div class="trade-actions">
+        <div class="trade-buttons">
 
           <button
-            class="trade-button buy"
             id="buy-button"
+            class="buy-button"
             type="button"
           >
             BUY
           </button>
 
           <button
-            class="trade-button sell"
             id="sell-button"
+            class="sell-button"
             type="button"
           >
             SELL
@@ -526,107 +459,40 @@
           class="trade-message"
           data-trade-message
         >
-          LOGIN REQUIRED
+          CONNECTING TO TRADING ACCOUNT
         </div>
 
+      </div>
 
-        <div class="trade-login">
+    </section>
 
-          <a
-            href="/api/deriv/login"
-            class="account-login"
-          >
-            LOGIN TO TRADE
-          </a>
-
-        </div>
-
-      </section>
-
-    </div>
-
-  </section>
+  </main>
 
 
-  <!-- POSITIONS -->
+  <!-- =========================================================
+       FOOTER
+  ========================================================== -->
 
-  <section class="positions-panel">
+  <footer class="footer">
 
-    <div class="panel-header">
+    <span>
+      PROTRADERS FX
+    </span>
 
-      <span>POSITIONS</span>
+    <span>
+      LIVE MARKET DATA
+    </span>
 
-      <strong data-position-count>
-        0
-      </strong>
-
-    </div>
-
-    <div
-      class="positions-empty"
-      data-positions
-    >
-      NO OPEN POSITIONS
-    </div>
-
-  </section>
-
-
-  <!-- ACCOUNT -->
-
-  <section class="account-bar">
-
-    <div>
-
-      <span>ACCOUNT</span>
-
-      <strong data-account-status>
-        NOT CONNECTED
-      </strong>
-
-    </div>
-
-
-    <div class="account-actions">
-
-      <a
-        href="/api/deriv/login"
-        class="account-login"
-      >
+    <span>
+      <a href="/api/deriv/login">
         LOGIN
       </a>
+    </span>
 
-      <a
-        href="/api/deriv/signup"
-        class="nav-button"
-      >
-        OPEN ACCOUNT
-      </a>
-
-    </div>
-
-  </section>
-
-</main>
+  </footer>
 
 
-<footer class="footer">
-
-  <div class="footer-brand">
-    PROTRADERS<span>FX</span>
-  </div>
-
-  <div class="footer-copy">
-    © 2026 ProTraders FX
-  </div>
-
-</footer>
-
-
-<script
-  src="/app.js"
-  defer
-></script>
+  <script src="/app.js"></script>
 
 </body>
 </html>
