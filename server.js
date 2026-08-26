@@ -39,13 +39,26 @@ const SESSION_SECRET =
 
 const PUBLIC_DIR = __dirname;
 
-const sessions = new Map();
-
 let analyticsData = {
   visitors: 0,
   registrations: 0,
   events: []
 };
+
+
+/* =====================================================
+   PROXY
+===================================================== */
+
+/*
+ * Vercel sits behind a proxy and sends
+ * X-Forwarded-For.
+ *
+ * Trust the first proxy so express-rate-limit
+ * can correctly identify clients.
+ */
+
+app.set('trust proxy', 1);
 
 
 /* =====================================================
@@ -60,6 +73,7 @@ function writeData(data) {
   analyticsData = data;
 }
 
+
 function hashIp(ip) {
   return crypto
     .createHash('sha256')
@@ -67,6 +81,7 @@ function hashIp(ip) {
     .digest('hex')
     .slice(0, 16);
 }
+
 
 function base64url(buffer) {
   return Buffer.from(buffer)
@@ -76,17 +91,25 @@ function base64url(buffer) {
     .replace(/=+$/, '');
 }
 
-function encrypt(obj) {
-  const iv = crypto.randomBytes(12);
 
-  const key = crypto
+/* =====================================================
+   ENCRYPTION
+===================================================== */
+
+function encryptionKey() {
+  return crypto
     .createHash('sha256')
     .update(SESSION_SECRET)
     .digest();
+}
+
+
+function encrypt(obj) {
+  const iv = crypto.randomBytes(12);
 
   const cipher = crypto.createCipheriv(
     'aes-256-gcm',
-    key,
+    encryptionKey(),
     iv
   );
 
@@ -105,23 +128,21 @@ function encrypt(obj) {
   ].join('.');
 }
 
-function decrypt(token) {
-  const [iv, tag, data] =
-    String(token).split('.');
 
-  if (!iv || !tag || !data) {
-    throw new Error('Invalid state');
+function decrypt(token) {
+  const parts =
+    String(token || '').split('.');
+
+  if (parts.length !== 3) {
+    throw new Error('Invalid encrypted token');
   }
 
-  const key = crypto
-    .createHash('sha256')
-    .update(SESSION_SECRET)
-    .digest();
+  const [iv, tag, data] = parts;
 
   const decipher =
     crypto.createDecipheriv(
       'aes-256-gcm',
-      key,
+      encryptionKey(),
       Buffer.from(iv, 'base64url')
     );
 
@@ -131,10 +152,7 @@ function decrypt(token) {
 
   const decrypted = Buffer.concat([
     decipher.update(
-      Buffer.from(
-        data,
-        'base64url'
-      )
+      Buffer.from(data, 'base64url')
     ),
     decipher.final()
   ]);
@@ -144,11 +162,17 @@ function decrypt(token) {
   );
 }
 
+
+/* =====================================================
+   PKCE
+===================================================== */
+
 function pkceVerifier() {
   return base64url(
     crypto.randomBytes(64)
   );
 }
+
 
 function challenge(verifier) {
   return base64url(
@@ -182,16 +206,6 @@ app.use(
 /* =====================================================
    SECURITY
 ===================================================== */
-
-/*
- * IMPORTANT:
- *
- * Deriv's public market-data WebSocket is:
- *
- * wss://ws.binaryws.com/websockets/v3
- *
- * Therefore it MUST be included in connect-src.
- */
 
 app.use(
   helmet({
@@ -272,9 +286,7 @@ app.use(
   })
 );
 
-app.disable(
-  'x-powered-by'
-);
+app.disable('x-powered-by');
 
 
 /* =====================================================
@@ -393,6 +405,7 @@ app.post(
   }
 );
 
+
 app.get(
   '/api/analytics',
   (req, res) => {
@@ -410,7 +423,9 @@ app.get(
       data.events.filter(
         (event) =>
           event.type ===
-          'oauth_success'
+          'oauth_login_success' ||
+          event.type ===
+          'oauth_signup_success'
       ).length;
 
     res.json({
@@ -437,7 +452,7 @@ app.get(
 
 
 /* =====================================================
-   DERIV OAUTH
+   DERIV OAUTH URL
 ===================================================== */
 
 function buildDerivOAuthUrl(
@@ -454,8 +469,17 @@ function buildDerivOAuthUrl(
   const verifier =
     pkceVerifier();
 
+  /*
+   * OAuth state is encrypted.
+   *
+   * The verifier is stored inside the
+   * encrypted state so it survives the
+   * serverless request boundary.
+   */
+
   const state =
     encrypt({
+
       verifier,
 
       nonce:
@@ -469,8 +493,10 @@ function buildDerivOAuthUrl(
         Date.now()
     });
 
+
   const params =
     new URLSearchParams({
+
       response_type:
         'code',
 
@@ -492,6 +518,7 @@ function buildDerivOAuthUrl(
       code_challenge_method:
         'S256'
     });
+
 
   if (mode === 'signup') {
 
@@ -529,12 +556,17 @@ function buildDerivOAuthUrl(
     }
   }
 
+
   return (
     'https://auth.deriv.com/oauth2/auth?' +
     params.toString()
   );
 }
 
+
+/* =====================================================
+   SIGNUP
+===================================================== */
 
 app.get(
   '/api/deriv/signup',
@@ -551,6 +583,11 @@ app.get(
 
     } catch (err) {
 
+      console.error(
+        'Deriv signup error:',
+        err.message
+      );
+
       res.status(503).json({
         error:
           err.message
@@ -559,6 +596,10 @@ app.get(
   }
 );
 
+
+/* =====================================================
+   LOGIN
+===================================================== */
 
 app.get(
   '/api/deriv/login',
@@ -574,6 +615,11 @@ app.get(
       );
 
     } catch (err) {
+
+      console.error(
+        'Deriv login error:',
+        err.message
+      );
 
       res.status(503).json({
         error:
@@ -594,7 +640,17 @@ app.get(
 
     try {
 
+      /* ---------------------------------------------
+         DERIV RETURNED AN OAUTH ERROR
+      --------------------------------------------- */
+
       if (req.query.error) {
+
+        console.error(
+          'Deriv OAuth error:',
+          req.query.error,
+          req.query.error_description || ''
+        );
 
         return res.redirect(
           `/?oauth_error=${encodeURIComponent(
@@ -603,10 +659,24 @@ app.get(
         );
       }
 
+
+      /* ---------------------------------------------
+         VERIFY STATE
+      --------------------------------------------- */
+
+      if (!req.query.state) {
+        throw new Error(
+          'Missing OAuth state'
+        );
+      }
+
       const payload =
         decrypt(
-          req.query.state
+          String(
+            req.query.state
+          )
         );
+
 
       if (
         !payload ||
@@ -623,9 +693,14 @@ app.get(
         );
       }
 
+
+      /* ---------------------------------------------
+         STATE EXPIRATION
+      --------------------------------------------- */
+
       if (
         Date.now() -
-          payload.iat >
+          Number(payload.iat || 0) >
         10 * 60 * 1000
       ) {
         throw new Error(
@@ -633,11 +708,21 @@ app.get(
         );
       }
 
+
+      /* ---------------------------------------------
+         AUTHORIZATION CODE
+      --------------------------------------------- */
+
       if (!req.query.code) {
         throw new Error(
           'Missing authorization code'
         );
       }
+
+
+      /* ---------------------------------------------
+         CLIENT ID
+      --------------------------------------------- */
 
       if (!DERIV_CLIENT_ID) {
         throw new Error(
@@ -645,8 +730,14 @@ app.get(
         );
       }
 
+
+      /* ---------------------------------------------
+         TOKEN EXCHANGE
+      --------------------------------------------- */
+
       const body =
         new URLSearchParams({
+
           grant_type:
             'authorization_code',
 
@@ -665,6 +756,7 @@ app.get(
             `${BASE_URL}/oauth/callback`
         });
 
+
       const tokenResp =
         await fetch(
           'https://auth.deriv.com/oauth2/token',
@@ -674,21 +766,37 @@ app.get(
 
             headers: {
               'content-type':
-                'application/x-www-form-urlencoded'
+                'application/x-www-form-urlencoded',
+
+              'accept':
+                'application/json'
             },
 
             body
           }
         );
 
+
       if (!tokenResp.ok) {
+
+        const errorText =
+          await tokenResp.text();
+
+        console.error(
+          'Deriv token exchange failed:',
+          tokenResp.status,
+          errorText
+        );
+
         throw new Error(
           `Token exchange failed (${tokenResp.status})`
         );
       }
 
+
       const token =
         await tokenResp.json();
+
 
       if (!token.access_token) {
         throw new Error(
@@ -696,22 +804,40 @@ app.get(
         );
       }
 
-      const sessionId =
-        base64url(
-          crypto.randomBytes(32)
+
+      /* ---------------------------------------------
+         SESSION EXPIRATION
+      --------------------------------------------- */
+
+      const expiresIn =
+        Math.max(
+          60,
+          Number(
+            token.expires_in ||
+            3600
+          )
         );
 
       const expiresAt =
         Date.now() +
-        Number(
-          token.expires_in ||
-          3600
-        ) *
-          1000;
+        expiresIn * 1000;
 
-      sessions.set(
-        sessionId,
-        {
+
+      /* ---------------------------------------------
+         SERVERLESS-SAFE SESSION
+         
+         IMPORTANT:
+         
+         Do NOT store the session in a Map.
+         
+         The encrypted session is placed inside
+         an HttpOnly cookie so another Vercel
+         invocation can read it.
+      --------------------------------------------- */
+
+      const sessionToken =
+        encrypt({
+
           accessToken:
             token.access_token,
 
@@ -719,65 +845,22 @@ app.get(
             token.refresh_token ||
             null,
 
-          expiresAt
-        }
-      );
+          expiresAt,
 
-      setTimeout(
-        () =>
-          sessions.delete(
-            sessionId
-          ),
-
-        Math.max(
-          1,
-          Number(
-            token.expires_in ||
-            3600
-          ) * 1000
-        )
-      );
-
-      const data =
-        readData();
-
-      data.events.push({
-        type:
-          payload.mode === 'signup'
-            ? 'oauth_signup_success'
-            : 'oauth_login_success',
-
-        at:
-          new Date().toISOString(),
-
-        expiresIn:
-          token.expires_in ||
-          null
-      });
-
-      if (
-        payload.mode === 'signup'
-      ) {
-
-        data.registrations =
-          (data.registrations || 0) +
-          1;
-
-        data.events.push({
-          type:
-            'registration_complete',
-
-          at:
-            new Date().toISOString()
+          createdAt:
+            Date.now()
         });
-      }
 
-      writeData(data);
+
+      /* ---------------------------------------------
+         COOKIE
+      --------------------------------------------- */
 
       res.cookie(
         'protraders_session',
-        sessionId,
+        sessionToken,
         {
+
           httpOnly:
             true,
 
@@ -790,22 +873,72 @@ app.get(
             'lax',
 
           maxAge:
-            Math.max(
-              1,
-              Number(
-                token.expires_in ||
-                3600
-              ) * 1000
-            ),
+            expiresIn * 1000,
 
           path:
             '/'
         }
       );
 
-      res.redirect(
+
+      /* ---------------------------------------------
+         ANALYTICS
+      --------------------------------------------- */
+
+      const data =
+        readData();
+
+
+      data.events.push({
+
+        type:
+          payload.mode === 'signup'
+            ? 'oauth_signup_success'
+            : 'oauth_login_success',
+
+        at:
+          new Date().toISOString(),
+
+        expiresIn
+      });
+
+
+      if (
+        payload.mode === 'signup'
+      ) {
+
+        data.registrations =
+          (data.registrations || 0) +
+          1;
+
+        data.events.push({
+
+          type:
+            'registration_complete',
+
+          at:
+            new Date().toISOString()
+        });
+      }
+
+
+      writeData(data);
+
+
+      console.log(
+        'DERIV OAUTH SUCCESS:',
+        payload.mode
+      );
+
+
+      /* ---------------------------------------------
+         RETURN TO APPLICATION
+      --------------------------------------------- */
+
+      return res.redirect(
         '/?trading=1'
       );
+
 
     } catch (err) {
 
@@ -814,7 +947,7 @@ app.get(
         err.message
       );
 
-      res.redirect(
+      return res.redirect(
         `/?oauth_error=${encodeURIComponent(
           'oauth_failed'
         )}`
@@ -896,19 +1029,15 @@ app.get(
   '/api/session',
   (req, res) => {
 
-    const sessionId =
+    const sessionToken =
       req.cookies?.protraders_session;
 
-    const session =
-      sessions.get(
-        sessionId
-      );
 
-    if (
-      !session ||
-      Date.now() >=
-        session.expiresAt
-    ) {
+    /* ---------------------------------------------
+       NO COOKIE
+    --------------------------------------------- */
+
+    if (!sessionToken) {
 
       return res.json({
         authenticated:
@@ -916,13 +1045,134 @@ app.get(
       });
     }
 
-    res.json({
-      authenticated:
-        true,
 
-      expiresAt:
-        session.expiresAt
-    });
+    try {
+
+      const session =
+        decrypt(
+          sessionToken
+        );
+
+
+      /* -------------------------------------------
+         EXPIRED SESSION
+      ------------------------------------------- */
+
+      if (
+        !session ||
+        !session.accessToken ||
+        !session.expiresAt ||
+        Date.now() >=
+          Number(
+            session.expiresAt
+          )
+      ) {
+
+        res.clearCookie(
+          'protraders_session',
+          {
+            httpOnly:
+              true,
+
+            secure:
+              BASE_URL.startsWith(
+                'https://'
+              ),
+
+            sameSite:
+              'lax',
+
+            path:
+              '/'
+          }
+        );
+
+        return res.json({
+          authenticated:
+            false
+        });
+      }
+
+
+      /* -------------------------------------------
+         VALID SESSION
+      ------------------------------------------- */
+
+      return res.json({
+
+        authenticated:
+          true,
+
+        expiresAt:
+          Number(
+            session.expiresAt
+          )
+      });
+
+
+    } catch (err) {
+
+      console.error(
+        'Session validation error:',
+        err.message
+      );
+
+      res.clearCookie(
+        'protraders_session',
+        {
+          httpOnly:
+            true,
+
+          secure:
+            BASE_URL.startsWith(
+              'https://'
+            ),
+
+          sameSite:
+            'lax',
+
+          path:
+            '/'
+        }
+      );
+
+      return res.json({
+        authenticated:
+          false
+      });
+    }
+  }
+);
+
+
+/* =====================================================
+   LOGOUT
+===================================================== */
+
+app.get(
+  '/api/logout',
+  (req, res) => {
+
+    res.clearCookie(
+      'protraders_session',
+      {
+        httpOnly:
+          true,
+
+        secure:
+          BASE_URL.startsWith(
+            'https://'
+          ),
+
+        sameSite:
+          'lax',
+
+        path:
+          '/'
+      }
+    );
+
+    res.redirect('/');
   }
 );
 
@@ -936,7 +1186,9 @@ app.get(
   (req, res) => {
 
     res.json({
-      ok: true,
+
+      ok:
+        true,
 
       service:
         'protraders-fx',
@@ -1038,7 +1290,10 @@ app.get(
 app.use(
   (err, req, res, next) => {
 
-    console.error(err);
+    console.error(
+      'SERVER ERROR:',
+      err
+    );
 
     res.status(500).json({
       error:
