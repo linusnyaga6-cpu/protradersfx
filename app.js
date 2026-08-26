@@ -6,8 +6,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const DERIV_PUBLIC_WS =
     "wss://api.derivws.com/trading/v1/options/ws/public";
 
-  const AUTH_FLAG = "protraders_auth_session";
-
   const state = {
     socket: null,
     connected: false,
@@ -55,7 +53,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
   /* ============================================================
-     STATUS
+     MARKET STATUS
   ============================================================ */
 
   const setStatus = (status) => {
@@ -64,13 +62,8 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
 
-  const setAccountStatus = (status) => {
-    console.log("ACCOUNT:", status);
-  };
-
-
   /* ============================================================
-     MARKET
+     MARKET DATA
   ============================================================ */
 
   const supportedMarkets = {
@@ -123,10 +116,6 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
 
-  /* ============================================================
-     FORMATTERS
-  ============================================================ */
-
   const formatPrice = (price) => {
     const number = Number(price);
 
@@ -142,21 +131,14 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
 
-  const formatMoney = (
-    balance,
-    currency = "USD"
-  ) => {
+  const formatMoney = (balance, currency = "USD") => {
     const number = Number(balance);
 
     if (!Number.isFinite(number)) {
       return "—";
     }
 
-    return (
-      currency +
-      " " +
-      number.toFixed(2)
-    );
+    return currency + " " + number.toFixed(2);
   };
 
 
@@ -165,11 +147,7 @@ document.addEventListener("DOMContentLoaded", () => {
   ============================================================ */
 
   const updateMarketDisplay = () => {
-    setAll(
-      "[data-market]",
-      state.symbolName
-    );
-
+    setAll("[data-market]", state.symbolName);
     setAll(
       "[data-analysis-market]",
       state.symbolName
@@ -182,8 +160,7 @@ document.addEventListener("DOMContentLoaded", () => {
   ============================================================ */
 
   const updateChart = () => {
-    const line =
-      one("[data-live-line]");
+    const line = one("[data-live-line]");
 
     if (
       !line ||
@@ -196,82 +173,49 @@ document.addEventListener("DOMContentLoaded", () => {
     const height = 400;
     const padding = 20;
 
-    const values =
-      state.prices.slice(-60);
+    const values = state.prices.slice(-60);
 
-    const min =
-      Math.min(...values);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
 
-    const max =
-      Math.max(...values);
+    const range = max - min || 0.00001;
 
-    const range =
-      max - min || 0.00001;
+    const points = values
+      .map((value, index) => {
+        const x =
+          padding +
+          (index /
+            Math.max(values.length - 1, 1)) *
+          (width - padding * 2);
 
-    const points =
-      values
-        .map((value, index) => {
-          const x =
-            padding +
-            (
-              index /
-              Math.max(
-                values.length - 1,
-                1
-              )
-            ) *
-            (
-              width -
-              padding * 2
-            );
+        const y =
+          height -
+          padding -
+          ((value - min) / range) *
+            (height - padding * 2);
 
-          const y =
-            height -
-            padding -
-            (
-              (
-                value - min
-              ) /
-              range
-            ) *
-            (
-              height -
-              padding * 2
-            );
+        return (
+          x.toFixed(1) +
+          "," +
+          y.toFixed(1)
+        );
+      })
+      .join(" ");
 
-          return (
-            x.toFixed(1) +
-            "," +
-            y.toFixed(1)
-          );
-        })
-        .join(" ");
-
-    line.setAttribute(
-      "points",
-      points
-    );
-
+    line.setAttribute("points", points);
 
     const axis =
-      all(".chart-y-axis span");
+      all(".chart-axis span");
 
     if (axis.length >= 5) {
-      axis.forEach(
-        (element, index) => {
-          const value =
-            max -
-            (
-              (
-                max - min
-              ) / 4
-            ) *
-            index;
+      axis.forEach((element, index) => {
+        const value =
+          max -
+          ((max - min) / 4) * index;
 
-          element.textContent =
-            formatPrice(value);
-        }
-      );
+        element.textContent =
+          formatPrice(value);
+      });
     }
   };
 
@@ -288,9 +232,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const recent =
       state.prices.slice(-5);
 
-    const first =
-      recent[0];
-
+    const first = recent[0];
     const last =
       recent[recent.length - 1];
 
@@ -322,45 +264,26 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
 
-    setAll(
-      "[data-trend]",
-      trend
-    );
+    setAll("[data-trend]", trend);
+    setAll("[data-momentum]", momentum);
+    setAll("[data-direction]", direction);
+    setAll("[data-signal]", signal);
 
-    setAll(
-      "[data-momentum]",
-      momentum
-    );
+    all("[data-signal]").forEach((element) => {
+      element.classList.remove(
+        "wait",
+        "buy",
+        "sell"
+      );
 
-    setAll(
-      "[data-direction]",
-      direction
-    );
-
-    setAll(
-      "[data-signal]",
-      signal
-    );
-
-
-    all("[data-signal]").forEach(
-      (element) => {
-        element.classList.remove(
-          "wait",
-          "buy",
-          "sell"
-        );
-
-        if (signal === "CALL") {
-          element.classList.add("buy");
-        } else if (signal === "PUT") {
-          element.classList.add("sell");
-        } else {
-          element.classList.add("wait");
-        }
+      if (signal === "CALL") {
+        element.classList.add("buy");
+      } else if (signal === "PUT") {
+        element.classList.add("sell");
+      } else {
+        element.classList.add("wait");
       }
-    );
-
+    });
 
     if (state.price !== null) {
       const movement =
@@ -396,30 +319,18 @@ document.addEventListener("DOMContentLoaded", () => {
   ============================================================ */
 
   const updatePrice = (price) => {
-    const numericPrice =
-      Number(price);
+    const numericPrice = Number(price);
 
-    if (
-      !Number.isFinite(
-        numericPrice
-      )
-    ) {
+    if (!Number.isFinite(numericPrice)) {
       return;
     }
 
-    state.previousPrice =
-      state.price;
+    state.previousPrice = state.price;
+    state.price = numericPrice;
 
-    state.price =
-      numericPrice;
+    state.prices.push(numericPrice);
 
-    state.prices.push(
-      numericPrice
-    );
-
-    if (
-      state.prices.length > 100
-    ) {
+    if (state.prices.length > 100) {
       state.prices.shift();
     }
 
@@ -428,34 +339,22 @@ document.addEventListener("DOMContentLoaded", () => {
       formatPrice(numericPrice)
     );
 
-
     if (
       state.previousPrice !== null &&
       state.previousPrice !== 0
     ) {
       const change =
-        (
-          (
-            numericPrice -
-            state.previousPrice
-          ) /
-          state.previousPrice
-        ) *
+        ((numericPrice -
+          state.previousPrice) /
+          state.previousPrice) *
         100;
 
       const move =
-        (
-          change >= 0
-            ? "+"
-            : ""
-        ) +
+        (change >= 0 ? "+" : "") +
         change.toFixed(3) +
         "%";
 
-      setAll(
-        "[data-move]",
-        move
-      );
+      setAll("[data-move]", move);
 
       all("[data-move]").forEach(
         (element) => {
@@ -492,41 +391,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     setAll("[data-price]", "—");
     setAll("[data-move]", "—");
-
-    setAll(
-      "[data-signal]",
-      "WAIT"
-    );
-
-    setAll(
-      "[data-trend]",
-      "WAIT"
-    );
-
-    setAll(
-      "[data-momentum]",
-      "WAIT"
-    );
-
-    setAll(
-      "[data-direction]",
-      "—"
-    );
-
-    setAll(
-      "[data-entry]",
-      "—"
-    );
-
-    setAll(
-      "[data-stop]",
-      "—"
-    );
-
-    setAll(
-      "[data-target]",
-      "—"
-    );
+    setAll("[data-signal]", "WAIT");
+    setAll("[data-trend]", "WAIT");
+    setAll("[data-momentum]", "WAIT");
+    setAll("[data-direction]", "—");
+    setAll("[data-entry]", "—");
+    setAll("[data-stop]", "—");
+    setAll("[data-target]", "—");
 
     const line =
       one("[data-live-line]");
@@ -574,11 +445,11 @@ document.addEventListener("DOMContentLoaded", () => {
               item.display_name ||
               ""
             )
-            .replace(
-              /[^A-Za-z]/g,
-              ""
-            )
-            .toUpperCase();
+              .replace(
+                /[^A-Za-z]/g,
+                ""
+              )
+              .toUpperCase();
 
           return name === wanted;
         }
@@ -599,15 +470,15 @@ document.addEventListener("DOMContentLoaded", () => {
               item.underlying_symbol ||
               ""
             )
-            .replace(
-              /^frx/i,
-              ""
-            )
-            .replace(
-              /[^A-Za-z]/g,
-              ""
-            )
-            .toUpperCase();
+              .replace(
+                /^frx/i,
+                ""
+              )
+              .replace(
+                /[^A-Za-z]/g,
+                ""
+              )
+              .toUpperCase();
 
           return symbol === wanted;
         }
@@ -620,9 +491,6 @@ document.addEventListener("DOMContentLoaded", () => {
       return bySymbol;
     }
 
-    const expectedSymbol =
-      "frx" + wanted;
-
     return (
       state.activeSymbols.find(
         (item) =>
@@ -630,7 +498,7 @@ document.addEventListener("DOMContentLoaded", () => {
             item.underlying_symbol ||
             ""
           ).toLowerCase() ===
-          expectedSymbol.toLowerCase()
+          ("frx" + wanted).toLowerCase()
       ) || null
     );
   };
@@ -644,14 +512,12 @@ document.addEventListener("DOMContentLoaded", () => {
     if (
       !state.socket ||
       state.socket.readyState !==
-      WebSocket.OPEN
+        WebSocket.OPEN
     ) {
       return;
     }
 
-    setStatus(
-      "LOADING MARKETS"
-    );
+    setStatus("LOADING MARKETS");
 
     state.socket.send(
       JSON.stringify({
@@ -670,7 +536,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (
       !state.socket ||
       state.socket.readyState !==
-      WebSocket.OPEN
+        WebSocket.OPEN
     ) {
       return;
     }
@@ -681,15 +547,7 @@ document.addEventListener("DOMContentLoaded", () => {
       );
 
     if (!market) {
-      console.error(
-        "MARKET NOT FOUND:",
-        state.requestedMarket
-      );
-
-      setStatus(
-        "MARKET UNAVAILABLE"
-      );
-
+      setStatus("MARKET UNAVAILABLE");
       return;
     }
 
@@ -697,13 +555,11 @@ document.addEventListener("DOMContentLoaded", () => {
       market.underlying_symbol;
 
     if (
-      typeof derivSymbol !== "string" ||
+      typeof derivSymbol !==
+      "string" ||
       !derivSymbol.trim()
     ) {
-      setStatus(
-        "SYMBOL ERROR"
-      );
-
+      setStatus("SYMBOL ERROR");
       return;
     }
 
@@ -748,9 +604,7 @@ document.addEventListener("DOMContentLoaded", () => {
         error
       );
 
-      setStatus(
-        "MARKET ERROR"
-      );
+      setStatus("MARKET ERROR");
     }
   };
 
@@ -855,7 +709,9 @@ document.addEventListener("DOMContentLoaded", () => {
      TRADE MESSAGE
   ============================================================ */
 
-  const setTradeMessage = (message) => {
+  const setTradeMessage = (
+    message
+  ) => {
     const element =
       one("[data-trade-message]");
 
@@ -867,14 +723,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
   /* ============================================================
-     LOGGED OUT UI
+     ACCOUNT UI
   ============================================================ */
 
   const showLoggedOutUI = () => {
-    console.log(
-      "UI: LOGGED OUT"
-    );
-
     const loggedOut =
       one("#logged-out-actions");
 
@@ -889,7 +741,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const footerAccount =
       one("#footer-account");
-
 
     if (loggedOut) {
       loggedOut.hidden = false;
@@ -911,27 +762,44 @@ document.addEventListener("DOMContentLoaded", () => {
       footerAccount.hidden = true;
     }
 
+    /*
+     * IMPORTANT:
+     * Completely clear account information
+     * while logged out.
+     */
 
-    /* IMPORTANT:
-       Never show account information while logged out.
-    */
+    const select =
+      one("#account-select");
 
     const balance =
       one("#account-balance");
+
+    const tradeAccount =
+      one("#trade-account");
+
+    const tradeType =
+      one("#trade-account-type");
+
+    const tradeBalance =
+      one("#trade-account-balance");
+
+    if (select) {
+      select.innerHTML =
+        '<option value="">SELECT ACCOUNT</option>';
+      select.value = "";
+    }
 
     if (balance) {
       balance.textContent = "—";
     }
 
-    const select =
-      one("#account-select");
-
-    if (select) {
-      select.innerHTML = "";
+    if (tradeType) {
+      tradeType.textContent = "—";
     }
 
-    const tradeAccount =
-      one("#trade-account");
+    if (tradeBalance) {
+      tradeBalance.textContent = "—";
+    }
 
     if (tradeAccount) {
       tradeAccount.hidden = true;
@@ -946,15 +814,7 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
 
-  /* ============================================================
-     LOGGED IN UI
-  ============================================================ */
-
   const showLoggedInUI = () => {
-    console.log(
-      "UI: LOGGED IN"
-    );
-
     const loggedOut =
       one("#logged-out-actions");
 
@@ -969,7 +829,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const footerAccount =
       one("#footer-account");
-
 
     if (loggedOut) {
       loggedOut.hidden = true;
@@ -1018,7 +877,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const tradeBalance =
       one("#trade-account-balance");
 
-
     if (!state.selectedAccount) {
       if (balance) {
         balance.textContent = "—";
@@ -1031,29 +889,24 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-
     const account =
       state.selectedAccount;
-
 
     const type =
       String(
         account.account_type || ""
       ).toLowerCase();
 
-
     const label =
       type === "real"
         ? "REAL"
         : "DEMO";
-
 
     const money =
       formatMoney(
         account.balance,
         account.currency || "USD"
       );
-
 
     if (select) {
       select.value =
@@ -1088,20 +941,18 @@ document.addEventListener("DOMContentLoaded", () => {
   const loadAccounts = async () => {
 
     /*
-     * SECURITY RULE:
-     * Never request account information unless
-     * the current frontend session is authenticated.
+     * NEVER request accounts unless the
+     * frontend knows the user is authenticated.
      */
 
     if (!state.authenticated) {
       console.log(
-        "ACCOUNTS BLOCKED — NOT AUTHENTICATED"
+        "ACCOUNTS: BLOCKED — NOT AUTHENTICATED"
       );
 
       showLoggedOutUI();
       return;
     }
-
 
     try {
       console.log(
@@ -1118,20 +969,16 @@ document.addEventListener("DOMContentLoaded", () => {
           }
         );
 
-
-      if (response.status === 401) {
+      if (
+        response.status === 401
+      ) {
         state.authenticated =
           false;
-
-        sessionStorage.removeItem(
-          AUTH_FLAG
-        );
 
         showLoggedOutUI();
 
         return;
       }
-
 
       if (!response.ok) {
         throw new Error(
@@ -1140,16 +987,13 @@ document.addEventListener("DOMContentLoaded", () => {
         );
       }
 
-
       const data =
         await response.json();
-
 
       console.log(
         "ACCOUNTS:",
         data
       );
-
 
       const accounts =
         Array.isArray(
@@ -1158,21 +1002,17 @@ document.addEventListener("DOMContentLoaded", () => {
           ? data.accounts
           : [];
 
-
       state.accounts =
         accounts;
 
-
       const select =
         one("#account-select");
-
 
       if (select) {
         select.innerHTML = "";
 
         accounts.forEach(
           (account) => {
-
             const option =
               document.createElement(
                 "option"
@@ -1208,7 +1048,6 @@ document.addEventListener("DOMContentLoaded", () => {
         );
       }
 
-
       if (!accounts.length) {
         setTradeMessage(
           "NO DERIV ACCOUNTS FOUND"
@@ -1217,10 +1056,9 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-
       /*
-       * REAL is preferred after authentication.
-       * DEMO is available as an alternative.
+       * Prefer REAL after successful login.
+       * DEMO remains available through selector.
        */
 
       let preferred =
@@ -1232,7 +1070,6 @@ document.addEventListener("DOMContentLoaded", () => {
             ).toLowerCase() ===
             "real"
         );
-
 
       if (!preferred) {
         preferred =
@@ -1246,21 +1083,17 @@ document.addEventListener("DOMContentLoaded", () => {
           );
       }
 
-
       state.selectedAccount =
         preferred ||
         accounts[0];
 
-
       updateAccountDisplay();
-
 
       setTradeMessage(
         "ACCOUNT READY"
       );
 
     } catch (error) {
-
       console.error(
         "ACCOUNT LOAD ERROR:",
         error
@@ -1288,7 +1121,6 @@ document.addEventListener("DOMContentLoaded", () => {
     select.addEventListener(
       "change",
       () => {
-
         if (!state.authenticated) {
           return;
         }
@@ -1313,13 +1145,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
         updateAccountDisplay();
 
-
         const type =
           String(
             account.account_type ||
             ""
           ).toLowerCase();
-
 
         setTradeMessage(
           (
@@ -1329,7 +1159,6 @@ document.addEventListener("DOMContentLoaded", () => {
           ) +
           " ACCOUNT SELECTED"
         );
-
 
         console.log(
           "ACCOUNT SWITCHED:",
@@ -1345,18 +1174,7 @@ document.addEventListener("DOMContentLoaded", () => {
   ============================================================ */
 
   const checkSession = async () => {
-
-    /*
-     * Always begin visually logged out.
-     * This prevents REAL/DEMO/balance from appearing
-     * before the OAuth flow has been completed.
-     */
-
-    showLoggedOutUI();
-
-
     try {
-
       const response =
         await fetch(
           "/api/session",
@@ -1367,7 +1185,6 @@ document.addEventListener("DOMContentLoaded", () => {
           }
         );
 
-
       if (!response.ok) {
         throw new Error(
           "Session request failed: " +
@@ -1375,34 +1192,18 @@ document.addEventListener("DOMContentLoaded", () => {
         );
       }
 
-
       const data =
         await response.json();
-
 
       console.log(
         "SESSION:",
         data
       );
 
-
-      /*
-       * Only recognise the authenticated session
-       * for this browser tab after the OAuth return.
-       */
-
-      const oauthCompleted =
-        sessionStorage.getItem(
-          AUTH_FLAG
-        ) === "true";
-
-
       if (
         data &&
-        data.authenticated === true &&
-        oauthCompleted
+        data.authenticated === true
       ) {
-
         state.authenticated =
           true;
 
@@ -1410,28 +1211,16 @@ document.addEventListener("DOMContentLoaded", () => {
           data.expiresAt ||
           null;
 
-
         showLoggedInUI();
 
-
-        setAccountStatus(
-          "CONNECTED"
-        );
-
-
         await loadAccounts();
-
 
         return true;
       }
 
-
       /*
-       * A server cookie may exist from an older session,
-       * but this page has not completed the current
-       * login/signup flow.
-       *
-       * Therefore do NOT expose accounts.
+       * Absolutely no account information
+       * when not authenticated.
        */
 
       state.authenticated =
@@ -1440,22 +1229,11 @@ document.addEventListener("DOMContentLoaded", () => {
       state.sessionExpiresAt =
         null;
 
-      state.accounts = [];
-      state.selectedAccount = null;
-
       showLoggedOutUI();
-
-
-      setAccountStatus(
-        "NOT CONNECTED"
-      );
-
 
       return false;
 
-
     } catch (error) {
-
       console.error(
         "SESSION ERROR:",
         error
@@ -1464,14 +1242,10 @@ document.addEventListener("DOMContentLoaded", () => {
       state.authenticated =
         false;
 
-      state.accounts = [];
-      state.selectedAccount = null;
+      state.sessionExpiresAt =
+        null;
 
       showLoggedOutUI();
-
-      setAccountStatus(
-        "NOT CONNECTED"
-      );
 
       return false;
     }
@@ -1483,11 +1257,6 @@ document.addEventListener("DOMContentLoaded", () => {
   ============================================================ */
 
   const goToLogin = () => {
-
-    console.log(
-      "OPENING DERIV LOGIN"
-    );
-
     window.location.href =
       "/api/deriv/login";
   };
@@ -1503,39 +1272,26 @@ document.addEventListener("DOMContentLoaded", () => {
       'a[href="/api/deriv/login"]'
     ).forEach(
       (link) => {
-
         link.addEventListener(
           "click",
           () => {
-
             console.log(
               "DERIV LOGIN CLICKED"
-            );
-
-            sessionStorage.removeItem(
-              AUTH_FLAG
             );
           }
         );
       }
     );
-
 
     all(
       'a[href="/api/deriv/signup"]'
     ).forEach(
       (link) => {
-
         link.addEventListener(
           "click",
           () => {
-
             console.log(
               "DERIV ACCOUNT CREATION CLICKED"
-            );
-
-            sessionStorage.removeItem(
-              AUTH_FLAG
             );
           }
         );
@@ -1545,140 +1301,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
   /* ============================================================
-     OAUTH RESULT
-  ============================================================ */
-
-  const handleOAuthResult = () => {
-
-    const params =
-      new URLSearchParams(
-        window.location.search
-      );
-
-
-    const oauthError =
-      params.get(
-        "oauth_error"
-      );
-
-
-    const trading =
-      params.get(
-        "trading"
-      );
-
-
-    /*
-     * Successful OAuth callback.
-     */
-
-    if (
-      trading === "1"
-    ) {
-
-      console.log(
-        "OAUTH SUCCESS — SESSION ACTIVATED"
-      );
-
-
-      sessionStorage.setItem(
-        AUTH_FLAG,
-        "true"
-      );
-
-
-      const cleanUrl =
-        window.location.origin +
-        window.location.pathname;
-
-
-      window.history.replaceState(
-        {},
-        document.title,
-        cleanUrl
-      );
-
-
-      return;
-    }
-
-
-    /*
-     * OAuth failure.
-     */
-
-    if (!oauthError) {
-      return;
-    }
-
-
-    console.error(
-      "OAUTH ERROR:",
-      oauthError
-    );
-
-
-    sessionStorage.removeItem(
-      AUTH_FLAG
-    );
-
-
-    setTradeMessage(
-      "DERIV LOGIN FAILED"
-    );
-
-
-    let notice =
-      one(
-        "#protraders-notice"
-      );
-
-
-    if (!notice) {
-
-      notice =
-        document.createElement(
-          "div"
-        );
-
-      notice.id =
-        "protraders-notice";
-
-      document.body.appendChild(
-        notice
-      );
-    }
-
-
-    notice.textContent =
-      "Deriv authentication was not completed. Please try again.";
-
-
-    setTimeout(
-      () => {
-        if (notice) {
-          notice.remove();
-        }
-      },
-      6000
-    );
-
-
-    const cleanUrl =
-      window.location.origin +
-      window.location.pathname;
-
-
-    window.history.replaceState(
-      {},
-      document.title,
-      cleanUrl
-    );
-  };
-
-
-  /* ============================================================
-     TRADE
+     TRADING
   ============================================================ */
 
   const handleTradeAttempt = (
@@ -1687,18 +1310,6 @@ document.addEventListener("DOMContentLoaded", () => {
     contractInput
   ) => {
 
-    if (!state.authenticated) {
-
-      setTradeMessage(
-        "LOGIN REQUIRED"
-      );
-
-      goToLogin();
-
-      return;
-    }
-
-
     const stakeValue =
       Number(
         stakeInput
@@ -1706,12 +1317,10 @@ document.addEventListener("DOMContentLoaded", () => {
           : 0
       );
 
-
     const contractType =
       contractInput
         ? contractInput.value
         : "CALL";
-
 
     if (
       !Number.isFinite(
@@ -1719,7 +1328,6 @@ document.addEventListener("DOMContentLoaded", () => {
       ) ||
       stakeValue <= 0
     ) {
-
       setTradeMessage(
         "ENTER A VALID STAKE"
       );
@@ -1727,9 +1335,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-
     if (!state.symbol) {
-
       setTradeMessage(
         "MARKET DATA NOT READY"
       );
@@ -1737,9 +1343,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-
     if (!state.selectedAccount) {
-
       setTradeMessage(
         "SELECT AN ACCOUNT"
       );
@@ -1747,13 +1351,11 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-
     const accountType =
       String(
         state.selectedAccount.account_type ||
         ""
       ).toUpperCase();
-
 
     console.log(
       "TRADE REQUEST READY:",
@@ -1767,7 +1369,6 @@ document.addEventListener("DOMContentLoaded", () => {
         accountType
       }
     );
-
 
     setTradeMessage(
       accountType +
@@ -1794,12 +1395,20 @@ document.addEventListener("DOMContentLoaded", () => {
     const contract =
       one("#contract-type");
 
-
     if (buy) {
-
       buy.addEventListener(
         "click",
         () => {
+
+          if (!state.authenticated) {
+            setTradeMessage(
+              "LOGIN REQUIRED"
+            );
+
+            goToLogin();
+
+            return;
+          }
 
           handleTradeAttempt(
             "BUY",
@@ -1810,12 +1419,20 @@ document.addEventListener("DOMContentLoaded", () => {
       );
     }
 
-
     if (sell) {
-
       sell.addEventListener(
         "click",
         () => {
+
+          if (!state.authenticated) {
+            setTradeMessage(
+              "LOGIN REQUIRED"
+            );
+
+            goToLogin();
+
+            return;
+          }
 
           handleTradeAttempt(
             "SELL",
@@ -1833,14 +1450,11 @@ document.addEventListener("DOMContentLoaded", () => {
   ============================================================ */
 
   const handleMessage = (event) => {
-
     let data;
 
     try {
       data =
-        JSON.parse(
-          event.data
-        );
+        JSON.parse(event.data);
     } catch (error) {
       console.error(
         "INVALID DERIV MESSAGE:",
@@ -1850,19 +1464,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-
-    if (
-      data.msg_type !== "tick"
-    ) {
-      console.log(
-        "DERIV:",
-        data
-      );
-    }
-
-
     if (data.error) {
-
       console.error(
         "DERIV ERROR:",
         data.error
@@ -1874,7 +1476,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
       return;
     }
-
 
     if (
       data.msg_type ===
@@ -1888,42 +1489,28 @@ document.addEventListener("DOMContentLoaded", () => {
           ? data.active_symbols
           : [];
 
-
-      console.log(
-        "ACTIVE SYMBOLS:",
-        state.activeSymbols.length
-      );
-
-
       subscribeToMarket();
 
       return;
     }
 
-
     if (
       data.msg_type ===
-      "tick" &&
+        "tick" &&
       data.tick
     ) {
 
       const tick =
         data.tick;
 
-
       if (
         state.symbol &&
         tick.symbol &&
-        String(
-          tick.symbol
-        ) !==
-        String(
-          state.symbol
-        )
+        String(tick.symbol) !==
+          String(state.symbol)
       ) {
         return;
       }
-
 
       if (
         tick.quote !==
@@ -1933,20 +1520,6 @@ document.addEventListener("DOMContentLoaded", () => {
           tick.quote
         );
       }
-
-      return;
-    }
-
-
-    if (
-      data.tick &&
-      data.tick.quote !==
-      undefined
-    ) {
-
-      updatePrice(
-        data.tick.quote
-      );
     }
   };
 
@@ -1956,7 +1529,6 @@ document.addEventListener("DOMContentLoaded", () => {
   ============================================================ */
 
   const scheduleReconnect = () => {
-
     if (
       state.destroyed ||
       state.reconnectTimer
@@ -1964,9 +1536,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-
     state.reconnectAttempts += 1;
-
 
     const delay =
       Math.min(
@@ -1975,16 +1545,13 @@ document.addEventListener("DOMContentLoaded", () => {
         15000
       );
 
-
     state.reconnectTimer =
       setTimeout(
         () => {
-
           state.reconnectTimer =
             null;
 
           connectToDeriv();
-
         },
         delay
       );
@@ -2001,35 +1568,29 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-
     if (
       state.socket &&
       (
         state.socket.readyState ===
-        WebSocket.OPEN ||
+          WebSocket.OPEN ||
         state.socket.readyState ===
-        WebSocket.CONNECTING
+          WebSocket.CONNECTING
       )
     ) {
       return;
     }
 
-
     setStatus(
       "CONNECTING"
     );
 
-
     let socket;
 
-
     try {
-
       socket =
         new WebSocket(
           DERIV_PUBLIC_WS
         );
-
     } catch (error) {
 
       console.error(
@@ -2049,10 +1610,8 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-
     state.socket =
       socket;
-
 
     socket.addEventListener(
       "open",
@@ -2065,30 +1624,24 @@ document.addEventListener("DOMContentLoaded", () => {
           return;
         }
 
-
         state.connected =
           true;
 
-
         state.reconnectAttempts =
           0;
-
 
         console.log(
           "DERIV PUBLIC MARKET DATA CONNECTED"
         );
 
-
         requestActiveSymbols();
       }
     );
-
 
     socket.addEventListener(
       "message",
       handleMessage
     );
-
 
     socket.addEventListener(
       "error",
@@ -2108,7 +1661,6 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     );
 
-
     socket.addEventListener(
       "close",
       () => {
@@ -2124,11 +1676,7 @@ document.addEventListener("DOMContentLoaded", () => {
         state.connected =
           false;
 
-
-        if (
-          !state.destroyed
-        ) {
-
+        if (!state.destroyed) {
           setStatus(
             "RECONNECTING"
           );
@@ -2137,6 +1685,49 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
     );
+  };
+
+
+  /* ============================================================
+     OAUTH RESULT
+  ============================================================ */
+
+  const handleOAuthResult = () => {
+
+    const params =
+      new URLSearchParams(
+        window.location.search
+      );
+
+    const oauthError =
+      params.get(
+        "oauth_error"
+      );
+
+    if (!oauthError) {
+      return false;
+    }
+
+    console.error(
+      "OAUTH ERROR:",
+      oauthError
+    );
+
+    setTradeMessage(
+      "DERIV LOGIN FAILED"
+    );
+
+    const cleanUrl =
+      window.location.origin +
+      window.location.pathname;
+
+    window.history.replaceState(
+      {},
+      document.title,
+      cleanUrl
+    );
+
+    return true;
   };
 
 
@@ -2152,9 +1743,7 @@ document.addEventListener("DOMContentLoaded", () => {
     state.symbolName =
       "EUR/USD";
 
-
     updateMarketDisplay();
-
 
     setAll(
       "[data-price]",
@@ -2166,25 +1755,18 @@ document.addEventListener("DOMContentLoaded", () => {
       "—"
     );
 
-
     /*
      * CRITICAL:
-     * Start with account information hidden.
+     * Start completely logged out.
+     * Account data is cleared before
+     * session checking.
      */
 
-    state.authenticated =
-      false;
-
-    state.accounts = [];
-    state.selectedAccount = null;
-
     showLoggedOutUI();
-
 
     setStatus(
       "CONNECTING"
     );
-
 
     setupMarketButtons();
     setupTimeframes();
@@ -2192,25 +1774,12 @@ document.addEventListener("DOMContentLoaded", () => {
     setupAccountLinks();
     setupAccountSelector();
 
+    const oauthFailed =
+      handleOAuthResult();
 
-    /*
-     * Process OAuth return BEFORE session check.
-     */
-
-    handleOAuthResult();
-
-
-    /*
-     * This now only reveals accounts if the user
-     * has completed the OAuth flow.
-     */
-
-    await checkSession();
-
-
-    /*
-     * Public market data works without login.
-     */
+    if (!oauthFailed) {
+      await checkSession();
+    }
 
     connectToDeriv();
   };
@@ -2234,21 +1803,17 @@ document.addEventListener("DOMContentLoaded", () => {
       state.destroyed =
         true;
 
-
       if (
         state.reconnectTimer
       ) {
-
         clearTimeout(
           state.reconnectTimer
         );
       }
 
-
       if (
         state.socket
       ) {
-
         try {
           state.socket.close();
         } catch (error) {
