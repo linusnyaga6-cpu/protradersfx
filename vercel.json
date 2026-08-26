@@ -12,6 +12,10 @@
       "dest": "/server.js"
     },
     {
+      "src": "/oauth/(.*)",
+      "dest": "/server.js"
+    },
+    {
       "src": "/oa",
       "dest": "/server.js"
     },
@@ -20,20 +24,8 @@
       "dest": "/server.js"
     },
     {
-      "src": "/app.js",
-      "dest": "/app.js"
-    },
-    {
-      "src": "/style.css",
-      "dest": "/style.css"
-    },
-    {
-      "src": "/",
-      "dest": "/index.html"
-    },
-    {
       "src": "/(.*)",
-      "dest": "/$1"
+      "dest": "/server.js"
     }
   ]
 }
