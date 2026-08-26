@@ -10,31 +10,20 @@ document.addEventListener("DOMContentLoaded", () => {
   const state = {
     socket: null,
     connected: false,
-
     requestedMarket: "EUR/USD",
     symbolName: "EUR/USD",
     symbol: null,
-
     activeSymbols: [],
-
     price: null,
     previousPrice: null,
     prices: [],
-
     requestId: 0,
-
     reconnectTimer: null,
     reconnectAttempts: 0,
-
     authenticated: false,
     sessionExpiresAt: null,
-
     destroyed: false
   };
-
-  /* ============================================================
-     DOM HELPERS
-  ============================================================ */
 
   const all = (selector) =>
     Array.from(document.querySelectorAll(selector));
@@ -48,10 +37,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   };
 
-  /* ============================================================
-     STATUS
-  ============================================================ */
-
   const setStatus = (status) => {
     setAll("[data-market-status]", status);
     console.log("MARKET:", status);
@@ -61,10 +46,6 @@ document.addEventListener("DOMContentLoaded", () => {
     setAll("[data-account-status]", status);
     console.log("ACCOUNT:", status);
   };
-
-  /* ============================================================
-     MARKETS
-  ============================================================ */
 
   const supportedMarkets = {
     "EUR/USD": "EUR/USD",
@@ -76,7 +57,9 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   const normaliseMarketName = (value) => {
-    if (!value) return "";
+    if (!value) {
+      return "";
+    }
 
     let text = String(value).trim();
 
@@ -114,10 +97,6 @@ document.addEventListener("DOMContentLoaded", () => {
     return String(value).trim();
   };
 
-  /* ============================================================
-     PRICE FORMAT
-  ============================================================ */
-
   const formatPrice = (price) => {
     const number = Number(price);
 
@@ -132,10 +111,6 @@ document.addEventListener("DOMContentLoaded", () => {
     return number.toFixed(5);
   };
 
-  /* ============================================================
-     MARKET DISPLAY
-  ============================================================ */
-
   const updateMarketDisplay = () => {
     setAll(
       "[data-market]",
@@ -148,10 +123,6 @@ document.addEventListener("DOMContentLoaded", () => {
     );
   };
 
-  /* ============================================================
-     CHART
-  ============================================================ */
-
   const updateChart = () => {
     const line = one("[data-live-line]");
 
@@ -163,53 +134,46 @@ document.addEventListener("DOMContentLoaded", () => {
     const height = 400;
     const padding = 20;
 
-    const values =
-      state.prices.slice(-60);
+    const values = state.prices.slice(-60);
 
-    const min =
-      Math.min(...values);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const range = max - min || 0.00001;
 
-    const max =
-      Math.max(...values);
-
-    const range =
-      max - min || 0.00001;
-
-    const points =
-      values
-        .map((value, index) => {
-          const x =
-            padding +
-            (
-              index /
-              Math.max(values.length - 1, 1)
-            ) *
-            (
-              width -
-              padding * 2
-            );
-
-          const y =
-            height -
-            padding -
-            (
-              (
-                value - min
-              ) /
-              range
-            ) *
-            (
-              height -
-              padding * 2
-            );
-
-          return (
-            x.toFixed(1) +
-            "," +
-            y.toFixed(1)
+    const points = values
+      .map((value, index) => {
+        const x =
+          padding +
+          (
+            index /
+            Math.max(values.length - 1, 1)
+          ) *
+          (
+            width -
+            padding * 2
           );
-        })
-        .join(" ");
+
+        const y =
+          height -
+          padding -
+          (
+            (
+              value - min
+            ) /
+            range
+          ) *
+          (
+            height -
+            padding * 2
+          );
+
+        return (
+          x.toFixed(1) +
+          "," +
+          y.toFixed(1)
+        );
+      })
+      .join(" ");
 
     line.setAttribute(
       "points",
@@ -220,30 +184,22 @@ document.addEventListener("DOMContentLoaded", () => {
       all(".chart-y-axis span");
 
     if (axis.length >= 5) {
-      const steps = 4;
-
-      axis.forEach(
-        (element, index) => {
-          const value =
-            max -
+      axis.forEach((element, index) => {
+        const value =
+          max -
+          (
             (
-              (
-                max - min
-              ) /
-              steps
-            ) *
-            index;
+              max - min
+            ) /
+            4
+          ) *
+          index;
 
-          element.textContent =
-            formatPrice(value);
-        }
-      );
+        element.textContent =
+          formatPrice(value);
+      });
     }
   };
-
-  /* ============================================================
-     ANALYSIS
-  ============================================================ */
 
   const updateAnalysis = () => {
     if (state.prices.length < 5) {
@@ -253,14 +209,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const recent =
       state.prices.slice(-5);
 
-    const first =
-      recent[0];
-
-    const last =
-      recent[recent.length - 1];
-
-    const difference =
-      last - first;
+    const first = recent[0];
+    const last = recent[recent.length - 1];
+    const difference = last - first;
 
     let trend = "NEUTRAL";
     let momentum = "LOW";
@@ -287,43 +238,26 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
 
-    setAll(
-      "[data-trend]",
-      trend
-    );
+    setAll("[data-trend]", trend);
+    setAll("[data-momentum]", momentum);
+    setAll("[data-direction]", direction);
+    setAll("[data-signal]", signal);
 
-    setAll(
-      "[data-momentum]",
-      momentum
-    );
+    all("[data-signal]").forEach((element) => {
+      element.classList.remove(
+        "wait",
+        "buy",
+        "sell"
+      );
 
-    setAll(
-      "[data-direction]",
-      direction
-    );
-
-    setAll(
-      "[data-signal]",
-      signal
-    );
-
-    all("[data-signal]").forEach(
-      (element) => {
-        element.classList.remove(
-          "wait",
-          "buy",
-          "sell"
-        );
-
-        if (signal === "CALL") {
-          element.classList.add("buy");
-        } else if (signal === "PUT") {
-          element.classList.add("sell");
-        } else {
-          element.classList.add("wait");
-        }
+      if (signal === "CALL") {
+        element.classList.add("buy");
+      } else if (signal === "PUT") {
+        element.classList.add("sell");
+      } else {
+        element.classList.add("wait");
       }
-    );
+    });
 
     if (state.price !== null) {
       const movement =
@@ -353,27 +287,17 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
 
-  /* ============================================================
-     PRICE UPDATE
-  ============================================================ */
-
   const updatePrice = (price) => {
-    const numericPrice =
-      Number(price);
+    const numericPrice = Number(price);
 
     if (!Number.isFinite(numericPrice)) {
       return;
     }
 
-    state.previousPrice =
-      state.price;
+    state.previousPrice = state.price;
+    state.price = numericPrice;
 
-    state.price =
-      numericPrice;
-
-    state.prices.push(
-      numericPrice
-    );
+    state.prices.push(numericPrice);
 
     if (state.prices.length > 100) {
       state.prices.shift();
@@ -410,20 +334,18 @@ document.addEventListener("DOMContentLoaded", () => {
         move
       );
 
-      all("[data-move]").forEach(
-        (element) => {
-          element.classList.remove(
-            "positive",
-            "negative"
-          );
+      all("[data-move]").forEach((element) => {
+        element.classList.remove(
+          "positive",
+          "negative"
+        );
 
-          element.classList.add(
-            change >= 0
-              ? "positive"
-              : "negative"
-          );
-        }
-      );
+        element.classList.add(
+          change >= 0
+            ? "positive"
+            : "negative"
+        );
+      });
     }
 
     updateChart();
@@ -432,60 +354,21 @@ document.addEventListener("DOMContentLoaded", () => {
     setStatus("LIVE");
   };
 
-  /* ============================================================
-     RESET MARKET
-  ============================================================ */
-
   const resetMarketState = () => {
     state.price = null;
     state.previousPrice = null;
     state.prices = [];
     state.symbol = null;
 
-    setAll(
-      "[data-price]",
-      "—"
-    );
-
-    setAll(
-      "[data-move]",
-      "—"
-    );
-
-    setAll(
-      "[data-signal]",
-      "WAIT"
-    );
-
-    setAll(
-      "[data-trend]",
-      "WAIT"
-    );
-
-    setAll(
-      "[data-momentum]",
-      "WAIT"
-    );
-
-    setAll(
-      "[data-direction]",
-      "—"
-    );
-
-    setAll(
-      "[data-entry]",
-      "—"
-    );
-
-    setAll(
-      "[data-stop]",
-      "—"
-    );
-
-    setAll(
-      "[data-target]",
-      "—"
-    );
+    setAll("[data-price]", "—");
+    setAll("[data-move]", "—");
+    setAll("[data-signal]", "WAIT");
+    setAll("[data-trend]", "WAIT");
+    setAll("[data-momentum]", "WAIT");
+    setAll("[data-direction]", "—");
+    setAll("[data-entry]", "—");
+    setAll("[data-stop]", "—");
+    setAll("[data-target]", "—");
 
     const line =
       one("[data-live-line]");
@@ -497,10 +380,6 @@ document.addEventListener("DOMContentLoaded", () => {
       );
     }
   };
-
-  /* ============================================================
-     FIND DERIV SYMBOL
-  ============================================================ */
 
   const findSymbol = (requestedMarket) => {
     const wanted =
@@ -520,22 +399,19 @@ document.addEventListener("DOMContentLoaded", () => {
     );
 
     const exact =
-      state.activeSymbols.find(
-        (item) => {
-          const name =
-            String(
-              item.underlying_symbol_name ||
-              ""
-            )
-            .replace(
-              /[^A-Za-z]/g,
-              ""
-            )
-            .toUpperCase();
+      state.activeSymbols.find((item) => {
+        const name =
+          String(
+            item.underlying_symbol_name || ""
+          )
+          .replace(
+            /[^A-Za-z]/g,
+            ""
+          )
+          .toUpperCase();
 
-          return name === wanted;
-        }
-      );
+        return name === wanted;
+      });
 
     if (
       exact &&
@@ -545,33 +421,26 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     const fallback =
-      state.activeSymbols.find(
-        (item) => {
-          const symbol =
-            String(
-              item.underlying_symbol ||
-              ""
-            )
-            .replace(
-              /^frx/i,
-              ""
-            )
-            .replace(
-              /[^A-Za-z]/g,
-              ""
-            )
-            .toUpperCase();
+      state.activeSymbols.find((item) => {
+        const symbol =
+          String(
+            item.underlying_symbol || ""
+          )
+          .replace(
+            /^frx/i,
+            ""
+          )
+          .replace(
+            /[^A-Za-z]/g,
+            ""
+          )
+          .toUpperCase();
 
-          return symbol === wanted;
-        }
-      );
+        return symbol === wanted;
+      });
 
     return fallback || null;
   };
-
-  /* ============================================================
-     REQUEST ACTIVE SYMBOLS
-  ============================================================ */
 
   const requestActiveSymbols = () => {
     if (
@@ -591,18 +460,12 @@ document.addEventListener("DOMContentLoaded", () => {
       request
     );
 
-    setStatus(
-      "LOADING MARKETS"
-    );
+    setStatus("LOADING MARKETS");
 
     state.socket.send(
       JSON.stringify(request)
     );
   };
-
-  /* ============================================================
-     SUBSCRIBE TO MARKET
-  ============================================================ */
 
   const subscribeToMarket = () => {
     if (
@@ -633,15 +496,6 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    /*
-     * THIS IS THE IMPORTANT FIX.
-     *
-     * Deriv returned:
-     * underlying_symbol = frxEURUSD
-     *
-     * Store that exact value.
-     */
-
     state.symbol =
       String(
         market.underlying_symbol
@@ -660,10 +514,6 @@ document.addEventListener("DOMContentLoaded", () => {
       state.symbol
     );
 
-    /*
-     * Clear old subscriptions.
-     */
-
     try {
       state.socket.send(
         JSON.stringify({
@@ -678,14 +528,17 @@ document.addEventListener("DOMContentLoaded", () => {
       );
     }
 
-    /*
-     * IMPORTANT:
-     * ticks MUST equal the actual
-     * Deriv symbol.
-     *
-     * Never use market.symbol here.
-     * Never use requestedMarket here.
-     */
+    if (!state.symbol) {
+      console.error(
+        "NO DERIV SYMBOL AVAILABLE"
+      );
+
+      setStatus(
+        "SYMBOL ERROR"
+      );
+
+      return;
+    }
 
     const request = {
       ticks: state.symbol,
@@ -697,18 +550,6 @@ document.addEventListener("DOMContentLoaded", () => {
       "TICK REQUEST:",
       request
     );
-
-    if (!request.ticks) {
-      console.error(
-        "TICK REQUEST BLOCKED: SYMBOL IS EMPTY"
-      );
-
-      setStatus(
-        "SYMBOL ERROR"
-      );
-
-      return;
-    }
 
     try {
       state.socket.send(
@@ -735,10 +576,6 @@ document.addEventListener("DOMContentLoaded", () => {
       );
     }
   };
-
-  /* ============================================================
-     CHANGE MARKET
-  ============================================================ */
 
   const setMarket = (value) => {
     const marketName =
@@ -785,10 +622,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
 
-  /* ============================================================
-     MARKET BUTTONS
-  ============================================================ */
-
   const setupMarketButtons = () => {
     all("[data-symbol]").forEach(
       (button) => {
@@ -804,10 +637,6 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     );
   };
-
-  /* ============================================================
-     TIMEFRAMES
-  ============================================================ */
 
   const setupTimeframes = () => {
     all("[data-timeframe]").forEach(
@@ -834,9 +663,52 @@ document.addEventListener("DOMContentLoaded", () => {
     );
   };
 
-  /* ============================================================
-     SESSION
-  ============================================================ */
+  const setTradeMessage = (message) => {
+    const element =
+      one("[data-trade-message]");
+
+    if (element) {
+      element.textContent =
+        message;
+    }
+  };
+
+  const enableAuthenticatedUI = () => {
+    const buy =
+      one("#buy-button");
+
+    const sell =
+      one("#sell-button");
+
+    if (buy) {
+      buy.disabled = false;
+    }
+
+    if (sell) {
+      sell.disabled = false;
+    }
+
+    setAll(
+      "[data-account-status]",
+      "CONNECTED"
+    );
+  };
+
+  const disableAuthenticatedUI = () => {
+    const buy =
+      one("#buy-button");
+
+    const sell =
+      one("#sell-button");
+
+    if (buy) {
+      buy.disabled = false;
+    }
+
+    if (sell) {
+      sell.disabled = false;
+    }
+  };
 
   const checkSession = async () => {
     try {
@@ -852,7 +724,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (!response.ok) {
         throw new Error(
-          `Session request failed: ${response.status}`
+          "Session request failed: " +
+          response.status
         );
       }
 
@@ -915,71 +788,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
 
-  /* ============================================================
-     ACCOUNT UI
-  ============================================================ */
-
-  const enableAuthenticatedUI = () => {
-    const buy =
-      one("#buy-button");
-
-    const sell =
-      one("#sell-button");
-
-    if (buy) {
-      buy.disabled = false;
-    }
-
-    if (sell) {
-      sell.disabled = false;
-    }
-
-    setAll(
-      "[data-account-status]",
-      "CONNECTED"
-    );
-  };
-
-  const disableAuthenticatedUI = () => {
-    const buy =
-      one("#buy-button");
-
-    const sell =
-      one("#sell-button");
-
-    /*
-     * Keep buttons clickable so that
-     * clicking them sends the user
-     * to the Deriv login flow.
-     */
-
-    if (buy) {
-      buy.disabled = false;
-    }
-
-    if (sell) {
-      sell.disabled = false;
-    }
-  };
-
-  /* ============================================================
-     TRADE MESSAGE
-  ============================================================ */
-
-  const setTradeMessage = (message) => {
-    const element =
-      one("[data-trade-message]");
-
-    if (element) {
-      element.textContent =
-        message;
-    }
-  };
-
-  /* ============================================================
-     LOGIN
-  ============================================================ */
-
   const goToLogin = () => {
     console.log(
       "OPENING DERIV LOGIN"
@@ -989,9 +797,110 @@ document.addEventListener("DOMContentLoaded", () => {
       "/api/deriv/login";
   };
 
-  /* ============================================================
-     ACCOUNT LINKS
-  ============================================================ */
+  const handleTradeAttempt = (
+    side,
+    stakeInput,
+    contractInput
+  ) => {
+    const stakeValue =
+      Number(
+        stakeInput
+          ? stakeInput.value
+          : 0
+      );
+
+    const contractType =
+      contractInput
+        ? contractInput.value
+        : "CALL";
+
+    if (
+      !Number.isFinite(
+        stakeValue
+      ) ||
+      stakeValue <= 0
+    ) {
+      setTradeMessage(
+        "ENTER A VALID STAKE"
+      );
+
+      return;
+    }
+
+    console.log(
+      "TRADE REQUEST READY:",
+      {
+        side: side,
+        stake: stakeValue,
+        contract: contractType,
+        symbol: state.symbol
+      }
+    );
+
+    setTradeMessage(
+      "TRADING CONNECTION READY — ORDER API PENDING"
+    );
+  };
+
+  const setupTradingButtons = () => {
+    const buy =
+      one("#buy-button");
+
+    const sell =
+      one("#sell-button");
+
+    const stake =
+      one("#stake");
+
+    const contract =
+      one("#contract-type");
+
+    if (buy) {
+      buy.addEventListener(
+        "click",
+        () => {
+          if (!state.authenticated) {
+            setTradeMessage(
+              "LOGIN REQUIRED"
+            );
+
+            goToLogin();
+
+            return;
+          }
+
+          handleTradeAttempt(
+            "BUY",
+            stake,
+            contract
+          );
+        }
+      );
+    }
+
+    if (sell) {
+      sell.addEventListener(
+        "click",
+        () => {
+          if (!state.authenticated) {
+            setTradeMessage(
+              "LOGIN REQUIRED"
+            );
+
+            goToLogin();
+
+            return;
+          }
+
+          handleTradeAttempt(
+            "SELL",
+            stake,
+            contract
+          );
+        }
+      );
+    }
+  };
 
   const setupAccountLinks = () => {
     all(
@@ -1025,118 +934,6 @@ document.addEventListener("DOMContentLoaded", () => {
     );
   };
 
-  /* ============================================================
-     TRADING BUTTONS
-  ============================================================ */
-
-  const setupTradingButtons = () => {
-    const buy =
-      one("#buy-button");
-
-    const sell =
-      one("#sell-button");
-
-    const stake =
-      one("#stake");
-
-    const contract =
-      one("#contract-type");
-
-    if (buy) {
-      buy.addEventListener(
-        "click",
-        () => {
-          if (!state.authenticated) {
-            setTradeMessage(
-              "LOGIN REQUIRED"
-            );
-
-            goToLogin();
-            return;
-          }
-
-          handleTradeAttempt(
-            "BUY",
-            stake,
-            contract
-          );
-        }
-      );
-    }
-
-    if (sell) {
-      sell.addEventListener(
-        "click",
-        () => {
-          if (!state.authenticated) {
-            setTradeMessage(
-              "LOGIN REQUIRED"
-            );
-
-            goToLogin();
-            return;
-          }
-
-          handleTradeAttempt(
-            "SELL",
-            stake,
-            contract
-          );
-        }
-      );
-    }
-  };
-
-  /* ============================================================
-     TRADE ATTEMPT
-  ============================================================ */
-
-  const handleTradeAttempt = (
-    side,
-    stakeInput,
-    contractInput
-  ) => {
-    const stakeValue =
-      Number(
-        stakeInput?.value
-      );
-
-    const contractType =
-      contractInput?.value ||
-      "CALL";
-
-    if (
-      !Number.isFinite(
-        stakeValue
-      ) ||
-      stakeValue <= 0
-    ) {
-      setTradeMessage(
-        "ENTER A VALID STAKE"
-      );
-
-      return;
-    }
-
-    console.log(
-      "TRADE REQUEST READY:",
-      {
-        side,
-        stake: stakeValue,
-        contract: contractType,
-        symbol: state.symbol
-      }
-    );
-
-    setTradeMessage(
-      "TRADING CONNECTION READY — ORDER API PENDING"
-    );
-  };
-
-  /* ============================================================
-     DERIV MESSAGE HANDLER
-  ============================================================ */
-
   const handleMessage = (event) => {
     let data;
 
@@ -1163,21 +960,11 @@ document.addEventListener("DOMContentLoaded", () => {
       );
     }
 
-    /* ==========================================================
-       ERROR
-    ========================================================== */
-
     if (data.error) {
       console.error(
         "DERIV ERROR:",
         data.error
       );
-
-      /*
-       * Do not immediately destroy
-       * the connection. A bad request
-       * should not stop other markets.
-       */
 
       setStatus(
         "MARKET ERROR"
@@ -1185,10 +972,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
       return;
     }
-
-    /* ==========================================================
-       ACTIVE SYMBOLS
-    ========================================================== */
 
     if (
       data.msg_type ===
@@ -1233,10 +1016,6 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    /* ==========================================================
-       TICK
-    ========================================================== */
-
     if (
       data.msg_type === "tick" &&
       data.tick
@@ -1250,11 +1029,6 @@ document.addEventListener("DOMContentLoaded", () => {
         String(tick.symbol) !==
         String(state.symbol)
       ) {
-        console.warn(
-          "IGNORING OTHER SYMBOL:",
-          tick.symbol
-        );
-
         return;
       }
 
@@ -1269,10 +1043,6 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    /* ==========================================================
-       FALLBACK TICK
-    ========================================================== */
-
     if (
       data.tick &&
       data.tick.quote !== undefined
@@ -1283,9 +1053,41 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
 
-  /* ============================================================
-     CONNECT TO DERIV
-  ============================================================ */
+  const scheduleReconnect = () => {
+    if (state.destroyed) {
+      return;
+    }
+
+    if (state.reconnectTimer) {
+      return;
+    }
+
+    state.reconnectAttempts += 1;
+
+    const delay =
+      Math.min(
+        3000 *
+        state.reconnectAttempts,
+        15000
+      );
+
+    console.log(
+      "RECONNECTING IN:",
+      delay,
+      "ms"
+    );
+
+    state.reconnectTimer =
+      setTimeout(
+        () => {
+          state.reconnectTimer =
+            null;
+
+          connectToDeriv();
+        },
+        delay
+      );
+  };
 
   const connectToDeriv = () => {
     if (state.destroyed) {
@@ -1349,7 +1151,6 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         state.connected = true;
-
         state.reconnectAttempts = 0;
 
         console.log(
@@ -1408,50 +1209,6 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     );
   };
-
-  /* ============================================================
-     RECONNECT
-  ============================================================ */
-
-  const scheduleReconnect = () => {
-    if (state.destroyed) {
-      return;
-    }
-
-    if (state.reconnectTimer) {
-      return;
-    }
-
-    state.reconnectAttempts += 1;
-
-    const delay =
-      Math.min(
-        3000 *
-        state.reconnectAttempts,
-        15000
-      );
-
-    console.log(
-      "RECONNECTING IN:",
-      delay,
-      "ms"
-    );
-
-    state.reconnectTimer =
-      setTimeout(
-        () => {
-          state.reconnectTimer =
-            null;
-
-          connectToDeriv();
-        },
-        delay
-      );
-  };
-
-  /* ============================================================
-     OAUTH RESULT
-  ============================================================ */
 
   const handleOAuthResult = () => {
     const params =
@@ -1521,10 +1278,6 @@ document.addEventListener("DOMContentLoaded", () => {
     );
   };
 
-  /* ============================================================
-     INITIALISE
-  ============================================================ */
-
   const initialise = async () => {
     state.requestedMarket =
       "EUR/USD";
@@ -1564,15 +1317,7 @@ document.addEventListener("DOMContentLoaded", () => {
     connectToDeriv();
   };
 
-  /* ============================================================
-     START
-  ============================================================ */
-
   initialise();
-
-  /* ============================================================
-     CLEANUP
-  ============================================================ */
 
   window.addEventListener(
     "beforeunload",
@@ -1588,7 +1333,12 @@ document.addEventListener("DOMContentLoaded", () => {
       if (state.socket) {
         try {
           state.socket.close();
-        } catch (_) {}
+        } catch (error) {
+          console.warn(
+            "SOCKET CLOSE ERROR:",
+            error
+          );
+        }
       }
     }
   );
