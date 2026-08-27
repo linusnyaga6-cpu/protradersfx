@@ -22,11 +22,9 @@ const PORT = process.env.PORT || 3000;
 
 const ROOT = __dirname;
 
-/*
-|--------------------------------------------------------------------------
-| SECURITY HEADERS
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   SECURITY
+========================================================= */
 
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
@@ -35,48 +33,65 @@ app.use((req, res, next) => {
     "Referrer-Policy",
     "strict-origin-when-cross-origin"
   );
-
   next();
 });
 
-/*
-|--------------------------------------------------------------------------
-| STATIC WEBSITE FILES
-|--------------------------------------------------------------------------
-|
-| IMPORTANT:
-| This makes these files available:
-|
-| /
-| /index.html
-| /app.js
-| /style.css
-| /tracker.js
-|
-*/
+/* =========================================================
+   STATIC FILES
+========================================================= */
 
 app.use(
   express.static(ROOT, {
-    index: false,
-    extensions: ["html"]
+    index: false
   })
 );
 
-/*
-|--------------------------------------------------------------------------
-| HOME PAGE
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   EXPLICIT APP.JS
+========================================================= */
 
-app.get("/", (req, res) => {
-  res.sendFile(path.join(ROOT, "index.html"));
+app.get("/app.js", (req, res) => {
+  res.type("application/javascript");
+  res.sendFile(
+    path.join(ROOT, "app.js")
+  );
 });
 
-/*
-|--------------------------------------------------------------------------
-| HEALTH
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   EXPLICIT STYLE.CSS
+========================================================= */
+
+app.get("/style.css", (req, res) => {
+  res.type("text/css");
+  res.sendFile(
+    path.join(ROOT, "style.css")
+  );
+});
+
+/* =========================================================
+   EXPLICIT TRACKER.JS
+========================================================= */
+
+app.get("/tracker.js", (req, res) => {
+  res.type("application/javascript");
+  res.sendFile(
+    path.join(ROOT, "tracker.js")
+  );
+});
+
+/* =========================================================
+   HOME
+========================================================= */
+
+app.get("/", (req, res) => {
+  res.sendFile(
+    path.join(ROOT, "index.html")
+  );
+});
+
+/* =========================================================
+   HEALTH
+========================================================= */
 
 app.get("/health", (req, res) => {
   res.status(200).json({
@@ -86,32 +101,23 @@ app.get("/health", (req, res) => {
   });
 });
 
-/*
-|--------------------------------------------------------------------------
-| CONFIG
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   CONFIG
+========================================================= */
 
 app.get("/api/config", (req, res) => {
   res.status(200).json({
     ok: true,
     baseUrl: BASE_URL,
     oauthConfigured: Boolean(CLIENT_ID),
-    callback: `${BASE_URL}/oauth/callback`
+    callback:
+      `${BASE_URL}/oauth/callback`
   });
 });
 
-/*
-|--------------------------------------------------------------------------
-| TRACKING
-|--------------------------------------------------------------------------
-*/
-
-app.post("/api/track", (req, res) => {
-  res.status(200).json({
-    ok: true
-  });
-});
+/* =========================================================
+   TRACK
+========================================================= */
 
 app.get("/api/track", (req, res) => {
   res.status(200).json({
@@ -119,25 +125,26 @@ app.get("/api/track", (req, res) => {
   });
 });
 
-/*
-|--------------------------------------------------------------------------
-| ANALYTICS
-|--------------------------------------------------------------------------
-*/
+app.post("/api/track", (req, res) => {
+  res.status(200).json({
+    ok: true
+  });
+});
+
+/* =========================================================
+   ANALYTICS
+========================================================= */
 
 app.get("/api/analytics", (req, res) => {
   res.status(200).json({
     ok: true,
-    service: "protraders-fx",
-    message: "Analytics endpoint is available"
+    service: "protraders-fx"
   });
 });
 
-/*
-|--------------------------------------------------------------------------
-| OAUTH HELPERS
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   OAUTH HELPERS
+========================================================= */
 
 function base64UrlEncode(buffer) {
   return Buffer.from(buffer)
@@ -172,60 +179,60 @@ function signState(data) {
     .digest("hex");
 }
 
-/*
-|--------------------------------------------------------------------------
-| DERIV LOGIN
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   OAUTH URL
+========================================================= */
+
+function createOAuthUrl() {
+  const verifier =
+    createCodeVerifier();
+
+  const challenge =
+    createCodeChallenge(
+      verifier
+    );
+
+  const stateData =
+    `${Date.now()}:${verifier}`;
+
+  const signature =
+    signState(stateData);
+
+  const state =
+    base64UrlEncode(
+      Buffer.from(
+        `${stateData}:${signature}`
+      )
+    );
+
+  const callback =
+    `${BASE_URL}/oauth/callback`;
+
+  const params =
+    new URLSearchParams({
+      client_id: CLIENT_ID,
+      redirect_uri: callback,
+      response_type: "code",
+      code_challenge: challenge,
+      code_challenge_method: "S256",
+      state
+    });
+
+  return (
+    "https://oauth.deriv.com/oauth2/authorize?" +
+    params.toString()
+  );
+}
+
+/* =========================================================
+   LOGIN
+========================================================= */
 
 app.get("/api/deriv/login", (req, res) => {
   try {
-    const verifier =
-      createCodeVerifier();
-
-    const challenge =
-      createCodeChallenge(
-        verifier
-      );
-
-    const stateData =
-      `${Date.now()}:${verifier}`;
-
-    const signature =
-      signState(stateData);
-
-    const state =
-      base64UrlEncode(
-        Buffer.from(
-          `${stateData}:${signature}`
-        )
-      );
-
-    const callback =
-      `${BASE_URL}/oauth/callback`;
-
-    const params =
-      new URLSearchParams({
-        client_id: CLIENT_ID,
-        redirect_uri: callback,
-        response_type: "code",
-        code_challenge: challenge,
-        code_challenge_method: "S256",
-        state
-      });
-
-    const authorizationUrl =
-      `https://oauth.deriv.com/oauth2/authorize?${params.toString()}`;
-
-    console.log(
-      "PROTRADERS FX LOGIN:",
-      authorizationUrl
-    );
-
     res.redirect(
-      authorizationUrl
+      createOAuthUrl()
     );
-
   } catch (error) {
     console.error(
       "LOGIN ERROR:",
@@ -239,60 +246,15 @@ app.get("/api/deriv/login", (req, res) => {
   }
 });
 
-/*
-|--------------------------------------------------------------------------
-| DERIV SIGNUP
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   SIGNUP
+========================================================= */
 
 app.get("/api/deriv/signup", (req, res) => {
   try {
-    const verifier =
-      createCodeVerifier();
-
-    const challenge =
-      createCodeChallenge(
-        verifier
-      );
-
-    const stateData =
-      `${Date.now()}:${verifier}`;
-
-    const signature =
-      signState(stateData);
-
-    const state =
-      base64UrlEncode(
-        Buffer.from(
-          `${stateData}:${signature}`
-        )
-      );
-
-    const callback =
-      `${BASE_URL}/oauth/callback`;
-
-    const params =
-      new URLSearchParams({
-        client_id: CLIENT_ID,
-        redirect_uri: callback,
-        response_type: "code",
-        code_challenge: challenge,
-        code_challenge_method: "S256",
-        state
-      });
-
-    const authorizationUrl =
-      `https://oauth.deriv.com/oauth2/authorize?${params.toString()}`;
-
-    console.log(
-      "PROTRADERS FX SIGNUP:",
-      authorizationUrl
-    );
-
     res.redirect(
-      authorizationUrl
+      createOAuthUrl()
     );
-
   } catch (error) {
     console.error(
       "SIGNUP ERROR:",
@@ -306,11 +268,9 @@ app.get("/api/deriv/signup", (req, res) => {
   }
 });
 
-/*
-|--------------------------------------------------------------------------
-| OAUTH CALLBACK
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   OAUTH CALLBACK
+========================================================= */
 
 app.get("/oauth/callback", (req, res) => {
   const {
@@ -319,32 +279,14 @@ app.get("/oauth/callback", (req, res) => {
     error_description
   } = req.query;
 
-  /*
-  |--------------------------------------------------------------------------
-  | DERIV RETURNED AN ERROR
-  |--------------------------------------------------------------------------
-  */
-
   if (error) {
-    console.error(
-      "OAUTH ERROR:",
-      error,
-      error_description || ""
-    );
-
     return res.redirect(
-      `/?oauth=error&message=${encodeURIComponent(
-        error_description ||
-        error
-      )}`
+      "/?oauth=error&message=" +
+      encodeURIComponent(
+        error_description || error
+      )
     );
   }
-
-  /*
-  |--------------------------------------------------------------------------
-  | NO CODE
-  |--------------------------------------------------------------------------
-  */
 
   if (!code) {
     return res.redirect(
@@ -352,32 +294,14 @@ app.get("/oauth/callback", (req, res) => {
     );
   }
 
-  /*
-  |--------------------------------------------------------------------------
-  | SUCCESS
-  |--------------------------------------------------------------------------
-  |
-  | For now we confirm that Deriv returned
-  | an authorization code and send the
-  | visitor back to the ProTraders FX home
-  | page.
-  |
-  */
-
-  console.log(
-    "PROTRADERS FX OAUTH SUCCESS"
-  );
-
   return res.redirect(
     "/?oauth=success"
   );
 });
 
-/*
-|--------------------------------------------------------------------------
-| API ROOT
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   API ROOT
+========================================================= */
 
 app.get("/api", (req, res) => {
   res.status(200).json({
@@ -386,21 +310,17 @@ app.get("/api", (req, res) => {
   });
 });
 
-/*
-|--------------------------------------------------------------------------
-| FAVICON
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   FAVICON
+========================================================= */
 
 app.get("/favicon.ico", (req, res) => {
   res.status(204).end();
 });
 
-/*
-|--------------------------------------------------------------------------
-| 404
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   404
+========================================================= */
 
 app.use((req, res) => {
   res.status(404).json({
@@ -410,11 +330,9 @@ app.use((req, res) => {
   });
 });
 
-/*
-|--------------------------------------------------------------------------
-| ERROR HANDLER
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   ERROR
+========================================================= */
 
 app.use(
   (err, req, res, next) => {
@@ -430,19 +348,15 @@ app.use(
   }
 );
 
-/*
-|--------------------------------------------------------------------------
-| VERCEL EXPORT
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   VERCEL
+========================================================= */
 
 module.exports = app;
 
-/*
-|--------------------------------------------------------------------------
-| LOCAL DEVELOPMENT
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   LOCAL
+========================================================= */
 
 if (require.main === module) {
   app.listen(PORT, () => {
