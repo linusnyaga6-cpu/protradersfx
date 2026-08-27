@@ -1,40 +1,45 @@
-```javascript
 "use strict";
 
-const fs = require("fs");
-const path = require("path");
+const express = require("express");
 const crypto = require("crypto");
+const path = require("path");
+
+const app = express();
 
 const BASE_URL = (
   process.env.BASE_URL ||
   "https://www.protradersfx.com"
 ).replace(/\/+$/, "");
 
-const CLIENT_ID =
+const DERIV_CLIENT_ID =
   process.env.DERIV_CLIENT_ID ||
   "348m9hYwW0YkB5rM2ki9f";
 
 const SESSION_SECRET =
   process.env.SESSION_SECRET ||
-  "protraders-fx-session-secret";
+  "protraders-fx-session-secret-change-me";
 
 const CALLBACK_URL =
   BASE_URL + "/oauth/callback";
 
-const DERIV_AUTH_URL =
-  "https://auth.deriv.com/oauth2/auth";
+const DERIV_AUTHORIZE_URL =
+  "https://oauth.deriv.com/oauth2/authorize";
 
 const DERIV_TOKEN_URL =
-  "https://auth.deriv.com/oauth2/token";
+  "https://oauth.deriv.com/oauth2/token";
 
 const ROOT = __dirname;
 
+app.disable("x-powered-by");
+
+app.use(express.json({ limit: "100kb" }));
+app.use(express.urlencoded({ extended: true, limit: "100kb" }));
 
 /* =========================================================
    HELPERS
    ========================================================= */
 
-function base64url(value) {
+function encode(value) {
   return Buffer.from(value)
     .toString("base64")
     .replace(/\+/g, "-")
@@ -42,46 +47,23 @@ function base64url(value) {
     .replace(/=+$/g, "");
 }
 
-
-function randomToken(bytes) {
-  return base64url(
-    crypto.randomBytes(bytes)
-  );
+function decode(value) {
+  return Buffer.from(value, "base64url").toString("utf8");
 }
-
 
 function sign(value) {
   return crypto
-    .createHmac(
-      "sha256",
-      SESSION_SECRET
-    )
+    .createHmac("sha256", SESSION_SECRET)
     .update(value)
     .digest("base64url");
 }
 
-
-function makeCookie(name, value, maxAge) {
-  return (
-    name +
-    "=" +
-    encodeURIComponent(value) +
-    "; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=" +
-    maxAge
-  );
+function randomString() {
+  return encode(crypto.randomBytes(32));
 }
-
-
-function clearCookie(name) {
-  return (
-    name +
-    "=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0"
-  );
-}
-
 
 function parseCookies(req) {
-  const result = {};
+  const cookies = {};
   const header = req.headers.cookie || "";
 
   header.split(";").forEach(function (item) {
@@ -91,457 +73,380 @@ function parseCookies(req) {
       return;
     }
 
-    const name = item
-      .slice(0, index)
-      .trim();
+    const name = item.slice(0, index).trim();
+    const value = item.slice(index + 1).trim();
 
-    const value = item
-      .slice(index + 1)
-      .trim();
-
-    if (name) {
-      try {
-        result[name] =
-          decodeURIComponent(value);
-      } catch {
-        result[name] = value;
-      }
+    try {
+      cookies[name] = decodeURIComponent(value);
+    } catch {
+      cookies[name] = value;
     }
   });
 
-  return result;
+  return cookies;
 }
 
-
-function json(res, status, data) {
-  res.statusCode = status;
-
-  res.setHeader(
-    "Content-Type",
-    "application/json; charset=utf-8"
-  );
-
-  res.setHeader(
-    "Cache-Control",
-    "no-store"
-  );
-
-  res.end(
-    JSON.stringify(data)
-  );
+function makeCookie(name, value, maxAge) {
+  return [
+    name + "=" + encodeURIComponent(value),
+    "Path=/",
+    "HttpOnly",
+    "Secure",
+    "SameSite=Lax",
+    "Max-Age=" + maxAge
+  ].join("; ");
 }
 
+function makeSignedValue(data) {
+  const payload = encode(JSON.stringify(data));
+  const signature = sign(payload);
 
-function redirect(res, location) {
-  res.statusCode = 302;
-
-  res.setHeader(
-    "Location",
-    location
-  );
-
-  res.end();
+  return payload + "." + signature;
 }
 
-
-/* =========================================================
-   OAUTH STATE
-   ========================================================= */
-
-function createOAuthState() {
-  const verifier =
-    randomToken(64);
-
-  const state =
-    randomToken(32);
-
-  const payload =
-    base64url(
-      JSON.stringify({
-        state: state,
-        verifier: verifier,
-        createdAt: Date.now()
-      })
-    );
-
-  const signature =
-    sign(payload);
-
-  return {
-    state: state,
-    verifier: verifier,
-    cookie:
-      payload + "." + signature
-  };
-}
-
-
-function readOAuthState(req) {
-  const cookies =
-    parseCookies(req);
-
-  const raw =
-    cookies.protraders_oauth;
-
-  if (!raw) {
+function readSignedValue(value) {
+  if (!value) {
     return null;
   }
 
-  const parts =
-    raw.split(".");
+  const parts = value.split(".");
 
   if (parts.length !== 2) {
     return null;
   }
 
-  const payload =
-    parts[0];
+  const payload = parts[0];
+  const signature = parts[1];
+  const expected = sign(payload);
 
-  const signature =
-    parts[1];
+  const a = Buffer.from(signature);
+  const b = Buffer.from(expected);
 
-  const expected =
-    sign(payload);
-
-  if (signature !== expected) {
+  if (a.length !== b.length) {
     return null;
   }
 
   try {
-    const data =
-      JSON.parse(
-        Buffer
-          .from(
-            payload,
-            "base64url"
-          )
-          .toString("utf8")
-      );
-
-    if (
-      Date.now() -
-      Number(data.createdAt || 0) >
-      10 * 60 * 1000
-    ) {
+    if (!crypto.timingSafeEqual(a, b)) {
       return null;
     }
+  } catch {
+    return null;
+  }
 
-    return data;
-
+  try {
+    return JSON.parse(decode(payload));
   } catch {
     return null;
   }
 }
 
-
 /* =========================================================
-   DERIV LOGIN
+   HTML ERROR PAGE
    ========================================================= */
 
-function startLogin(req, res) {
+function errorPage(title, message, buttonText, buttonUrl) {
+  return (
+    "<!doctype html>" +
+    "<html>" +
+    "<head>" +
+    '<meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+    "<title>" + title + "</title>" +
+    "<style>" +
+    "html,body{margin:0;min-height:100%;background:#070b12;color:#fff;font-family:Arial,sans-serif}" +
+    "body{min-height:100vh;display:flex;align-items:center;justify-content:center}" +
+    ".box{width:min(460px,88%);padding:35px;background:#0d141f;border:1px solid #263244;text-align:center;box-sizing:border-box}" +
+    "h2{margin-top:0}" +
+    "p{color:#aeb8c7;line-height:1.6}" +
+    "a{display:inline-block;margin-top:18px;padding:12px 22px;background:#16c784;color:#04140d;font-weight:700;text-decoration:none}" +
+    "</style>" +
+    "</head>" +
+    "<body>" +
+    '<div class="box">' +
+    "<h2>" + title + "</h2>" +
+    "<p>" + message + "</p>" +
+    '<a href="' + buttonUrl + '">' +
+    buttonText +
+    "</a>" +
+    "</div>" +
+    "</body>" +
+    "</html>"
+  );
+}
 
-  if (!CLIENT_ID) {
-    return json(
-      res,
-      500,
-      {
-        ok: false,
-        error:
-          "DERIV_CLIENT_ID_NOT_CONFIGURED"
-      }
-    );
-  }
+/* =========================================================
+   HEALTH
+   ========================================================= */
 
+app.get("/health", function (req, res) {
+  res.status(200).json({
+    ok: true,
+    service: "protraders-fx",
+    time: new Date().toISOString(),
+    oauthConfigured: Boolean(DERIV_CLIENT_ID),
+    baseUrl: BASE_URL,
+    callback: CALLBACK_URL
+  });
+});
+
+/* =========================================================
+   CONFIG
+   ========================================================= */
+
+app.get("/api/config", function (req, res) {
+  res.status(200).json({
+    ok: true,
+    oauthConfigured: Boolean(DERIV_CLIENT_ID),
+    baseUrl: BASE_URL,
+    callback: CALLBACK_URL
+  });
+});
+
+/* =========================================================
+   OAUTH START
+   ========================================================= */
+
+function startOAuth(req, res) {
   try {
+    const state = randomString();
+    const verifier = randomString();
 
-    const oauth =
-      createOAuthState();
-
-    const challenge =
-      base64url(
-        crypto
-          .createHash("sha256")
-          .update(oauth.verifier)
-          .digest()
-      );
-
-    const params =
-      new URLSearchParams();
-
-    params.set(
-      "response_type",
-      "code"
+    const challenge = encode(
+      crypto
+        .createHash("sha256")
+        .update(verifier)
+        .digest()
     );
 
-    params.set(
-      "client_id",
-      CLIENT_ID
-    );
-
-    params.set(
-      "redirect_uri",
-      CALLBACK_URL
-    );
-
-    params.set(
-      "state",
-      oauth.state
-    );
-
-    params.set(
-      "code_challenge",
-      challenge
-    );
-
-    params.set(
-      "code_challenge_method",
-      "S256"
-    );
+    const stateValue = makeSignedValue({
+      state: state,
+      verifier: verifier,
+      created: Date.now()
+    });
 
     res.setHeader(
       "Set-Cookie",
       makeCookie(
         "protraders_oauth",
-        oauth.cookie,
+        stateValue,
         600
       )
     );
 
-    console.log(
-      "PROTRADERS FX: STARTING DERIV LOGIN"
-    );
+    const params = new URLSearchParams();
 
-    console.log(
-      "PROTRADERS FX CALLBACK:",
-      CALLBACK_URL
-    );
+    params.set("client_id", DERIV_CLIENT_ID);
+    params.set("redirect_uri", CALLBACK_URL);
+    params.set("response_type", "code");
+    params.set("state", state);
+    params.set("code_challenge", challenge);
+    params.set("code_challenge_method", "S256");
 
-    return redirect(
-      res,
-      DERIV_AUTH_URL +
+    const url =
+      DERIV_AUTHORIZE_URL +
       "?" +
-      params.toString()
-    );
+      params.toString();
 
+    console.log("PROTRADERS FX OAUTH START");
+    console.log("CALLBACK:", CALLBACK_URL);
+
+    return res.redirect(302, url);
   } catch (error) {
+    console.error("OAUTH START ERROR:", error);
 
-    console.error(
-      "DERIV LOGIN ERROR:",
-      error
-    );
-
-    return json(
-      res,
-      500,
-      {
-        ok: false,
-        error:
-          "DERIV_LOGIN_FAILED"
-      }
-    );
+    return res
+      .status(500)
+      .send(
+        errorPage(
+          "Login Error",
+          "Unable to start Deriv authorization.",
+          "RETURN",
+          "/"
+        )
+      );
   }
 }
 
+app.get("/api/deriv/login", startOAuth);
+app.get("/api/deriv/signup", startOAuth);
 
 /* =========================================================
-   OAUTH TOKEN EXCHANGE
+   OAUTH CALLBACK
    ========================================================= */
 
-async function handleCallback(req, res) {
+app.get("/oauth/callback", async function (req, res) {
+  const code = req.query.code;
+  const returnedState = req.query.state;
+  const oauthError = req.query.error;
 
-  const query =
-    req.query || {};
+  console.log("PROTRADERS FX OAUTH CALLBACK");
 
-  if (query.error) {
+  if (oauthError) {
+    console.error(
+      "DERIV OAUTH ERROR:",
+      oauthError,
+      req.query.error_description || ""
+    );
 
     res.setHeader(
       "Set-Cookie",
-      clearCookie(
-        "protraders_oauth"
-      )
+      makeCookie("protraders_oauth", "", 0)
     );
 
-    return redirect(
-      res,
+    return res.redirect(
+      302,
       "/?oauth_error=" +
-      encodeURIComponent(
-        String(query.error)
-      )
+        encodeURIComponent(oauthError)
     );
   }
 
-
-  const code =
-    query.code;
-
-  const returnedState =
-    query.state;
-
-  if (
-    !code ||
-    !returnedState
-  ) {
-
-    return json(
-      res,
-      400,
-      {
-        ok: false,
-        error:
-          "MISSING_OAUTH_PARAMETERS"
-      }
-    );
+  if (!code || !returnedState) {
+    return res
+      .status(400)
+      .send(
+        errorPage(
+          "Authorization Failed",
+          "The authorization response was incomplete.",
+          "LOGIN AGAIN",
+          "/api/deriv/login"
+        )
+      );
   }
 
-
-  const oauth =
-    readOAuthState(req);
+  const cookies = parseCookies(req);
+  const oauth = readSignedValue(
+    cookies.protraders_oauth
+  );
 
   if (!oauth) {
-
-    return json(
-      res,
-      400,
-      {
-        ok: false,
-        error:
-          "OAUTH_SESSION_EXPIRED"
-      }
-    );
+    return res
+      .status(400)
+      .send(
+        errorPage(
+          "Authorization Failed",
+          "Your authorization session expired. Please start again.",
+          "LOGIN AGAIN",
+          "/api/deriv/login"
+        )
+      );
   }
-
 
   if (
-    oauth.state !==
-    String(returnedState)
+    Date.now() -
+      Number(oauth.created || 0) >
+    10 * 60 * 1000
   ) {
-
-    return json(
-      res,
-      400,
-      {
-        ok: false,
-        error:
-          "OAUTH_STATE_MISMATCH"
-      }
-    );
+    return res
+      .status(400)
+      .send(
+        errorPage(
+          "Authorization Expired",
+          "Your authorization session expired.",
+          "LOGIN AGAIN",
+          "/api/deriv/login"
+        )
+      );
   }
 
+  if (oauth.state !== returnedState) {
+    console.error("OAUTH STATE MISMATCH");
+
+    return res
+      .status(400)
+      .send(
+        errorPage(
+          "Authorization Failed",
+          "The authorization state could not be verified.",
+          "LOGIN AGAIN",
+          "/api/deriv/login"
+        )
+      );
+  }
 
   try {
+    const params = new URLSearchParams();
 
-    const body =
-      new URLSearchParams();
-
-    body.set(
+    params.set(
       "grant_type",
       "authorization_code"
     );
 
-    body.set(
+    params.set("code", code);
+    params.set(
       "client_id",
-      CLIENT_ID
+      DERIV_CLIENT_ID
     );
 
-    body.set(
-      "code",
-      String(code)
-    );
-
-    body.set(
-      "code_verifier",
-      oauth.verifier
-    );
-
-    body.set(
+    params.set(
       "redirect_uri",
       CALLBACK_URL
     );
 
-
-    console.log(
-      "PROTRADERS FX: EXCHANGING DERIV CODE"
+    params.set(
+      "code_verifier",
+      oauth.verifier
     );
 
+    console.log(
+      "PROTRADERS FX TOKEN EXCHANGE"
+    );
 
-    const response =
-      await fetch(
-        DERIV_TOKEN_URL,
-        {
-          method: "POST",
+    const response = await fetch(
+      DERIV_TOKEN_URL,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type":
+            "application/x-www-form-urlencoded"
+        },
+        body: params.toString()
+      }
+    );
 
-          headers: {
-            "Content-Type":
-              "application/x-www-form-urlencoded"
-          },
+    const text = await response.text();
 
-          body:
-            body.toString()
-        }
-      );
-
-
-    const text =
-      await response.text();
-
-    let token;
+    let data;
 
     try {
-      token =
-        JSON.parse(text);
+      data = JSON.parse(text);
     } catch {
-      token = {};
+      data = {
+        raw: text
+      };
     }
 
-
-    if (
-      !response.ok ||
-      !token.access_token
-    ) {
-
+    if (!response.ok || data.error) {
       console.error(
-        "DERIV TOKEN EXCHANGE FAILED:",
-        response.status,
-        token
+        "TOKEN EXCHANGE FAILED:",
+        data
       );
 
-      res.setHeader(
-        "Set-Cookie",
-        clearCookie(
-          "protraders_oauth"
-        )
-      );
-
-      return redirect(
-        res,
-        "/?oauth_error=token_exchange_failed"
-      );
+      return res
+        .status(400)
+        .send(
+          errorPage(
+            "Authorization Failed",
+            "Deriv authorization could not be completed.",
+            "TRY AGAIN",
+            "/api/deriv/login"
+          )
+        );
     }
 
-
-    /*
-     * Store only a signed session marker.
-     * The access token is NOT sent to the browser.
-     */
-
-    const sessionPayload =
-      base64url(
-        JSON.stringify({
-          authenticated: true,
-          provider: "deriv",
-          createdAt: Date.now(),
-          expiresIn:
-            Number(
-              token.expires_in || 3600
-            )
-        })
-      );
-
-    const session =
-      sessionPayload +
-      "." +
-      sign(sessionPayload);
-
+    const session = makeSignedValue({
+      authenticated: true,
+      provider: "deriv",
+      access_token:
+        data.access_token || null,
+      refresh_token:
+        data.refresh_token || null,
+      token_type:
+        data.token_type || null,
+      expires_in:
+        data.expires_in || null,
+      created: Date.now()
+    });
 
     res.setHeader(
       "Set-Cookie",
@@ -549,602 +454,214 @@ async function handleCallback(req, res) {
         makeCookie(
           "protraders_session",
           session,
-          Number(
-            token.expires_in || 3600
-          )
+          604800
         ),
-
-        clearCookie(
-          "protraders_oauth"
+        makeCookie(
+          "protraders_oauth",
+          "",
+          0
         )
       ]
     );
 
-
     console.log(
-      "PROTRADERS FX: DERIV LOGIN SUCCESSFUL"
+      "PROTRADERS FX DERIV LOGIN SUCCESSFUL"
     );
 
-
-    return redirect(
-      res,
-      "/?trading=1"
-    );
-
+    return res.redirect(302, "/");
   } catch (error) {
-
     console.error(
       "OAUTH CALLBACK ERROR:",
       error
     );
 
-    return redirect(
-      res,
-      "/?oauth_error=oauth_failed"
-    );
+    return res
+      .status(500)
+      .send(
+        errorPage(
+          "Authorization Error",
+          "Unable to complete Deriv authorization.",
+          "LOGIN AGAIN",
+          "/api/deriv/login"
+        )
+      );
   }
-}
-
+});
 
 /* =========================================================
    AUTH STATUS
    ========================================================= */
 
-function authStatus(req, res) {
+app.get("/api/auth/status", function (req, res) {
+  const cookies = parseCookies(req);
 
-  const cookies =
-    parseCookies(req);
+  const session = readSignedValue(
+    cookies.protraders_session
+  );
 
-  const raw =
-    cookies.protraders_session;
+  res.status(200).json({
+    authenticated: Boolean(
+      session &&
+      session.authenticated === true
+    ),
+    provider:
+      session && session.provider
+        ? session.provider
+        : null
+  });
+});
 
-  if (!raw) {
+/* =========================================================
+   LOGOUT
+   ========================================================= */
 
-    return json(
-      res,
-      200,
-      {
-        authenticated: false,
-        provider: null
-      }
-    );
-  }
+app.get("/api/deriv/logout", function (req, res) {
+  res.setHeader(
+    "Set-Cookie",
+    makeCookie(
+      "protraders_session",
+      "",
+      0
+    )
+  );
 
+  return res.redirect(302, "/");
+});
 
-  const parts =
-    raw.split(".");
+/* =========================================================
+   TRACK
+   ========================================================= */
 
-  if (parts.length !== 2) {
+app.post("/api/track", function (req, res) {
+  res.status(200).json({
+    ok: true
+  });
+});
 
-    return json(
-      res,
-      200,
-      {
-        authenticated: false,
-        provider: null
-      }
-    );
-  }
+/* =========================================================
+   ANALYTICS
+   ========================================================= */
 
+app.get("/api/analytics", function (req, res) {
+  res.status(200).json({
+    ok: true,
+    service: "protraders-fx",
+    time: new Date().toISOString()
+  });
+});
 
-  const payload =
-    parts[0];
+/* =========================================================
+   FAVICON
+   ========================================================= */
 
-  const signature =
-    parts[1];
-
-
-  if (
-    sign(payload) !==
-    signature
-  ) {
-
-    return json(
-      res,
-      200,
-      {
-        authenticated: false,
-        provider: null
-      }
-    );
-  }
-
-
-  try {
-
-    const session =
-      JSON.parse(
-        Buffer
-          .from(
-            payload,
-            "base64url"
-          )
-          .toString("utf8")
-      );
-
-    return json(
-      res,
-      200,
-      {
-        authenticated:
-          session.authenticated === true,
-
-        provider:
-          session.provider || null
-      }
-    );
-
-  } catch {
-
-    return json(
-      res,
-      200,
-      {
-        authenticated: false,
-        provider: null
-      }
-    );
-  }
-}
-
+app.get("/favicon.ico", function (req, res) {
+  res.status(204).end();
+});
 
 /* =========================================================
    STATIC FILES
    ========================================================= */
 
-function contentType(file) {
+app.use(
+  express.static(ROOT, {
+    index: false,
+    dotfiles: "ignore"
+  })
+);
 
-  const ext =
-    path.extname(file)
-      .toLowerCase();
+/* =========================================================
+   FRONT PAGE
+   ========================================================= */
 
-  const types = {
-    ".html":
-      "text/html; charset=utf-8",
-
-    ".js":
-      "application/javascript; charset=utf-8",
-
-    ".css":
-      "text/css; charset=utf-8",
-
-    ".json":
-      "application/json; charset=utf-8",
-
-    ".svg":
-      "image/svg+xml",
-
-    ".png":
-      "image/png",
-
-    ".jpg":
-      "image/jpeg",
-
-    ".jpeg":
-      "image/jpeg",
-
-    ".ico":
-      "image/x-icon",
-
-    ".webp":
-      "image/webp"
-  };
-
-  return (
-    types[ext] ||
-    "application/octet-stream"
-  );
-}
-
-
-function sendFile(res, file) {
-
-  fs.readFile(
-    file,
-    function (error, data) {
-
+app.get("/", function (req, res) {
+  res.sendFile(
+    path.join(ROOT, "index.html"),
+    function (error) {
       if (error) {
-
         console.error(
-          "STATIC FILE ERROR:",
-          file,
+          "INDEX ERROR:",
           error
         );
 
-        return json(
-          res,
-          404,
-          {
-            ok: false,
-            error:
-              "FILE_NOT_FOUND"
-          }
-        );
+        if (!res.headersSent) {
+          res
+            .status(404)
+            .send(
+              "ProTraders FX frontend not found."
+            );
+        }
       }
-
-
-      res.statusCode = 200;
-
-      res.setHeader(
-        "Content-Type",
-        contentType(file)
-      );
-
-      res.setHeader(
-        "Cache-Control",
-        "no-cache"
-      );
-
-      res.end(data);
     }
   );
-}
-
+});
 
 /* =========================================================
-   MAIN VERCEL HANDLER
+   404
    ========================================================= */
 
-async function handler(req, res) {
-
-  try {
-
-    const url =
-      new URL(
-        req.url,
-        BASE_URL
-      );
-
-    const pathname =
-      url.pathname;
-
-    req.query =
-      Object.fromEntries(
-        url.searchParams.entries()
-      );
-
-
-    /* -----------------------------------------
-       HEALTH
-       ----------------------------------------- */
-
-    if (
-      req.method === "GET" &&
-      pathname === "/health"
-    ) {
-
-      return json(
-        res,
-        200,
-        {
-          ok: true,
-          service:
-            "protraders-fx",
-          time:
-            new Date().toISOString(),
-          oauthConfigured:
-            Boolean(CLIENT_ID),
-          baseUrl:
-            BASE_URL,
-          callback:
-            CALLBACK_URL
-        }
-      );
-    }
-
-
-    /* -----------------------------------------
-       CONFIG
-       ----------------------------------------- */
-
-    if (
-      req.method === "GET" &&
-      pathname === "/api/config"
-    ) {
-
-      return json(
-        res,
-        200,
-        {
-          ok: true,
-          oauthConfigured:
-            Boolean(CLIENT_ID),
-          baseUrl:
-            BASE_URL,
-          callback:
-            CALLBACK_URL
-        }
-      );
-    }
-
-
-    /* -----------------------------------------
-       AUTH STATUS
-       ----------------------------------------- */
-
-    if (
-      req.method === "GET" &&
-      pathname === "/api/auth/status"
-    ) {
-
-      return authStatus(
-        req,
-        res
-      );
-    }
-
-
-    if (
-      req.method === "GET" &&
-      pathname === "/api/session"
-    ) {
-
-      return authStatus(
-        req,
-        res
-      );
-    }
-
-
-    /* -----------------------------------------
-       LOGIN
-       ----------------------------------------- */
-
-    if (
-      req.method === "GET" &&
-      pathname === "/api/deriv/login"
-    ) {
-
-      return startLogin(
-        req,
-        res
-      );
-    }
-
-
-    /* -----------------------------------------
-       SIGNUP
-       ----------------------------------------- */
-
-    if (
-      req.method === "GET" &&
-      pathname === "/api/deriv/signup"
-    ) {
-
-      return startLogin(
-        req,
-        res
-      );
-    }
-
-
-    /* -----------------------------------------
-       LOGOUT
-       ----------------------------------------- */
-
-    if (
-      req.method === "GET" &&
-      pathname === "/api/deriv/logout"
-    ) {
-
-      res.setHeader(
-        "Set-Cookie",
-        clearCookie(
-          "protraders_session"
-        )
-      );
-
-      return redirect(
-        res,
-        "/"
-      );
-    }
-
-
-    /* -----------------------------------------
-       OAUTH CALLBACK
-       ----------------------------------------- */
-
-    if (
-      req.method === "GET" &&
-      pathname === "/oauth/callback"
-    ) {
-
-      return await handleCallback(
-        req,
-        res
-      );
-    }
-
-
-    /* -----------------------------------------
-       TRACKING
-       ----------------------------------------- */
-
-    if (
-      req.method === "POST" &&
-      pathname === "/api/track"
-    ) {
-
-      return json(
-        res,
-        200,
-        {
-          ok: true
-        }
-      );
-    }
-
-
-    /* -----------------------------------------
-       ANALYTICS
-       ----------------------------------------- */
-
-    if (
-      req.method === "GET" &&
-      pathname === "/api/analytics"
-    ) {
-
-      return json(
-        res,
-        200,
-        {
-          ok: true,
-          service:
-            "protraders-fx",
-          time:
-            new Date().toISOString()
-        }
-      );
-    }
-
-
-    /* -----------------------------------------
-       FAVICON
-       ----------------------------------------- */
-
-    if (
-      req.method === "GET" &&
-      pathname === "/favicon.ico"
-    ) {
-
-      res.statusCode = 204;
-
-      return res.end();
-    }
-
-
-    /* -----------------------------------------
-       FRONTEND FILE
-       ----------------------------------------- */
-
-    let requested =
-      pathname === "/"
-        ? "index.html"
-        : pathname.replace(
-            /^\/+/,
-            ""
-          );
-
-
-    requested =
-      path.normalize(
-        requested
-      );
-
-
-    if (
-      requested === ".." ||
-      requested.startsWith(
-        ".." + path.sep
-      )
-    ) {
-
-      return json(
-        res,
-        403,
-        {
-          ok: false,
-          error:
-            "FORBIDDEN"
-        }
-      );
-    }
-
-
-    const file =
-      path.join(
-        ROOT,
-        requested
-      );
-
-
-    if (
-      fs.existsSync(file) &&
-      fs.statSync(file).isFile()
-    ) {
-
-      return sendFile(
-        res,
-        file
-      );
-    }
-
-
-    /* -----------------------------------------
-       UNKNOWN ROUTE
-       ----------------------------------------- */
-
-    return json(
-      res,
-      404,
-      {
-        ok: false,
-        error:
-          "NOT_FOUND",
-        path:
-          pathname
-      }
-    );
-
-  } catch (error) {
-
-    console.error(
-      "PROTRADERS FX HANDLER ERROR:",
-      error
-    );
-
-    return json(
-      res,
-      500,
-      {
-        ok: false,
-        error:
-          "INTERNAL_SERVER_ERROR"
-      }
-    );
+app.use(function (req, res) {
+  res.status(404).json({
+    ok: false,
+    error: "NOT_FOUND",
+    path: req.path
+  });
+});
+
+/* =========================================================
+   ERROR HANDLER
+   ========================================================= */
+
+app.use(function (
+  error,
+  req,
+  res,
+  next
+) {
+  console.error(
+    "PROTRADERS FX SERVER ERROR:",
+    error
+  );
+
+  if (res.headersSent) {
+    return next(error);
   }
-}
 
+  res.status(500).json({
+    ok: false,
+    error: "INTERNAL_SERVER_ERROR"
+  });
+});
 
 /* =========================================================
-   VERCEL EXPORT
+   VERCEL
    ========================================================= */
 
-module.exports = handler;
-
+module.exports = app;
 
 /* =========================================================
    LOCAL DEVELOPMENT
    ========================================================= */
 
-if (
-  require.main === module
-) {
-
-  const http =
-    require("http");
-
+if (require.main === module) {
   const PORT =
-    Number(
-      process.env.PORT || 3000
-    );
+    process.env.PORT || 3000;
 
-  http
-    .createServer(handler)
-    .listen(
-      PORT,
-      function () {
+  app.listen(
+    PORT,
+    function () {
+      console.log(
+        "PROTRADERS FX SERVER RUNNING"
+      );
 
-        console.log(
-          "PROTRADERS FX SERVER RUNNING"
-        );
-
-        console.log(
-          "http://localhost:" +
+      console.log(
+        "http://localhost:" +
           PORT
-        );
-      }
-    );
+      );
+
+      console.log(
+        "OAUTH CALLBACK: " +
+          CALLBACK_URL
+      );
+    }
+  );
 }
-```
