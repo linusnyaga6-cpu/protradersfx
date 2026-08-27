@@ -6,9 +6,6 @@ const path = require("path");
 
 const app = express();
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
 const BASE_URL =
   process.env.BASE_URL || "https://www.protradersfx.com";
 
@@ -16,83 +13,66 @@ const CLIENT_ID =
   process.env.DERIV_CLIENT_ID || "348m9hYwW0YkB5rM2ki9f";
 
 const SESSION_SECRET =
-  process.env.SESSION_SECRET ||
-  "protraders-fx-session-secret";
+  process.env.SESSION_SECRET || "protraders-fx-session-secret";
 
-const PORT =
-  process.env.PORT || 3000;
+const PORT = process.env.PORT || 3000;
 
-const ROOT = __dirname;
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 /* =========================================================
    SECURITY
 ========================================================= */
 
 app.use((req, res, next) => {
-  res.setHeader(
-    "X-Content-Type-Options",
-    "nosniff"
-  );
-
-  res.setHeader(
-    "X-Frame-Options",
-    "SAMEORIGIN"
-  );
-
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
   res.setHeader(
     "Referrer-Policy",
     "strict-origin-when-cross-origin"
   );
-
   next();
 });
 
 /* =========================================================
-   STATIC FILES
+   STATIC WEBSITE FILES
 ========================================================= */
 
 app.use(
-  express.static(ROOT, {
-    index: false
+  express.static(__dirname, {
+    index: false,
+    extensions: ["html"],
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith(".js")) {
+        res.setHeader(
+          "Content-Type",
+          "application/javascript; charset=UTF-8"
+        );
+      }
+
+      if (filePath.endsWith(".css")) {
+        res.setHeader(
+          "Content-Type",
+          "text/css; charset=UTF-8"
+        );
+      }
+
+      if (filePath.endsWith(".html")) {
+        res.setHeader(
+          "Content-Type",
+          "text/html; charset=UTF-8"
+        );
+      }
+    }
   })
 );
 
 /* =========================================================
-   EXPLICIT FILES
-========================================================= */
-
-app.get("/app.js", (req, res) => {
-  res.type("application/javascript");
-
-  res.sendFile(
-    path.join(ROOT, "app.js")
-  );
-});
-
-app.get("/style.css", (req, res) => {
-  res.type("text/css");
-
-  res.sendFile(
-    path.join(ROOT, "style.css")
-  );
-});
-
-app.get("/tracker.js", (req, res) => {
-  res.type("application/javascript");
-
-  res.sendFile(
-    path.join(ROOT, "tracker.js")
-  );
-});
-
-/* =========================================================
-   HOME
+   HOME PAGE
 ========================================================= */
 
 app.get("/", (req, res) => {
-  res.sendFile(
-    path.join(ROOT, "index.html")
-  );
+  res.sendFile(path.join(__dirname, "index.html"));
 });
 
 /* =========================================================
@@ -116,8 +96,7 @@ app.get("/api/config", (req, res) => {
     ok: true,
     baseUrl: BASE_URL,
     oauthConfigured: Boolean(CLIENT_ID),
-    callback:
-      `${BASE_URL}/oauth/callback`
+    callback: `${BASE_URL}/oauth/callback`
   });
 });
 
@@ -125,14 +104,14 @@ app.get("/api/config", (req, res) => {
    TRACKING
 ========================================================= */
 
-app.get("/api/track", (req, res) => {
-  res.json({
+app.post("/api/track", (req, res) => {
+  res.status(200).json({
     ok: true
   });
 });
 
-app.post("/api/track", (req, res) => {
-  res.json({
+app.get("/api/track", (req, res) => {
+  res.status(200).json({
     ok: true
   });
 });
@@ -142,14 +121,15 @@ app.post("/api/track", (req, res) => {
 ========================================================= */
 
 app.get("/api/analytics", (req, res) => {
-  res.json({
+  res.status(200).json({
     ok: true,
-    service: "protraders-fx"
+    service: "protraders-fx",
+    message: "Analytics endpoint is available"
   });
 });
 
 /* =========================================================
-   PKCE
+   OAUTH HELPERS
 ========================================================= */
 
 function base64UrlEncode(buffer) {
@@ -162,7 +142,7 @@ function base64UrlEncode(buffer) {
 
 function createCodeVerifier() {
   return base64UrlEncode(
-    crypto.randomBytes(64)
+    crypto.randomBytes(32)
   );
 }
 
@@ -177,27 +157,20 @@ function createCodeChallenge(verifier) {
 
 function signState(data) {
   return crypto
-    .createHmac(
-      "sha256",
-      SESSION_SECRET
-    )
+    .createHmac("sha256", SESSION_SECRET)
     .update(data)
     .digest("hex");
 }
 
 /* =========================================================
-   OAUTH URL
+   BUILD DERIV LOGIN URL
 ========================================================= */
 
-function buildOAuthUrl() {
-
-  const verifier =
-    createCodeVerifier();
+function buildDerivAuthUrl() {
+  const verifier = createCodeVerifier();
 
   const challenge =
-    createCodeChallenge(
-      verifier
-    );
+    createCodeChallenge(verifier);
 
   const stateData =
     `${Date.now()}:${verifier}`;
@@ -212,54 +185,21 @@ function buildOAuthUrl() {
       )
     );
 
-  const redirectUri =
+  const callback =
     `${BASE_URL}/oauth/callback`;
 
   const params =
-    new URLSearchParams();
-
-  params.set(
-    "response_type",
-    "code"
-  );
-
-  params.set(
-    "client_id",
-    CLIENT_ID
-  );
-
-  params.set(
-    "redirect_uri",
-    redirectUri
-  );
-
-  /*
-   * IMPORTANT:
-   * Deriv requires scope.
-   */
-
-  params.set(
-    "scope",
-    "trade account_manage"
-  );
-
-  params.set(
-    "state",
-    state
-  );
-
-  params.set(
-    "code_challenge",
-    challenge
-  );
-
-  params.set(
-    "code_challenge_method",
-    "S256"
-  );
+    new URLSearchParams({
+      client_id: CLIENT_ID,
+      redirect_uri: callback,
+      response_type: "code",
+      code_challenge: challenge,
+      code_challenge_method: "S256",
+      state
+    });
 
   return (
-    "https://auth.deriv.com/oauth2/auth?" +
+    "https://oauth.deriv.com/oauth2/authorize?" +
     params.toString()
   );
 }
@@ -268,227 +208,132 @@ function buildOAuthUrl() {
    LOGIN
 ========================================================= */
 
-app.get(
-  "/api/deriv/login",
-  (req, res) => {
+app.get("/api/deriv/login", (req, res) => {
+  try {
+    const url =
+      buildDerivAuthUrl();
 
-    try {
+    console.log(
+      "PROTRADERS FX LOGIN REDIRECT:",
+      url
+    );
 
-      const url =
-        buildOAuthUrl();
+    res.redirect(302, url);
 
-      console.log(
-        "PROTRADERS FX OAUTH LOGIN"
-      );
+  } catch (error) {
+    console.error(
+      "LOGIN ERROR:",
+      error
+    );
 
-      console.log(
-        url
-      );
-
-      res.redirect(url);
-
-    } catch (error) {
-
-      console.error(
-        "LOGIN ERROR:",
-        error
-      );
-
-      res.status(500).json({
-        ok: false,
-        error:
-          "Unable to start login"
-      });
-    }
+    res.status(500).json({
+      ok: false,
+      error: "Unable to start login"
+    });
   }
-);
+});
 
 /* =========================================================
    SIGNUP
 ========================================================= */
 
-app.get(
-  "/api/deriv/signup",
-  (req, res) => {
+app.get("/api/deriv/signup", (req, res) => {
+  try {
+    const url =
+      buildDerivAuthUrl();
 
-    try {
+    console.log(
+      "PROTRADERS FX SIGNUP REDIRECT:",
+      url
+    );
 
-      const verifier =
-        createCodeVerifier();
+    res.redirect(302, url);
 
-      const challenge =
-        createCodeChallenge(
-          verifier
-        );
+  } catch (error) {
+    console.error(
+      "SIGNUP ERROR:",
+      error
+    );
 
-      const stateData =
-        `${Date.now()}:${verifier}`;
-
-      const signature =
-        signState(stateData);
-
-      const state =
-        base64UrlEncode(
-          Buffer.from(
-            `${stateData}:${signature}`
-          )
-        );
-
-      const redirectUri =
-        `${BASE_URL}/oauth/callback`;
-
-      const params =
-        new URLSearchParams();
-
-      params.set(
-        "response_type",
-        "code"
-      );
-
-      params.set(
-        "client_id",
-        CLIENT_ID
-      );
-
-      params.set(
-        "redirect_uri",
-        redirectUri
-      );
-
-      params.set(
-        "scope",
-        "trade account_manage"
-      );
-
-      params.set(
-        "state",
-        state
-      );
-
-      params.set(
-        "code_challenge",
-        challenge
-      );
-
-      params.set(
-        "code_challenge_method",
-        "S256"
-      );
-
-      /*
-       * Required by Deriv for signup.
-       */
-
-      params.set(
-        "prompt",
-        "registration"
-      );
-
-      const url =
-        "https://auth.deriv.com/oauth2/auth?" +
-        params.toString();
-
-      console.log(
-        "PROTRADERS FX OAUTH SIGNUP"
-      );
-
-      console.log(url);
-
-      res.redirect(url);
-
-    } catch (error) {
-
-      console.error(
-        "SIGNUP ERROR:",
-        error
-      );
-
-      res.status(500).json({
-        ok: false,
-        error:
-          "Unable to start signup"
-      });
-    }
+    res.status(500).json({
+      ok: false,
+      error: "Unable to start signup"
+    });
   }
-);
+});
 
 /* =========================================================
    OAUTH CALLBACK
 ========================================================= */
 
-app.get(
-  "/oauth/callback",
-  (req, res) => {
+app.get("/oauth/callback", (req, res) => {
+  const {
+    code,
+    state,
+    error,
+    error_description
+  } = req.query;
 
-    const {
-      code,
-      state,
+  console.log(
+    "PROTRADERS FX OAUTH CALLBACK"
+  );
+
+  console.log(
+    "OAuth code:",
+    Boolean(code)
+  );
+
+  console.log(
+    "OAuth state:",
+    Boolean(state)
+  );
+
+  if (error) {
+    console.error(
+      "DERIV OAUTH ERROR:",
       error,
-      error_description
-    } = req.query;
-
-    console.log(
-      "OAUTH CALLBACK RECEIVED"
+      error_description || ""
     );
 
-    /*
-     * Deriv returned an error.
-     */
-
-    if (error) {
-
-      console.error(
-        "DERIV OAUTH ERROR:",
-        error,
-        error_description || ""
-      );
-
-      return res.redirect(
-        "/?oauth=error&message=" +
-        encodeURIComponent(
+    return res.redirect(
+      302,
+      `/?oauth=error&message=${encodeURIComponent(
+        String(
           error_description ||
           error
         )
-      );
-    }
-
-    /*
-     * No authorization code.
-     */
-
-    if (!code) {
-
-      return res.redirect(
-        "/?oauth=failed"
-      );
-    }
-
-    /*
-     * We have successfully returned
-     * from Deriv.
-     */
-
-    console.log(
-      "DERIV AUTHORIZATION CODE RECEIVED"
-    );
-
-    /*
-     * For the moment return to the
-     * ProTraders FX website.
-     */
-
-    return res.redirect(
-      "/?oauth=success"
+      )}`
     );
   }
-);
+
+  if (!code) {
+    return res.redirect(
+      302,
+      "/?oauth=failed"
+    );
+  }
+
+  /*
+   * OAuth authorization succeeded.
+   *
+   * The authorization code is returned to the
+   * ProTraders FX website.
+   */
+
+  return res.redirect(
+    302,
+    `/?oauth=success&code=${encodeURIComponent(
+      String(code)
+    )}`
+  );
+});
 
 /* =========================================================
    API ROOT
 ========================================================= */
 
 app.get("/api", (req, res) => {
-  res.json({
+  res.status(200).json({
     ok: true,
     service: "protraders-fx"
   });
@@ -498,47 +343,51 @@ app.get("/api", (req, res) => {
    FAVICON
 ========================================================= */
 
-app.get(
-  "/favicon.ico",
-  (req, res) => {
-    res.status(204).end();
-  }
-);
+app.get("/favicon.ico", (req, res) => {
+  res.status(204).end();
+});
 
 /* =========================================================
-   404
+   WEBSITE FALLBACK
 ========================================================= */
 
-app.use(
-  (req, res) => {
-
-    res.status(404).json({
+app.use((req, res, next) => {
+  if (
+    req.path.startsWith("/api/") ||
+    req.path === "/oauth/callback"
+  ) {
+    return res.status(404).json({
       ok: false,
       error: "Not found",
       path: req.path
     });
   }
-);
+
+  res.sendFile(
+    path.join(__dirname, "index.html"),
+    (error) => {
+      if (error) {
+        next(error);
+      }
+    }
+  );
+});
 
 /* =========================================================
    ERROR HANDLER
 ========================================================= */
 
-app.use(
-  (err, req, res, next) => {
+app.use((err, req, res, next) => {
+  console.error(
+    "PROTRADERS FX SERVER ERROR:",
+    err
+  );
 
-    console.error(
-      "SERVER ERROR:",
-      err
-    );
-
-    res.status(500).json({
-      ok: false,
-      error:
-        "Internal server error"
-    });
-  }
-);
+  res.status(500).json({
+    ok: false,
+    error: "Internal server error"
+  });
+});
 
 /* =========================================================
    VERCEL
@@ -547,18 +396,13 @@ app.use(
 module.exports = app;
 
 /* =========================================================
-   LOCAL
+   LOCAL DEVELOPMENT
 ========================================================= */
 
 if (require.main === module) {
-
-  app.listen(
-    PORT,
-    () => {
-
-      console.log(
-        `ProTraders FX running on port ${PORT}`
-      );
-    }
-  );
+  app.listen(PORT, () => {
+    console.log(
+      `ProTraders FX running on port ${PORT}`
+    );
+  });
 }
