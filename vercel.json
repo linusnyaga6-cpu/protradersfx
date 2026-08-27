@@ -3,20 +3,33 @@
   "builds": [
     {
       "src": "server.js",
-      "use": "@vercel/node"
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": [
+          "index.html",
+          "app.js",
+          "style.css",
+          "tracker.js",
+          "express-integration.js"
+        ]
+      }
     }
   ],
   "routes": [
     {
-      "src": "/api/(.*)",
+      "src": "/app.js",
       "dest": "/server.js"
     },
     {
-      "src": "/oauth/(.*)",
+      "src": "/style.css",
       "dest": "/server.js"
     },
     {
-      "src": "/health",
+      "src": "/tracker.js",
+      "dest": "/server.js"
+    },
+    {
+      "src": "/express-integration.js",
       "dest": "/server.js"
     },
     {
