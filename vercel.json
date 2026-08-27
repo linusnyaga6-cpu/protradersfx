@@ -9,8 +9,7 @@
           "index.html",
           "app.js",
           "style.css",
-          "tracker.js",
-          "express-integration.js"
+          "tracker.js"
         ]
       }
     }
@@ -18,23 +17,40 @@
   "routes": [
     {
       "src": "/app.js",
-      "dest": "/server.js"
+      "headers": {
+        "Content-Type": "application/javascript; charset=utf-8"
+      },
+      "dest": "server.js"
     },
     {
       "src": "/style.css",
-      "dest": "/server.js"
+      "headers": {
+        "Content-Type": "text/css; charset=utf-8"
+      },
+      "dest": "server.js"
     },
     {
       "src": "/tracker.js",
-      "dest": "/server.js"
+      "headers": {
+        "Content-Type": "application/javascript; charset=utf-8"
+      },
+      "dest": "server.js"
     },
     {
-      "src": "/express-integration.js",
-      "dest": "/server.js"
+      "src": "/api/(.*)",
+      "dest": "server.js"
+    },
+    {
+      "src": "/oauth/(.*)",
+      "dest": "server.js"
+    },
+    {
+      "src": "/health",
+      "dest": "server.js"
     },
     {
       "src": "/(.*)",
-      "dest": "/server.js"
+      "dest": "server.js"
     }
   ]
 }
