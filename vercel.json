@@ -3,15 +3,7 @@
   "builds": [
     {
       "src": "server.js",
-      "use": "@vercel/node",
-      "config": {
-        "includeFiles": [
-          "index.html",
-          "app.js",
-          "style.css",
-          "tracker.js"
-        ]
-      }
+      "use": "@vercel/node"
     }
   ],
   "routes": [
@@ -20,37 +12,25 @@
       "headers": {
         "Content-Type": "application/javascript; charset=utf-8"
       },
-      "dest": "server.js"
+      "continue": true
     },
     {
       "src": "/style.css",
       "headers": {
         "Content-Type": "text/css; charset=utf-8"
       },
-      "dest": "server.js"
+      "continue": true
     },
     {
       "src": "/tracker.js",
       "headers": {
         "Content-Type": "application/javascript; charset=utf-8"
       },
-      "dest": "server.js"
-    },
-    {
-      "src": "/api/(.*)",
-      "dest": "server.js"
-    },
-    {
-      "src": "/oauth/(.*)",
-      "dest": "server.js"
-    },
-    {
-      "src": "/health",
-      "dest": "server.js"
+      "continue": true
     },
     {
       "src": "/(.*)",
-      "dest": "server.js"
+      "dest": "/server.js"
     }
   ]
 }
