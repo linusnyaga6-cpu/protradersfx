@@ -20,42 +20,49 @@ const SESSION_SECRET =
 
 const PORT = process.env.PORT || 3000;
 
-/*
-|--------------------------------------------------------------------------
-| Security headers
-|--------------------------------------------------------------------------
-*/
+/* SECURITY */
 
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "SAMEORIGIN");
-  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader(
+    "Referrer-Policy",
+    "strict-origin-when-cross-origin"
+  );
   next();
 });
 
-/*
-|--------------------------------------------------------------------------
-| Static frontend files
-|--------------------------------------------------------------------------
-*/
-
-app.use(express.static(path.join(__dirname)));
-
-/*
-|--------------------------------------------------------------------------
-| Root frontend
-|--------------------------------------------------------------------------
-*/
+/* FRONTEND */
 
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));
 });
 
-/*
-|--------------------------------------------------------------------------
-| Health check
-|--------------------------------------------------------------------------
-*/
+app.get("/index.html", (req, res) => {
+  res.sendFile(path.join(__dirname, "index.html"));
+});
+
+app.get("/app.js", (req, res) => {
+  res.type("application/javascript");
+  res.sendFile(path.join(__dirname, "app.js"));
+});
+
+app.get("/style.css", (req, res) => {
+  res.type("text/css");
+  res.sendFile(path.join(__dirname, "style.css"));
+});
+
+app.get("/tracker.js", (req, res) => {
+  res.type("application/javascript");
+  res.sendFile(path.join(__dirname, "tracker.js"));
+});
+
+app.get("/express-integration.js", (req, res) => {
+  res.type("application/javascript");
+  res.sendFile(path.join(__dirname, "express-integration.js"));
+});
+
+/* HEALTH */
 
 app.get("/health", (req, res) => {
   res.status(200).json({
@@ -65,11 +72,7 @@ app.get("/health", (req, res) => {
   });
 });
 
-/*
-|--------------------------------------------------------------------------
-| API configuration
-|--------------------------------------------------------------------------
-*/
+/* CONFIG */
 
 app.get("/api/config", (req, res) => {
   res.status(200).json({
@@ -80,11 +83,7 @@ app.get("/api/config", (req, res) => {
   });
 });
 
-/*
-|--------------------------------------------------------------------------
-| Tracking
-|--------------------------------------------------------------------------
-*/
+/* TRACKING */
 
 app.post("/api/track", (req, res) => {
   res.status(200).json({
@@ -98,11 +97,7 @@ app.get("/api/track", (req, res) => {
   });
 });
 
-/*
-|--------------------------------------------------------------------------
-| Analytics
-|--------------------------------------------------------------------------
-*/
+/* ANALYTICS */
 
 app.get("/api/analytics", (req, res) => {
   res.status(200).json({
@@ -112,11 +107,7 @@ app.get("/api/analytics", (req, res) => {
   });
 });
 
-/*
-|--------------------------------------------------------------------------
-| OAuth helpers
-|--------------------------------------------------------------------------
-*/
+/* OAUTH HELPERS */
 
 function base64UrlEncode(buffer) {
   return Buffer.from(buffer)
@@ -146,11 +137,7 @@ function signState(data) {
     .digest("hex");
 }
 
-/*
-|--------------------------------------------------------------------------
-| Deriv login
-|--------------------------------------------------------------------------
-*/
+/* DERIV LOGIN */
 
 app.get("/api/deriv/login", (req, res) => {
   try {
@@ -188,11 +175,7 @@ app.get("/api/deriv/login", (req, res) => {
   }
 });
 
-/*
-|--------------------------------------------------------------------------
-| Deriv signup
-|--------------------------------------------------------------------------
-*/
+/* DERIV SIGNUP */
 
 app.get("/api/deriv/signup", (req, res) => {
   try {
@@ -230,16 +213,11 @@ app.get("/api/deriv/signup", (req, res) => {
   }
 });
 
-/*
-|--------------------------------------------------------------------------
-| OAuth callback
-|--------------------------------------------------------------------------
-*/
+/* OAUTH CALLBACK */
 
 app.get("/oauth/callback", async (req, res) => {
   const {
     code,
-    state,
     error,
     error_description
   } = req.query;
@@ -250,8 +228,8 @@ app.get("/oauth/callback", async (req, res) => {
       <html>
       <head>
         <meta charset="utf-8">
-        <title>ProTraders FX</title>
         <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>ProTraders FX</title>
       </head>
       <body style="font-family:Arial,sans-serif;padding:40px">
         <h2>Authentication Error</h2>
@@ -268,6 +246,7 @@ app.get("/oauth/callback", async (req, res) => {
       <html>
       <head>
         <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>ProTraders FX</title>
       </head>
       <body style="font-family:Arial,sans-serif;padding:40px">
@@ -284,11 +263,7 @@ app.get("/oauth/callback", async (req, res) => {
   );
 });
 
-/*
-|--------------------------------------------------------------------------
-| Root API
-|--------------------------------------------------------------------------
-*/
+/* API ROOT */
 
 app.get("/api", (req, res) => {
   res.status(200).json({
@@ -297,11 +272,7 @@ app.get("/api", (req, res) => {
   });
 });
 
-/*
-|--------------------------------------------------------------------------
-| 404 handler
-|--------------------------------------------------------------------------
-*/
+/* 404 */
 
 app.use((req, res) => {
   res.status(404).json({
@@ -311,11 +282,7 @@ app.use((req, res) => {
   });
 });
 
-/*
-|--------------------------------------------------------------------------
-| Error handler
-|--------------------------------------------------------------------------
-*/
+/* ERROR */
 
 app.use((err, req, res, next) => {
   console.error("SERVER ERROR:", err);
@@ -326,22 +293,16 @@ app.use((err, req, res, next) => {
   });
 });
 
-/*
-|--------------------------------------------------------------------------
-| Vercel export
-|--------------------------------------------------------------------------
-*/
+/* VERCEL */
 
 module.exports = app;
 
-/*
-|--------------------------------------------------------------------------
-| Local development
-|--------------------------------------------------------------------------
-*/
+/* LOCAL */
 
 if (require.main === module) {
   app.listen(PORT, () => {
-    console.log(`ProTraders FX running on port ${PORT}`);
+    console.log(
+      `ProTraders FX running on port ${PORT}`
+    );
   });
 }
