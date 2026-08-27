@@ -2,6 +2,7 @@
 
 const express = require("express");
 const crypto = require("crypto");
+const path = require("path");
 
 const app = express();
 
@@ -21,7 +22,7 @@ const PORT = process.env.PORT || 3000;
 
 /*
 |--------------------------------------------------------------------------
-| Basic security headers
+| Security headers
 |--------------------------------------------------------------------------
 */
 
@@ -30,6 +31,24 @@ app.use((req, res, next) => {
   res.setHeader("X-Frame-Options", "SAMEORIGIN");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   next();
+});
+
+/*
+|--------------------------------------------------------------------------
+| Static frontend files
+|--------------------------------------------------------------------------
+*/
+
+app.use(express.static(path.join(__dirname)));
+
+/*
+|--------------------------------------------------------------------------
+| Root frontend
+|--------------------------------------------------------------------------
+*/
+
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "index.html"));
 });
 
 /*
@@ -63,7 +82,7 @@ app.get("/api/config", (req, res) => {
 
 /*
 |--------------------------------------------------------------------------
-| Simple tracking endpoint
+| Tracking
 |--------------------------------------------------------------------------
 */
 
@@ -81,7 +100,7 @@ app.get("/api/track", (req, res) => {
 
 /*
 |--------------------------------------------------------------------------
-| Analytics endpoint
+| Analytics
 |--------------------------------------------------------------------------
 */
 
@@ -218,7 +237,12 @@ app.get("/api/deriv/signup", (req, res) => {
 */
 
 app.get("/oauth/callback", async (req, res) => {
-  const { code, state, error, error_description } = req.query;
+  const {
+    code,
+    state,
+    error,
+    error_description
+  } = req.query;
 
   if (error) {
     return res.status(400).send(`
@@ -255,12 +279,6 @@ app.get("/oauth/callback", async (req, res) => {
     `);
   }
 
-  /*
-   * The callback is intentionally kept safe here.
-   * Token exchange can be added after the basic deployment
-   * and OAuth redirect are confirmed working.
-   */
-
   return res.redirect(
     `/?oauth=success&code=${encodeURIComponent(code)}`
   );
@@ -268,7 +286,7 @@ app.get("/oauth/callback", async (req, res) => {
 
 /*
 |--------------------------------------------------------------------------
-| Root API response
+| Root API
 |--------------------------------------------------------------------------
 */
 
