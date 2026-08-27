@@ -1,2 +1,1 @@
-// Lightweight browser tracker. The main site calls POST /api/track for page views.
-// Keep personally identifying data out of analytics unless you have a lawful basis and privacy notice.
+(() => { try { fetch('/api/track',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({type:'page_view',path:location.pathname}),keepalive:true}); } catch {} })();

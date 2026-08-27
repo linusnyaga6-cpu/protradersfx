@@ -1,34 +1,17 @@
-# ProTraders FX — Trading Workspace
+# ProTraders FX v5
 
-TraderScheme-inspired UX/layout for ProTraders FX, using the supplied ProTraders FX foundation and a dark, compact professional terminal design.
+A clean ProTraders FX rebuild with a TraderScheme-style dark trading workspace, Deriv OAuth 2.0 + PKCE, live public market feed, authenticated account proxy, manual Rise/Fall execution, analytics, and the free bot interface. Premium bots are excluded.
 
-## Included
-- Homepage with Log In / Create Account
-- Deriv OAuth 2.0 + PKCE foundation
-- Existing-user login flow without registration prompt
-- New-user partner attribution flow
-- Live synthetic-market ticker/price chart when `DERIV_PUBLIC_APP_ID` is configured
-- Market analysis workspace
-- Account overview shell
-- Free-bot interface (execution intentionally disabled until controlled live-test integration)
-- Trading interface (execution intentionally disabled until server-side Deriv trading adapter is configured)
-- Privacy-conscious analytics
-- Vercel deployment configuration
+## Flow
+Home (`/`) -> LOG IN -> Deriv OAuth -> `/workspace.html`.
 
-## Important
-This project does not fabricate balances, trades, funded accounts or execution results. Live trading must be enabled only after the authenticated Deriv WebSocket/trading adapter is implemented and tested with the official production credentials.
+Existing Deriv users use **LOG IN**. New users use **CREATE ACCOUNT**, which carries the configured Deriv partner attribution parameters.
 
-## Production environment
-Set the values from `.env.example` in Vercel Project Settings → Environment Variables. Never commit `.env` or access tokens.
+## Required Vercel environment variables
+Copy `.env.example` into the Vercel project settings and supply real production values. Never commit `.env` or Deriv tokens.
 
-Production OAuth callback:
+The Deriv OAuth redirect URI must be registered exactly as:
 `https://protradersfx.com/oauth/callback`
 
-## Design reference
-The interface takes inspiration from the public structure and trading-workspace presentation of TraderScheme, but uses original ProTraders FX branding, content and implementation. Do not copy proprietary assets or source code.
-
-## Run locally
-```bash
-npm install
-npm start
-```
+## Important
+The manual trade endpoint uses Deriv's proposal + buy flow for Rise/Fall (CALL/PUT). Test with a demo account and a very small stake first. Do not advertise simulated results as real performance.
