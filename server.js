@@ -20,27 +20,30 @@ const SESSION_SECRET =
 const CALLBACK_URL =
   BASE_URL + "/oauth/callback";
 
-const DERIV_AUTHORIZE =
-  "https://oauth.deriv.com/oauth2/authorize";
+const OAUTH_AUTHORIZE =
+  "https://auth.deriv.com/oauth2/auth";
 
-const DERIV_TOKEN =
-  "https://oauth.deriv.com/oauth2/token";
+const OAUTH_TOKEN =
+  "https://auth.deriv.com/oauth2/token";
 
 const ROOT = __dirname;
 
-function send(res, status, type, body) {
+function json(res, status, data) {
   res.statusCode = status;
-  res.setHeader("Content-Type", type);
-  res.end(body);
+  res.setHeader(
+    "Content-Type",
+    "application/json; charset=utf-8"
+  );
+  res.end(JSON.stringify(data));
 }
 
-function json(res, status, data) {
-  send(
-    res,
-    status,
-    "application/json; charset=utf-8",
-    JSON.stringify(data)
+function html(res, status, body) {
+  res.statusCode = status;
+  res.setHeader(
+    "Content-Type",
+    "text/html; charset=utf-8"
   );
+  res.end(body);
 }
 
 function redirect(res, location) {
@@ -49,12 +52,38 @@ function redirect(res, location) {
   res.end();
 }
 
-function cookieValue(req, name) {
+function base64url(value) {
+  return Buffer.from(value)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
+function sign(value) {
+  return crypto
+    .createHmac("sha256", SESSION_SECRET)
+    .update(value)
+    .digest("base64url");
+}
+
+function randomString() {
+  return crypto
+    .randomBytes(32)
+    .toString("base64url");
+}
+
+function challenge(verifier) {
+  return crypto
+    .createHash("sha256")
+    .update(verifier)
+    .digest("base64url");
+}
+
+function getCookie(req, name) {
   const header = req.headers.cookie || "";
 
-  const cookies = header.split(";");
-
-  for (const item of cookies) {
+  for (const item of header.split(";")) {
     const parts = item.trim().split("=");
 
     if (parts[0] === name) {
@@ -67,81 +96,48 @@ function cookieValue(req, name) {
   return null;
 }
 
-function encode(value) {
-  return Buffer.from(value)
-    .toString("base64url");
-}
-
-function sign(value) {
-  return crypto
-    .createHmac(
-      "sha256",
-      SESSION_SECRET
-    )
-    .update(value)
-    .digest("base64url");
-}
-
-function makeCookie(name, value, maxAge) {
-  return (
+function setCookie(res, name, value, maxAge) {
+  res.setHeader(
+    "Set-Cookie",
     name +
-    "=" +
-    encodeURIComponent(value) +
-    "; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=" +
-    maxAge
+      "=" +
+      encodeURIComponent(value) +
+      "; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=" +
+      maxAge
   );
 }
 
-function clearCookie(name) {
-  return (
+function clearCookie(res, name) {
+  res.setHeader(
+    "Set-Cookie",
     name +
-    "=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0"
+      "=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0"
   );
 }
 
-function createState() {
-  return crypto
-    .randomBytes(32)
-    .toString("hex");
+function createOAuthState(state, verifier) {
+  const payload = base64url(
+    JSON.stringify({
+      state,
+      verifier,
+      created: Date.now()
+    })
+  );
+
+  return payload + "." + sign(payload);
 }
 
-function createVerifier() {
-  return crypto
-    .randomBytes(32)
-    .toString("base64url");
-}
-
-function createChallenge(verifier) {
-  return crypto
-    .createHash("sha256")
-    .update(verifier)
-    .digest("base64url");
-}
-
-function oauthCookie(state, verifier) {
-  const data = JSON.stringify({
-    state,
-    verifier,
-    time: Date.now()
-  });
-
-  const payload = encode(data);
-  const signature = sign(payload);
-
-  return payload + "." + signature;
-}
-
-function readOAuthCookie(req) {
-  const raw = cookieValue(
+function readOAuthState(req) {
+  const value = getCookie(
     req,
     "protraders_oauth"
   );
 
-  if (!raw) {
+  if (!value) {
     return null;
   }
 
-  const parts = raw.split(".");
+  const parts = value.split(".");
 
   if (parts.length !== 2) {
     return null;
@@ -164,7 +160,7 @@ function readOAuthCookie(req) {
 
     if (
       Date.now() -
-        Number(data.time || 0) >
+        Number(data.created || 0) >
       10 * 60 * 1000
     ) {
       return null;
@@ -176,68 +172,13 @@ function readOAuthCookie(req) {
   }
 }
 
-function sessionCookie(tokenData) {
-  const data = JSON.stringify({
-    authenticated: true,
-    provider: "deriv",
-    access_token:
-      tokenData.access_token || null,
-    refresh_token:
-      tokenData.refresh_token || null,
-    token_type:
-      tokenData.token_type || null,
-    expires_in:
-      tokenData.expires_in || null,
-    time: Date.now()
-  });
+function createOAuthUrl(state, verifier) {
+  const params = new URLSearchParams();
 
-  const payload = encode(data);
-  const signature = sign(payload);
-
-  return payload + "." + signature;
-}
-
-function readSession(req) {
-  const raw = cookieValue(
-    req,
-    "protraders_session"
+  params.set(
+    "response_type",
+    "code"
   );
-
-  if (!raw) {
-    return null;
-  }
-
-  const parts = raw.split(".");
-
-  if (parts.length !== 2) {
-    return null;
-  }
-
-  const payload = parts[0];
-  const signature = parts[1];
-
-  if (sign(payload) !== signature) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(
-      Buffer.from(
-        payload,
-        "base64url"
-      ).toString("utf8")
-    );
-  } catch {
-    return null;
-  }
-}
-
-function oauthUrl(state, verifier) {
-  const challenge =
-    createChallenge(verifier);
-
-  const params =
-    new URLSearchParams();
 
   params.set(
     "client_id",
@@ -250,18 +191,13 @@ function oauthUrl(state, verifier) {
   );
 
   params.set(
-    "response_type",
-    "code"
-  );
-
-  params.set(
     "state",
     state
   );
 
   params.set(
     "code_challenge",
-    challenge
+    challenge(verifier)
   );
 
   params.set(
@@ -270,18 +206,18 @@ function oauthUrl(state, verifier) {
   );
 
   return (
-    DERIV_AUTHORIZE +
+    OAUTH_AUTHORIZE +
     "?" +
     params.toString()
   );
 }
 
-function mime(file) {
-  const ext =
-    path.extname(file)
-      .toLowerCase();
+function contentType(file) {
+  const ext = path
+    .extname(file)
+    .toLowerCase();
 
-  const types = {
+  const map = {
     ".html": "text/html; charset=utf-8",
     ".js": "application/javascript; charset=utf-8",
     ".css": "text/css; charset=utf-8",
@@ -290,42 +226,44 @@ function mime(file) {
     ".png": "image/png",
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
-    ".ico": "image/x-icon",
-    ".webp": "image/webp"
+    ".webp": "image/webp",
+    ".ico": "image/x-icon"
   };
 
   return (
-    types[ext] ||
+    map[ext] ||
     "application/octet-stream"
   );
 }
 
-function serveFile(res, file) {
-  if (!fs.existsSync(file)) {
-    return false;
-  }
-
+function serveFile(res, filename) {
   try {
-    const stat = fs.statSync(file);
+    if (!fs.existsSync(filename)) {
+      return false;
+    }
+
+    const stat =
+      fs.statSync(filename);
 
     if (!stat.isFile()) {
       return false;
     }
 
     res.statusCode = 200;
+
     res.setHeader(
       "Content-Type",
-      mime(file)
+      contentType(filename)
     );
 
     res.end(
-      fs.readFileSync(file)
+      fs.readFileSync(filename)
     );
 
     return true;
   } catch (error) {
     console.error(
-      "FILE ERROR:",
+      "STATIC FILE ERROR:",
       error
     );
 
@@ -337,37 +275,37 @@ async function exchangeCode(
   code,
   verifier
 ) {
-  const params =
+  const body =
     new URLSearchParams();
 
-  params.set(
+  body.set(
     "grant_type",
     "authorization_code"
   );
 
-  params.set(
-    "code",
-    code
-  );
-
-  params.set(
+  body.set(
     "client_id",
     CLIENT_ID
   );
 
-  params.set(
+  body.set(
+    "code",
+    code
+  );
+
+  body.set(
     "redirect_uri",
     CALLBACK_URL
   );
 
-  params.set(
+  body.set(
     "code_verifier",
     verifier
   );
 
   const response =
     await fetch(
-      DERIV_TOKEN,
+      OAUTH_TOKEN,
       {
         method: "POST",
         headers: {
@@ -375,7 +313,7 @@ async function exchangeCode(
             "application/x-www-form-urlencoded"
         },
         body:
-          params.toString()
+          body.toString()
       }
     );
 
@@ -397,7 +335,7 @@ async function exchangeCode(
     throw new Error(
       data.error_description ||
       data.error ||
-      "Deriv token exchange failed"
+      "Token exchange failed"
     );
   }
 
@@ -413,17 +351,16 @@ async function exchangeCode(
 
 async function handler(req, res) {
   try {
-    const url =
-      new URL(
-        req.url,
-        BASE_URL
-      );
+    const url = new URL(
+      req.url,
+      BASE_URL
+    );
 
     const pathname =
       url.pathname;
 
     console.log(
-      "PROTRADERS FX:",
+      "[PROTRADERS FX]",
       req.method,
       pathname
     );
@@ -431,25 +368,19 @@ async function handler(req, res) {
     /* HEALTH */
 
     if (
-      req.method === "GET" &&
       pathname === "/health"
     ) {
       return json(res, 200, {
         ok: true,
         service: "protraders-fx",
         time:
-          new Date().toISOString(),
-        oauthConfigured:
-          Boolean(CLIENT_ID),
-        baseUrl: BASE_URL,
-        callback: CALLBACK_URL
+          new Date().toISOString()
       });
     }
 
     /* CONFIG */
 
     if (
-      req.method === "GET" &&
       pathname === "/api/config"
     ) {
       return json(res, 200, {
@@ -457,28 +388,30 @@ async function handler(req, res) {
         oauthConfigured:
           Boolean(CLIENT_ID),
         baseUrl: BASE_URL,
-        callback: CALLBACK_URL
+        callback:
+          CALLBACK_URL
       });
     }
 
     /* AUTH STATUS */
 
     if (
-      req.method === "GET" &&
       pathname === "/api/auth/status"
     ) {
-      const session =
-        readSession(req);
-
       return json(res, 200, {
         authenticated:
           Boolean(
-            session &&
-            session.authenticated
+            getCookie(
+              req,
+              "protraders_session"
+            )
           ),
         provider:
-          session
-            ? session.provider
+          getCookie(
+            req,
+            "protraders_session"
+          )
+            ? "deriv"
             : null
       });
     }
@@ -486,42 +419,31 @@ async function handler(req, res) {
     /* LOGIN */
 
     if (
-      req.method === "GET" &&
-      pathname === "/api/deriv/login"
+      pathname ===
+      "/api/deriv/login"
     ) {
       const state =
-        createState();
+        randomString();
 
       const verifier =
-        createVerifier();
+        randomString();
 
-      const cookie =
-        oauthCookie(
+      const oauthState =
+        createOAuthState(
           state,
           verifier
         );
 
-      res.setHeader(
-        "Set-Cookie",
-        makeCookie(
-          "protraders_oauth",
-          cookie,
-          600
-        )
-      );
-
-      console.log(
-        "PROTRADERS FX DERIV LOGIN"
-      );
-
-      console.log(
-        "CALLBACK:",
-        CALLBACK_URL
+      setCookie(
+        res,
+        "protraders_oauth",
+        oauthState,
+        600
       );
 
       return redirect(
         res,
-        oauthUrl(
+        createOAuthUrl(
           state,
           verifier
         )
@@ -531,33 +453,31 @@ async function handler(req, res) {
     /* SIGNUP */
 
     if (
-      req.method === "GET" &&
-      pathname === "/api/deriv/signup"
+      pathname ===
+      "/api/deriv/signup"
     ) {
       const state =
-        createState();
+        randomString();
 
       const verifier =
-        createVerifier();
+        randomString();
 
-      const cookie =
-        oauthCookie(
+      const oauthState =
+        createOAuthState(
           state,
           verifier
         );
 
-      res.setHeader(
-        "Set-Cookie",
-        makeCookie(
-          "protraders_oauth",
-          cookie,
-          600
-        )
+      setCookie(
+        res,
+        "protraders_oauth",
+        oauthState,
+        600
       );
 
       return redirect(
         res,
-        oauthUrl(
+        createOAuthUrl(
           state,
           verifier
         )
@@ -567,8 +487,8 @@ async function handler(req, res) {
     /* OAUTH CALLBACK */
 
     if (
-      req.method === "GET" &&
-      pathname === "/oauth/callback"
+      pathname ===
+      "/oauth/callback"
     ) {
       const error =
         url.searchParams.get(
@@ -576,11 +496,9 @@ async function handler(req, res) {
         );
 
       if (error) {
-        res.setHeader(
-          "Set-Cookie",
-          clearCookie(
-            "protraders_oauth"
-          )
+        clearCookie(
+          res,
+          "protraders_oauth"
         );
 
         return redirect(
@@ -606,23 +524,21 @@ async function handler(req, res) {
         !code ||
         !returnedState
       ) {
-        return send(
+        return html(
           res,
           400,
-          "text/html; charset=utf-8",
           "<!doctype html><html><body><h2>Authorization failed</h2><p>Missing authorization code or state.</p><a href='/api/deriv/login'>Login again</a></body></html>"
         );
       }
 
       const oauth =
-        readOAuthCookie(req);
+        readOAuthState(req);
 
       if (!oauth) {
-        return send(
+        return html(
           res,
           400,
-          "text/html; charset=utf-8",
-          "<!doctype html><html><body><h2>Authorization failed</h2><p>Your authorization session expired.</p><a href='/api/deriv/login'>Login again</a></body></html>"
+          "<!doctype html><html><body><h2>Authorization failed</h2><p>Authorization session expired.</p><a href='/api/deriv/login'>Login again</a></body></html>"
         );
       }
 
@@ -630,46 +546,48 @@ async function handler(req, res) {
         oauth.state !==
         returnedState
       ) {
-        return send(
+        return html(
           res,
           400,
-          "text/html; charset=utf-8",
-          "<!doctype html><html><body><h2>Authorization failed</h2><p>Invalid authorization state.</p><a href='/api/deriv/login'>Login again</a></body></html>"
+          "<!doctype html><html><body><h2>Authorization failed</h2><p>Authorization state mismatch.</p><a href='/api/deriv/login'>Login again</a></body></html>"
         );
       }
 
       try {
-        console.log(
-          "PROTRADERS FX EXCHANGING CODE"
-        );
-
-        const tokenData =
+        const token =
           await exchangeCode(
             code,
             oauth.verifier
           );
 
         const session =
-          sessionCookie(
-            tokenData
+          base64url(
+            JSON.stringify({
+              authenticated: true,
+              provider: "deriv",
+              expires:
+                Date.now() +
+                Number(
+                  token.expires_in ||
+                    3600
+                ) *
+                  1000
+            })
           );
 
-        res.setHeader(
-          "Set-Cookie",
-          [
-            makeCookie(
-              "protraders_session",
-              session,
-              604800
-            ),
-            clearCookie(
-              "protraders_oauth"
-            )
-          ]
+        setCookie(
+          res,
+          "protraders_session",
+          session,
+          Number(
+            token.expires_in ||
+              3600
+          )
         );
 
-        console.log(
-          "PROTRADERS FX LOGIN SUCCESSFUL"
+        clearCookie(
+          res,
+          "protraders_oauth"
         );
 
         return redirect(
@@ -678,21 +596,18 @@ async function handler(req, res) {
         );
       } catch (error) {
         console.error(
-          "OAUTH ERROR:",
+          "OAUTH TOKEN ERROR:",
           error
         );
 
-        res.setHeader(
-          "Set-Cookie",
-          clearCookie(
-            "protraders_oauth"
-          )
+        clearCookie(
+          res,
+          "protraders_oauth"
         );
 
-        return send(
+        return html(
           res,
           400,
-          "text/html; charset=utf-8",
           "<!doctype html><html><body><h2>Authorization failed</h2><p>Deriv authorization could not be completed.</p><a href='/api/deriv/login'>Try again</a></body></html>"
         );
       }
@@ -701,14 +616,12 @@ async function handler(req, res) {
     /* LOGOUT */
 
     if (
-      req.method === "GET" &&
-      pathname === "/api/deriv/logout"
+      pathname ===
+      "/api/deriv/logout"
     ) {
-      res.setHeader(
-        "Set-Cookie",
-        clearCookie(
-          "protraders_session"
-        )
+      clearCookie(
+        res,
+        "protraders_session"
       );
 
       return redirect(
@@ -720,8 +633,8 @@ async function handler(req, res) {
     /* TRACK */
 
     if (
-      req.method === "POST" &&
-      pathname === "/api/track"
+      pathname ===
+      "/api/track"
     ) {
       return json(res, 200, {
         ok: true
@@ -731,8 +644,8 @@ async function handler(req, res) {
     /* ANALYTICS */
 
     if (
-      req.method === "GET" &&
-      pathname === "/api/analytics"
+      pathname ===
+      "/api/analytics"
     ) {
       return json(res, 200, {
         ok: true,
@@ -746,8 +659,8 @@ async function handler(req, res) {
     /* FAVICON */
 
     if (
-      req.method === "GET" &&
-      pathname === "/favicon.ico"
+      pathname ===
+      "/favicon.ico"
     ) {
       const favicon =
         path.join(
@@ -768,7 +681,7 @@ async function handler(req, res) {
       return res.end();
     }
 
-    /* FRONTEND */
+    /* STATIC FILES */
 
     let requested =
       pathname === "/"
@@ -806,14 +719,12 @@ async function handler(req, res) {
       return;
     }
 
-    /* SPA FALLBACK */
+    /* FRONTEND FALLBACK */
 
     if (
       pathname.indexOf(
         "/api/"
-      ) !== 0 &&
-      pathname !==
-        "/oauth/callback"
+      ) !== 0
     ) {
       const index =
         path.join(
@@ -842,7 +753,7 @@ async function handler(req, res) {
     );
   } catch (error) {
     console.error(
-      "PROTRADERS FX SERVER ERROR:",
+      "[PROTRADERS FX FATAL ERROR]",
       error
     );
 
