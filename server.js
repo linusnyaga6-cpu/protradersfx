@@ -6,8 +6,6 @@ const path = require("path");
 
 const app = express();
 
-app.set("trust proxy", 1);
-
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -23,7 +21,7 @@ const CLIENT_ID =
 
 const SESSION_SECRET =
   process.env.SESSION_SECRET ||
-  "protraders-fx-production-session-secret-change-me";
+  "CHANGE_THIS_SESSION_SECRET";
 
 const PORT =
   process.env.PORT || 3000;
@@ -31,48 +29,21 @@ const PORT =
 const CALLBACK_URL =
   `${BASE_URL}/oauth/callback`;
 
-const OAUTH_AUTHORIZE_URL =
+const DERIV_AUTH_URL =
   "https://auth.deriv.com/oauth2/auth";
 
-const OAUTH_TOKEN_URL =
+const DERIV_TOKEN_URL =
   "https://auth.deriv.com/oauth2/token";
 
-const DERIV_API_URL =
-  "https://api.derivws.com/trading/v1/options/ws/public";
+const DERIV_API =
+  "https://api.derivws.com";
+
+const SESSION_COOKIE =
+  "protraders_session";
 
 
 /* =========================================================
-   SERVER-SIDE SESSION STORE
-========================================================= */
-
-/*
- * IMPORTANT:
- *
- * The Deriv access token is NEVER sent to the browser.
- *
- * The browser receives only an opaque session ID.
- *
- * The token remains in this server-side Map.
- *
- * Vercel serverless instances can restart, so this is an
- * in-memory session store. The OAuth flow itself is fully
- * server-side and the session cookie does not contain the
- * Deriv token.
- */
-
-const sessions = new Map();
-
-const oauthStates = new Map();
-
-const SESSION_MAX_AGE =
-  7 * 24 * 60 * 60 * 1000;
-
-const OAUTH_STATE_MAX_AGE =
-  10 * 60 * 1000;
-
-
-/* =========================================================
-   SECURITY HEADERS
+   SECURITY
 ========================================================= */
 
 app.use((req, res, next) => {
@@ -90,11 +61,6 @@ app.use((req, res, next) => {
   res.setHeader(
     "Referrer-Policy",
     "strict-origin-when-cross-origin"
-  );
-
-  res.setHeader(
-    "Permissions-Policy",
-    "camera=(), microphone=(), geolocation=()"
   );
 
   next();
@@ -121,11 +87,7 @@ app.use(
 function parseCookies(req) {
 
   const header =
-    req.headers.cookie;
-
-  if (!header) {
-    return {};
-  }
+    req.headers.cookie || "";
 
   const cookies = {};
 
@@ -158,25 +120,137 @@ function parseCookies(req) {
 }
 
 
+/* =========================================================
+   ENCRYPTION
+========================================================= */
+
+function encryptionKey() {
+
+  return crypto
+    .createHash("sha256")
+    .update(SESSION_SECRET)
+    .digest();
+}
+
+
+function encrypt(value) {
+
+  const iv =
+    crypto.randomBytes(12);
+
+  const key =
+    encryptionKey();
+
+  const cipher =
+    crypto.createCipheriv(
+      "aes-256-gcm",
+      key,
+      iv
+    );
+
+  const encrypted =
+    Buffer.concat([
+      cipher.update(
+        String(value),
+        "utf8"
+      ),
+      cipher.final()
+    ]);
+
+  const tag =
+    cipher.getAuthTag();
+
+  return [
+    iv.toString("base64url"),
+    tag.toString("base64url"),
+    encrypted.toString("base64url")
+  ].join(".");
+}
+
+
+function decrypt(value) {
+
+  try {
+
+    const parts =
+      String(value).split(".");
+
+    if (parts.length !== 3) {
+      return null;
+    }
+
+    const iv =
+      Buffer.from(
+        parts[0],
+        "base64url"
+      );
+
+    const tag =
+      Buffer.from(
+        parts[1],
+        "base64url"
+      );
+
+    const encrypted =
+      Buffer.from(
+        parts[2],
+        "base64url"
+      );
+
+    const decipher =
+      crypto.createDecipheriv(
+        "aes-256-gcm",
+        encryptionKey(),
+        iv
+      );
+
+    decipher.setAuthTag(tag);
+
+    return Buffer.concat([
+      decipher.update(encrypted),
+      decipher.final()
+    ]).toString("utf8");
+
+  } catch (error) {
+
+    console.error(
+      "SESSION DECRYPT ERROR:",
+      error.message
+    );
+
+    return null;
+  }
+}
+
+
 function setSessionCookie(
   res,
-  sessionId
+  token,
+  expiresAt
 ) {
 
-  const parts = [
-    `ptfx_session=${encodeURIComponent(sessionId)}`,
-    "Path=/",
-    "HttpOnly",
-    "Secure",
-    "SameSite=Lax",
-    `Max-Age=${Math.floor(
-      SESSION_MAX_AGE / 1000
-    )}`
-  ];
+  const payload =
+    JSON.stringify({
+      token,
+      expiresAt
+    });
+
+  const encrypted =
+    encrypt(payload);
+
+  const maxAge =
+    Math.max(
+      0,
+      Math.floor(
+        (expiresAt - Date.now()) / 1000
+      )
+    );
 
   res.setHeader(
     "Set-Cookie",
-    parts.join("; ")
+    `${SESSION_COOKIE}=${encodeURIComponent(
+      encrypted
+    )}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`
   );
 }
 
@@ -185,40 +259,8 @@ function clearSessionCookie(res) {
 
   res.setHeader(
     "Set-Cookie",
-    [
-      "ptfx_session=",
-      "Path=/",
-      "HttpOnly",
-      "Secure",
-      "SameSite=Lax",
-      "Max-Age=0"
-    ].join("; ")
+    `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`
   );
-}
-
-
-/* =========================================================
-   SESSION HELPERS
-========================================================= */
-
-function createSession(data) {
-
-  const sessionId =
-    crypto.randomBytes(32)
-      .toString("hex");
-
-  sessions.set(
-    sessionId,
-    {
-      ...data,
-      createdAt: Date.now(),
-      expiresAt:
-        Date.now() +
-        SESSION_MAX_AGE
-    }
-  );
-
-  return sessionId;
 }
 
 
@@ -227,51 +269,43 @@ function getSession(req) {
   const cookies =
     parseCookies(req);
 
-  const sessionId =
-    cookies.ptfx_session;
+  const encrypted =
+    cookies[SESSION_COOKIE];
 
-  if (!sessionId) {
+  if (!encrypted) {
     return null;
   }
 
-  const session =
-    sessions.get(sessionId);
+  const raw =
+    decrypt(encrypted);
 
-  if (!session) {
+  if (!raw) {
     return null;
   }
 
-  if (
-    Date.now() >
-    session.expiresAt
-  ) {
+  try {
 
-    sessions.delete(
-      sessionId
-    );
+    const session =
+      JSON.parse(raw);
 
+    if (
+      !session.token ||
+      !session.expiresAt
+    ) {
+      return null;
+    }
+
+    if (
+      Date.now() >=
+      Number(session.expiresAt)
+    ) {
+      return null;
+    }
+
+    return session;
+
+  } catch {
     return null;
-  }
-
-  return {
-    id: sessionId,
-    data: session
-  };
-}
-
-
-function destroySession(req) {
-
-  const cookies =
-    parseCookies(req);
-
-  const sessionId =
-    cookies.ptfx_session;
-
-  if (sessionId) {
-    sessions.delete(
-      sessionId
-    );
   }
 }
 
@@ -280,7 +314,7 @@ function destroySession(req) {
    PKCE
 ========================================================= */
 
-function base64UrlEncode(buffer) {
+function base64Url(buffer) {
 
   return Buffer
     .from(buffer)
@@ -291,19 +325,19 @@ function base64UrlEncode(buffer) {
 }
 
 
-function createCodeVerifier() {
+function createVerifier() {
 
-  return base64UrlEncode(
+  return base64Url(
     crypto.randomBytes(48)
   );
 }
 
 
-function createCodeChallenge(
+function createChallenge(
   verifier
 ) {
 
-  return base64UrlEncode(
+  return base64Url(
     crypto
       .createHash("sha256")
       .update(verifier)
@@ -312,109 +346,328 @@ function createCodeChallenge(
 }
 
 
-/* =========================================================
-   OAUTH STATE
-========================================================= */
+function signState(data) {
 
-function createOAuthState(
+  return crypto
+    .createHmac(
+      "sha256",
+      SESSION_SECRET
+    )
+    .update(data)
+    .digest("hex");
+}
+
+
+function createState(
   verifier
 ) {
 
-  const stateId =
-    crypto.randomBytes(32)
-      .toString("hex");
+  const timestamp =
+    Date.now().toString();
 
-  oauthStates.set(
-    stateId,
-    {
-      verifier,
-      createdAt: Date.now()
-    }
+  const data =
+    `${timestamp}:${verifier}`;
+
+  const signature =
+    signState(data);
+
+  return base64Url(
+    Buffer.from(
+      `${data}:${signature}`
+    )
   );
-
-  return stateId;
 }
 
 
-function consumeOAuthState(
-  state
-) {
+function verifyState(state) {
 
-  if (!state) {
+  try {
+
+    const decoded =
+      Buffer
+        .from(
+          state,
+          "base64url"
+        )
+        .toString("utf8");
+
+    const parts =
+      decoded.split(":");
+
+    if (parts.length !== 3) {
+      return null;
+    }
+
+    const timestamp =
+      parts[0];
+
+    const verifier =
+      parts[1];
+
+    const signature =
+      parts[2];
+
+    const data =
+      `${timestamp}:${verifier}`;
+
+    const expected =
+      signState(data);
+
+    if (
+      signature.length !==
+      expected.length
+    ) {
+      return null;
+    }
+
+    if (
+      !crypto.timingSafeEqual(
+        Buffer.from(signature),
+        Buffer.from(expected)
+      )
+    ) {
+      return null;
+    }
+
+    const age =
+      Date.now() -
+      Number(timestamp);
+
+    if (
+      !Number.isFinite(age) ||
+      age < 0 ||
+      age > 10 * 60 * 1000
+    ) {
+      return null;
+    }
+
+    return {
+      verifier
+    };
+
+  } catch (error) {
+
+    console.error(
+      "STATE VERIFY ERROR:",
+      error.message
+    );
+
     return null;
   }
-
-  const record =
-    oauthStates.get(state);
-
-  if (!record) {
-    return null;
-  }
-
-  oauthStates.delete(state);
-
-  if (
-    Date.now() -
-      record.createdAt >
-    OAUTH_STATE_MAX_AGE
-  ) {
-    return null;
-  }
-
-  return record;
 }
 
 
 /* =========================================================
-   CLEAN EXPIRED DATA
+   DERIV API
 ========================================================= */
 
-function cleanupStores() {
+async function derivRequest(
+  endpoint,
+  token,
+  options = {}
+) {
 
-  const now =
-    Date.now();
+  const response =
+    await fetch(
+      `${DERIV_API}${endpoint}`,
+      {
+        method:
+          options.method || "GET",
 
-  for (
-    const [
-      sessionId,
-      session
-    ] of sessions
-  ) {
+        headers: {
+          "Authorization":
+            `Bearer ${token}`,
 
-    if (
-      now >
-      session.expiresAt
-    ) {
-      sessions.delete(
-        sessionId
-      );
-    }
+          "Deriv-App-ID":
+            CLIENT_ID,
+
+          ...(options.body
+            ? {
+                "Content-Type":
+                  "application/json"
+              }
+            : {})
+        },
+
+        body:
+          options.body
+            ? JSON.stringify(
+                options.body
+              )
+            : undefined
+      }
+    );
+
+  const text =
+    await response.text();
+
+  let data;
+
+  try {
+    data =
+      JSON.parse(text);
+  } catch {
+    data = {
+      raw: text
+    };
   }
 
+  return {
+    ok:
+      response.ok,
 
-  for (
-    const [
-      state,
-      record
-    ] of oauthStates
-  ) {
+    status:
+      response.status,
 
-    if (
-      now -
-        record.createdAt >
-      OAUTH_STATE_MAX_AGE
-    ) {
-      oauthStates.delete(
-        state
-      );
-    }
-  }
+    data
+  };
 }
 
-setInterval(
-  cleanupStores,
-  60 * 1000
-);
+
+/* =========================================================
+   GET ACCOUNTS
+========================================================= */
+
+async function getAccounts(
+  token
+) {
+
+  return derivRequest(
+    "/trading/v1/options/accounts",
+    token
+  );
+}
+
+
+/* =========================================================
+   NORMALIZE ACCOUNTS
+========================================================= */
+
+function normalizeAccounts(
+  response
+) {
+
+  if (
+    !response ||
+    !response.data
+  ) {
+    return [];
+  }
+
+  const data =
+    response.data;
+
+  let accounts = [];
+
+  if (
+    Array.isArray(data)
+  ) {
+
+    accounts =
+      data;
+
+  } else if (
+    Array.isArray(data.data)
+  ) {
+
+    accounts =
+      data.data;
+
+  } else if (
+    Array.isArray(
+      data.accounts
+    )
+  ) {
+
+    accounts =
+      data.accounts;
+  }
+
+  return accounts.map(
+    (account) => {
+
+      const accountId =
+        account.account_id ||
+        account.accountId ||
+        account.loginid ||
+        account.login_id ||
+        null;
+
+      return {
+
+        accountId,
+
+        balance:
+          account.balance !==
+          undefined
+            ? account.balance
+            : null,
+
+        currency:
+          account.currency ||
+          null,
+
+        accountType:
+          account.account_type ||
+          account.accountType ||
+          account.type ||
+          null,
+
+        status:
+          account.status ||
+          null,
+
+        group:
+          account.group ||
+          null
+      };
+    }
+  );
+}
+
+
+/* =========================================================
+   SELECT DEFAULT ACCOUNT
+========================================================= */
+
+function selectAccount(
+  accounts,
+  requestedId
+) {
+
+  if (!accounts.length) {
+    return null;
+  }
+
+  if (requestedId) {
+
+    const requested =
+      accounts.find(
+        (account) =>
+          account.accountId ===
+          requestedId
+      );
+
+    if (requested) {
+      return requested;
+    }
+  }
+
+  const demo =
+    accounts.find(
+      (account) =>
+        String(
+          account.accountType
+        ).toLowerCase() ===
+        "demo"
+    );
+
+  if (demo) {
+    return demo;
+  }
+
+  return accounts[0];
+}
 
 
 /* =========================================================
@@ -444,12 +697,9 @@ app.get(
   (req, res) => {
 
     res.status(200).json({
-
       ok: true,
-
       service:
         "protraders-fx",
-
       time:
         new Date().toISOString()
     });
@@ -465,7 +715,7 @@ app.get(
   "/api/config",
   (req, res) => {
 
-    res.status(200).json({
+    res.json({
 
       ok: true,
 
@@ -483,214 +733,29 @@ app.get(
 
 
 /* =========================================================
-   AUTH STATUS
-========================================================= */
-
-app.get(
-  "/api/deriv/session",
-  async (req, res) => {
-
-    const session =
-      getSession(req);
-
-    if (!session) {
-
-      return res.status(200).json({
-
-        ok: true,
-
-        authenticated:
-          false,
-
-        accountId:
-          null,
-
-        balance:
-          null,
-
-        currency:
-          null,
-
-        accountType:
-          null,
-
-        status:
-          null,
-
-        accounts:
-          [],
-
-        expiresAt:
-          null
-      });
-    }
-
-
-    const data =
-      session.data;
-
-
-    /*
-     * Return only safe account information.
-     *
-     * NEVER return access_token.
-     */
-
-    return res.status(200).json({
-
-      ok: true,
-
-      authenticated:
-        true,
-
-      accountId:
-        data.accountId || null,
-
-      balance:
-        data.balance ?? null,
-
-      currency:
-        data.currency || null,
-
-      accountType:
-        data.accountType || null,
-
-      status:
-        data.status || null,
-
-      accounts:
-        Array.isArray(data.accounts)
-          ? data.accounts
-          : [],
-
-      expiresAt:
-        data.expiresAt
-    });
-  }
-);
-
-
-/* =========================================================
-   LOGOUT
-========================================================= */
-
-app.get(
-  "/api/deriv/logout",
-  (req, res) => {
-
-    destroySession(req);
-
-    clearSessionCookie(res);
-
-    return res.redirect(
-      "/?logout=success"
-    );
-  }
-);
-
-
-app.post(
-  "/api/deriv/logout",
-  (req, res) => {
-
-    destroySession(req);
-
-    clearSessionCookie(res);
-
-    return res.status(200).json({
-
-      ok: true,
-
-      authenticated:
-        false
-    });
-  }
-);
-
-
-/* =========================================================
-   TRACKING
-========================================================= */
-
-app.post(
-  "/api/track",
-  (req, res) => {
-
-    res.status(200).json({
-      ok: true
-    });
-  }
-);
-
-
-app.get(
-  "/api/track",
-  (req, res) => {
-
-    res.status(200).json({
-      ok: true
-    });
-  }
-);
-
-
-/* =========================================================
-   ANALYTICS
-========================================================= */
-
-app.get(
-  "/api/analytics",
-  (req, res) => {
-
-    res.status(200).json({
-
-      ok: true,
-
-      service:
-        "protraders-fx"
-    });
-  }
-);
-
-
-/* =========================================================
-   OAUTH START
+   OAUTH LOGIN
 ========================================================= */
 
 function startOAuth(
   req,
-  res
+  res,
+  signup = false
 ) {
 
   try {
 
-    if (!CLIENT_ID) {
-
-      return res.status(500).json({
-
-        ok: false,
-
-        error:
-          "DERIV_CLIENT_ID is not configured"
-      });
-    }
-
-
     const verifier =
-      createCodeVerifier();
-
+      createVerifier();
 
     const challenge =
-      createCodeChallenge(
+      createChallenge(
         verifier
       );
-
 
     const state =
-      createOAuthState(
+      createState(
         verifier
       );
-
 
     const params =
       new URLSearchParams({
@@ -716,34 +781,23 @@ function startOAuth(
           "S256"
       });
 
+    if (signup) {
 
-    const authorizationUrl =
-      `${OAUTH_AUTHORIZE_URL}?${params.toString()}`;
+      params.set(
+        "prompt",
+        "registration"
+      );
+    }
 
-
-    console.log(
-      "PROTRADERS FX OAUTH START"
-    );
-
-    console.log(
-      "CLIENT ID:",
-      CLIENT_ID
-    );
+    const url =
+      `${DERIV_AUTH_URL}?${params.toString()}`;
 
     console.log(
-      "REDIRECT URI:",
+      "PROTRADERS FX OAUTH REDIRECT:",
       CALLBACK_URL
     );
 
-    console.log(
-      "AUTHORIZATION URL:",
-      authorizationUrl
-    );
-
-
-    return res.redirect(
-      authorizationUrl
-    );
+    res.redirect(url);
 
   } catch (error) {
 
@@ -752,513 +806,39 @@ function startOAuth(
       error
     );
 
-    return res.status(500).json({
-
+    res.status(500).json({
       ok: false,
-
       error:
-        "Unable to start OAuth"
+        "Unable to start authentication"
     });
   }
 }
 
-
-/* =========================================================
-   LOGIN
-========================================================= */
 
 app.get(
   "/api/deriv/login",
-  startOAuth
+  (req, res) => {
+
+    startOAuth(
+      req,
+      res,
+      false
+    );
+  }
 );
 
-
-/* =========================================================
-   SIGNUP
-========================================================= */
 
 app.get(
   "/api/deriv/signup",
-  startOAuth
+  (req, res) => {
+
+    startOAuth(
+      req,
+      res,
+      true
+    );
+  }
 );
-
-
-/* =========================================================
-   TOKEN EXCHANGE
-========================================================= */
-
-async function exchangeCode(
-  code,
-  verifier
-) {
-
-  const body =
-    new URLSearchParams({
-
-      grant_type:
-        "authorization_code",
-
-      client_id:
-        CLIENT_ID,
-
-      code:
-        String(code),
-
-      redirect_uri:
-        CALLBACK_URL,
-
-      code_verifier:
-        verifier
-    });
-
-
-  console.log(
-    "PROTRADERS FX TOKEN EXCHANGE START"
-  );
-
-
-  const response =
-    await fetch(
-      OAUTH_TOKEN_URL,
-      {
-
-        method:
-          "POST",
-
-        headers: {
-
-          "Content-Type":
-            "application/x-www-form-urlencoded",
-
-          "Accept":
-            "application/json"
-        },
-
-        body:
-          body.toString()
-      }
-    );
-
-
-  const text =
-    await response.text();
-
-
-  let data;
-
-  try {
-
-    data =
-      JSON.parse(text);
-
-  } catch {
-
-    data = {
-      raw: text
-    };
-  }
-
-
-  console.log(
-    "TOKEN RESPONSE STATUS:",
-    response.status
-  );
-
-
-  if (
-    !response.ok
-  ) {
-
-    console.error(
-      "TOKEN EXCHANGE FAILED:",
-      data
-    );
-
-    throw new Error(
-      data.error_description ||
-      data.error ||
-      "Token exchange failed"
-    );
-  }
-
-
-  if (
-    !data.access_token
-  ) {
-
-    console.error(
-      "TOKEN RESPONSE DID NOT CONTAIN ACCESS TOKEN:",
-      data
-    );
-
-    throw new Error(
-      "No access token returned by Deriv"
-    );
-  }
-
-
-  console.log(
-    "PROTRADERS FX ACCESS TOKEN RECEIVED"
-  );
-
-
-  return data;
-}
-
-
-/* =========================================================
-   DERIV ACCOUNT REQUEST
-========================================================= */
-
-async function getAccountData(
-  accessToken
-) {
-
-  /*
-   * Deriv's authenticated account information
-   * is requested with the OAuth bearer token.
-   *
-   * We try the current REST account endpoint first.
-   */
-
-  const endpoints = [
-
-    "https://api.derivws.com/trading/v1/options/accounts",
-
-    "https://api.derivws.com/trading/v1/options/account",
-
-    "https://api.derivws.com/trading/v1/options/balance"
-  ];
-
-
-  let lastError = null;
-
-
-  for (
-    const endpoint of endpoints
-  ) {
-
-    try {
-
-      console.log(
-        "PROTRADERS FX ACCOUNT REQUEST:",
-        endpoint
-      );
-
-
-      const response =
-        await fetch(
-          endpoint,
-          {
-
-            method:
-              "GET",
-
-            headers: {
-
-              "Authorization":
-                `Bearer ${accessToken}`,
-
-              "Accept":
-                "application/json"
-            }
-          }
-        );
-
-
-      const text =
-        await response.text();
-
-
-      let data;
-
-      try {
-
-        data =
-          JSON.parse(text);
-
-      } catch {
-
-        data = {
-          raw: text
-        };
-      }
-
-
-      console.log(
-        "ACCOUNT RESPONSE STATUS:",
-        response.status
-      );
-
-
-      if (
-        response.ok
-      ) {
-
-        return normalizeAccounts(
-          data
-        );
-      }
-
-
-      lastError =
-        new Error(
-          data.message ||
-          data.error ||
-          `Account request failed: ${response.status}`
-        );
-
-
-    } catch (error) {
-
-      lastError =
-        error;
-
-      console.error(
-        "ACCOUNT REQUEST ERROR:",
-        error
-      );
-    }
-  }
-
-
-  /*
-   * If REST account discovery is unavailable,
-   * return an empty account set rather than
-   * exposing the access token.
-   */
-
-  console.error(
-    "ALL ACCOUNT ENDPOINTS FAILED:",
-    lastError
-  );
-
-
-  return {
-
-    accounts: [],
-
-    accountId: null,
-
-    balance: null,
-
-    currency: null,
-
-    accountType: null,
-
-    status: null
-  };
-}
-
-
-/* =========================================================
-   NORMALIZE ACCOUNT RESPONSE
-========================================================= */
-
-function normalizeAccounts(
-  data
-) {
-
-  console.log(
-    "PROTRADERS FX NORMALIZING ACCOUNT DATA"
-  );
-
-
-  let rawAccounts = [];
-
-
-  if (
-    Array.isArray(data)
-  ) {
-
-    rawAccounts =
-      data;
-
-  } else if (
-    Array.isArray(data.accounts)
-  ) {
-
-    rawAccounts =
-      data.accounts;
-
-  } else if (
-    Array.isArray(
-      data.data
-    )
-  ) {
-
-    rawAccounts =
-      data.data;
-
-  } else if (
-    data.account
-  ) {
-
-    rawAccounts =
-      [data.account];
-
-  } else if (
-    data.data &&
-    typeof data.data ===
-      "object"
-  ) {
-
-    rawAccounts =
-      [data.data];
-
-  } else if (
-    data.accountId ||
-    data.loginid ||
-    data.login
-  ) {
-
-    rawAccounts =
-      [data];
-  }
-
-
-  const accounts =
-    rawAccounts
-      .map(
-        (account) => {
-
-          if (
-            !account ||
-            typeof account !==
-              "object"
-          ) {
-            return null;
-          }
-
-
-          const accountId =
-            account.accountId ||
-            account.account_id ||
-            account.loginid ||
-            account.login ||
-            account.id ||
-            null;
-
-
-          const balance =
-            account.balance ??
-            account.available_balance ??
-            account.amount ??
-            null;
-
-
-          const currency =
-            account.currency ||
-            account.currency_code ||
-            null;
-
-
-          let accountType =
-            account.accountType ||
-            account.account_type ||
-            null;
-
-
-          if (
-            !accountType &&
-            typeof accountId ===
-              "string"
-          ) {
-
-            if (
-              accountId.startsWith(
-                "VRTC"
-              )
-            ) {
-              accountType =
-                "demo";
-            }
-
-            if (
-              accountId.startsWith(
-                "DOT"
-              )
-            ) {
-              accountType =
-                "demo";
-            }
-
-            if (
-              accountId.startsWith(
-                "CR"
-              ) ||
-              accountId.startsWith(
-                "MTR"
-              ) ||
-              accountId.startsWith(
-                "MF"
-              )
-            ) {
-              accountType =
-                "real";
-            }
-          }
-
-
-          const status =
-            account.status ||
-            "active";
-
-
-          return {
-
-            accountId,
-
-            balance,
-
-            currency,
-
-            accountType,
-
-            status
-          };
-        }
-      )
-      .filter(
-        Boolean
-      );
-
-
-  const primary =
-    accounts[0] ||
-    null;
-
-
-  return {
-
-    accounts,
-
-    accountId:
-      primary
-        ? primary.accountId
-        : null,
-
-    balance:
-      primary
-        ? primary.balance
-        : null,
-
-    currency:
-      primary
-        ? primary.currency
-        : null,
-
-    accountType:
-      primary
-        ? primary.accountType
-        : null,
-
-    status:
-      primary
-        ? primary.status
-        : null
-  };
-}
 
 
 /* =========================================================
@@ -1269,219 +849,267 @@ app.get(
   "/oauth/callback",
   async (req, res) => {
 
-    const {
-      code,
-      state,
-      error,
-      error_description
-    } = req.query;
-
-
-    console.log(
-      "================================================"
-    );
-
-    console.log(
-      "PROTRADERS FX OAUTH CALLBACK"
-    );
-
-    console.log(
-      "================================================"
-    );
-
-
-    /* -----------------------------------------------------
-       DERIV REJECTED AUTHORIZATION
-    ----------------------------------------------------- */
-
-    if (error) {
-
-      console.error(
-        "DERIV OAUTH ERROR:",
-        error,
-        error_description
-      );
-
-
-      return res.redirect(
-        `/?oauth=error&message=${encodeURIComponent(
-          error_description ||
-          error ||
-          "Deriv authorization failed"
-        )}`
-      );
-    }
-
-
-    /* -----------------------------------------------------
-       CODE
-    ----------------------------------------------------- */
-
-    if (!code) {
-
-      console.error(
-        "OAUTH CALLBACK: NO CODE"
-      );
-
-
-      return res.redirect(
-        "/?oauth=error&message=No%20authorization%20code%20returned"
-      );
-    }
-
-
-    /* -----------------------------------------------------
-       STATE
-    ----------------------------------------------------- */
-
-    const oauthState =
-      consumeOAuthState(
-        state
-      );
-
-
-    if (!oauthState) {
-
-      console.error(
-        "OAUTH CALLBACK: INVALID STATE"
-      );
-
-
-      return res.redirect(
-        "/?oauth=error&message=Invalid%20or%20expired%20OAuth%20state"
-      );
-    }
-
-
     try {
 
+      const {
+        code,
+        state,
+        error,
+        error_description
+      } = req.query;
+
+
       /* ---------------------------------------------------
-         EXCHANGE CODE
+         DERIV DENIED ACCESS
       --------------------------------------------------- */
 
-      const token =
-        await exchangeCode(
-          code,
-          oauthState.verifier
+      if (error) {
+
+        console.error(
+          "DERIV AUTH ERROR:",
+          error,
+          error_description
+        );
+
+        return res.redirect(
+          `/?oauth=error&message=${encodeURIComponent(
+            error_description ||
+            error
+          )}`
+        );
+      }
+
+
+      /* ---------------------------------------------------
+         CODE
+      --------------------------------------------------- */
+
+      if (!code) {
+
+        return res.redirect(
+          "/?oauth=error&message=No%20authorization%20code"
+        );
+      }
+
+
+      /* ---------------------------------------------------
+         STATE
+      --------------------------------------------------- */
+
+      if (!state) {
+
+        return res.redirect(
+          "/?oauth=error&message=Missing%20OAuth%20state"
+        );
+      }
+
+
+      const stateData =
+        verifyState(state);
+
+
+      if (!stateData) {
+
+        return res.redirect(
+          "/?oauth=error&message=Invalid%20or%20expired%20OAuth%20state"
+        );
+      }
+
+
+      /* ---------------------------------------------------
+         TOKEN EXCHANGE
+      --------------------------------------------------- */
+
+      console.log(
+        "PROTRADERS FX: exchanging OAuth code"
+      );
+
+
+      const tokenResponse =
+        await fetch(
+          DERIV_TOKEN_URL,
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/x-www-form-urlencoded"
+            },
+
+            body:
+              new URLSearchParams({
+
+                grant_type:
+                  "authorization_code",
+
+                client_id:
+                  CLIENT_ID,
+
+                code:
+                  String(code),
+
+                redirect_uri:
+                  CALLBACK_URL,
+
+                code_verifier:
+                  stateData.verifier
+
+              }).toString()
+          }
         );
 
 
+      const tokenText =
+        await tokenResponse.text();
+
+      let tokenData;
+
+      try {
+
+        tokenData =
+          JSON.parse(
+            tokenText
+          );
+
+      } catch {
+
+        tokenData = {
+          raw:
+            tokenText
+        };
+      }
+
+
+      if (
+        !tokenResponse.ok ||
+        !tokenData.access_token
+      ) {
+
+        console.error(
+          "TOKEN EXCHANGE FAILED:",
+          tokenData
+        );
+
+        return res.redirect(
+          `/?oauth=error&message=${encodeURIComponent(
+            tokenData.error_description ||
+            tokenData.error ||
+            "Token exchange failed"
+          )}`
+        );
+      }
+
+
       const accessToken =
-        token.access_token;
+        tokenData.access_token;
+
+
+      const expiresIn =
+        Number(
+          tokenData.expires_in
+        ) || 3600;
+
+
+      const expiresAt =
+        Date.now() +
+        (
+          expiresIn *
+          1000
+        );
+
+
+      /* ---------------------------------------------------
+         VERIFY TOKEN BY GETTING ACCOUNTS
+      --------------------------------------------------- */
+
+      console.log(
+        "PROTRADERS FX: checking authenticated accounts"
+      );
+
+
+      const accountsResponse =
+        await getAccounts(
+          accessToken
+        );
+
+
+      if (
+        !accountsResponse.ok
+      ) {
+
+        console.error(
+          "ACCOUNT REQUEST FAILED:",
+          accountsResponse
+        );
+
+        return res.redirect(
+          `/?oauth=error&message=${encodeURIComponent(
+            "Authentication succeeded but account access failed"
+          )}`
+        );
+      }
+
+
+      const accounts =
+        normalizeAccounts(
+          accountsResponse
+        );
+
+
+      if (!accounts.length) {
+
+        console.error(
+          "NO DERIV ACCOUNTS RETURNED"
+        );
+
+        return res.redirect(
+          `/?oauth=error&message=${encodeURIComponent(
+            "No trading accounts were returned by Deriv"
+          )}`
+        );
+      }
+
+
+      /* ---------------------------------------------------
+         SAVE ENCRYPTED SERVER SESSION
+      --------------------------------------------------- */
+
+      setSessionCookie(
+        res,
+        accessToken,
+        expiresAt
+      );
+
+
+      const selected =
+        selectAccount(
+          accounts,
+          null
+        );
+
+
+      console.log(
+        "PROTRADERS FX AUTHENTICATED:",
+        selected
+          ? selected.accountId
+          : "unknown"
+      );
 
 
       /*
        * IMPORTANT:
        *
-       * accessToken remains server-side.
+       * The access token is NOT placed
+       * in the URL.
        *
-       * It is NEVER included in:
+       * The frontend receives only:
        *
-       * - URL
-       * - redirect
-       * - JSON response
-       * - browser cookie
+       * /?oauth=success
+       *
+       * The HttpOnly cookie is sent
+       * automatically with subsequent
+       * requests to ProTraders FX.
        */
-
-
-      /* ---------------------------------------------------
-         ACCOUNT DATA
-      --------------------------------------------------- */
-
-      const accountData =
-        await getAccountData(
-          accessToken
-        );
-
-
-      console.log(
-        "PROTRADERS FX ACCOUNT DATA:",
-        {
-          accountId:
-            accountData.accountId,
-
-          balance:
-            accountData.balance,
-
-          currency:
-            accountData.currency,
-
-          accountType:
-            accountData.accountType,
-
-          accounts:
-            accountData.accounts.length
-        }
-      );
-
-
-      /* ---------------------------------------------------
-         CREATE SERVER SESSION
-      --------------------------------------------------- */
-
-      const sessionId =
-        createSession({
-
-          accessToken,
-
-          tokenType:
-            token.token_type ||
-            "Bearer",
-
-          refreshToken:
-            token.refresh_token ||
-            null,
-
-          accountId:
-            accountData.accountId,
-
-          balance:
-            accountData.balance,
-
-          currency:
-            accountData.currency,
-
-          accountType:
-            accountData.accountType,
-
-          status:
-            accountData.status,
-
-          accounts:
-            accountData.accounts,
-
-          tokenExpiresIn:
-            token.expires_in ||
-            null
-        });
-
-
-      setSessionCookie(
-        res,
-        sessionId
-      );
-
-
-      console.log(
-        "PROTRADERS FX SERVER SESSION CREATED"
-      );
-
-
-      console.log(
-        "SESSION ACCOUNT:",
-        accountData.accountId
-      );
-
-
-      console.log(
-        "SESSION BALANCE:",
-        accountData.balance
-      );
-
-
-      /* ---------------------------------------------------
-         RETURN TO WEBSITE
-      --------------------------------------------------- */
 
       return res.redirect(
         "/?oauth=success"
@@ -1491,14 +1119,12 @@ app.get(
     } catch (error) {
 
       console.error(
-        "PROTRADERS FX OAUTH CALLBACK ERROR:",
+        "OAUTH CALLBACK ERROR:",
         error
       );
 
-
       return res.redirect(
         `/?oauth=error&message=${encodeURIComponent(
-          error.message ||
           "Unable to complete Deriv authentication"
         )}`
       );
@@ -1508,20 +1134,180 @@ app.get(
 
 
 /* =========================================================
-   AUTHENTICATED ACCOUNT API
+   AUTH STATUS
 ========================================================= */
 
 app.get(
-  "/api/deriv/account",
-  (req, res) => {
+  "/api/auth/status",
+  async (req, res) => {
 
-    const session =
-      getSession(req);
+    try {
+
+      const session =
+        getSession(req);
 
 
-    if (!session) {
+      if (!session) {
 
-      return res.status(401).json({
+        return res.json({
+
+          ok: true,
+
+          authenticated:
+            false,
+
+          accountId:
+            null,
+
+          balance:
+            null,
+
+          currency:
+            null,
+
+          accountType:
+            null,
+
+          status:
+            null,
+
+          accounts:
+            [],
+
+          expiresAt:
+            null
+        });
+      }
+
+
+      const accountsResponse =
+        await getAccounts(
+          session.token
+        );
+
+
+      if (
+        accountsResponse.status ===
+        401
+      ) {
+
+        clearSessionCookie(
+          res
+        );
+
+        return res.json({
+
+          ok: true,
+
+          authenticated:
+            false,
+
+          accountId:
+            null,
+
+          balance:
+            null,
+
+          currency:
+            null,
+
+          accountType:
+            null,
+
+          status:
+            null,
+
+          accounts:
+            [],
+
+          expiresAt:
+            null
+        });
+      }
+
+
+      if (
+        !accountsResponse.ok
+      ) {
+
+        return res.status(502).json({
+
+          ok: false,
+
+          authenticated:
+            true,
+
+          error:
+            "Unable to retrieve Deriv account data"
+        });
+      }
+
+
+      const accounts =
+        normalizeAccounts(
+          accountsResponse
+        );
+
+
+      const requestedAccount =
+        req.query.accountId ||
+        null;
+
+
+      const selected =
+        selectAccount(
+          accounts,
+          requestedAccount
+        );
+
+
+      return res.json({
+
+        ok: true,
+
+        authenticated:
+          true,
+
+        accountId:
+          selected
+            ? selected.accountId
+            : null,
+
+        balance:
+          selected
+            ? selected.balance
+            : null,
+
+        currency:
+          selected
+            ? selected.currency
+            : null,
+
+        accountType:
+          selected
+            ? selected.accountType
+            : null,
+
+        status:
+          selected
+            ? selected.status
+            : null,
+
+        accounts,
+
+        expiresAt:
+          session.expiresAt
+      });
+
+
+    } catch (error) {
+
+      console.error(
+        "AUTH STATUS ERROR:",
+        error
+      );
+
+      return res.status(500).json({
 
         ok: false,
 
@@ -1529,42 +1315,196 @@ app.get(
           false,
 
         error:
-          "Not authenticated"
+          "Unable to check authentication"
       });
     }
+  }
+);
 
 
-    const data =
-      session.data;
+/* =========================================================
+   ACCOUNT DATA
+========================================================= */
+
+app.get(
+  "/api/account",
+  async (req, res) => {
+
+    try {
+
+      const session =
+        getSession(req);
 
 
-    return res.status(200).json({
+      if (!session) {
+
+        return res.status(401).json({
+
+          ok: false,
+
+          authenticated:
+            false,
+
+          error:
+            "Not authenticated"
+        });
+      }
+
+
+      const response =
+        await getAccounts(
+          session.token
+        );
+
+
+      if (
+        response.status ===
+        401
+      ) {
+
+        clearSessionCookie(
+          res
+        );
+
+        return res.status(401).json({
+
+          ok: false,
+
+          authenticated:
+            false,
+
+          error:
+            "Deriv session expired"
+        });
+      }
+
+
+      if (
+        !response.ok
+      ) {
+
+        return res.status(502).json({
+
+          ok: false,
+
+          authenticated:
+            true,
+
+          error:
+            "Unable to retrieve account data"
+        });
+      }
+
+
+      const accounts =
+        normalizeAccounts(
+          response
+        );
+
+
+      const selected =
+        selectAccount(
+          accounts,
+          req.query.accountId ||
+            null
+        );
+
+
+      return res.json({
+
+        ok: true,
+
+        authenticated:
+          true,
+
+        account:
+          selected,
+
+        accounts,
+
+        expiresAt:
+          session.expiresAt
+      });
+
+
+    } catch (error) {
+
+      console.error(
+        "ACCOUNT API ERROR:",
+        error
+      );
+
+      return res.status(500).json({
+
+        ok: false,
+
+        error:
+          "Unable to retrieve account"
+      });
+    }
+  }
+);
+
+
+/* =========================================================
+   LOGOUT
+========================================================= */
+
+app.get(
+  "/api/deriv/logout",
+  (req, res) => {
+
+    clearSessionCookie(
+      res
+    );
+
+    res.redirect(
+      "/?logout=success"
+    );
+  }
+);
+
+
+/* =========================================================
+   TRACKING
+========================================================= */
+
+app.post(
+  "/api/track",
+  (req, res) => {
+
+    res.json({
+      ok: true
+    });
+  }
+);
+
+
+app.get(
+  "/api/track",
+  (req, res) => {
+
+    res.json({
+      ok: true
+    });
+  }
+);
+
+
+/* =========================================================
+   ANALYTICS
+========================================================= */
+
+app.get(
+  "/api/analytics",
+  (req, res) => {
+
+    res.json({
 
       ok: true,
 
-      authenticated:
-        true,
-
-      accountId:
-        data.accountId,
-
-      balance:
-        data.balance,
-
-      currency:
-        data.currency,
-
-      accountType:
-        data.accountType,
-
-      status:
-        data.status,
-
-      accounts:
-        data.accounts || [],
-
-      expiresAt:
-        data.expiresAt
+      service:
+        "protraders-fx"
     });
   }
 );
@@ -1578,7 +1518,7 @@ app.get(
   "/api",
   (req, res) => {
 
-    res.status(200).json({
+    res.json({
 
       ok: true,
 
@@ -1590,7 +1530,7 @@ app.get(
 
 
 /* =========================================================
-   FRONTEND JAVASCRIPT
+   FRONTEND FILES
 ========================================================= */
 
 app.get(
@@ -1611,10 +1551,6 @@ app.get(
 );
 
 
-/* =========================================================
-   FRONTEND CSS
-========================================================= */
-
 app.get(
   "/style.css",
   (req, res) => {
@@ -1632,10 +1568,6 @@ app.get(
   }
 );
 
-
-/* =========================================================
-   TRACKER
-========================================================= */
 
 app.get(
   "/tracker.js",
@@ -1701,7 +1633,6 @@ app.use(
       err
     );
 
-
     res.status(500).json({
 
       ok: false,
@@ -1721,7 +1652,7 @@ module.exports = app;
 
 
 /* =========================================================
-   LOCAL DEVELOPMENT
+   LOCAL
 ========================================================= */
 
 if (
@@ -1733,27 +1664,7 @@ if (
     () => {
 
       console.log(
-        "========================================"
-      );
-
-      console.log(
-        "PROTRADERS FX SERVER RUNNING"
-      );
-
-      console.log(
-        `PORT: ${PORT}`
-      );
-
-      console.log(
-        `BASE URL: ${BASE_URL}`
-      );
-
-      console.log(
-        `CALLBACK: ${CALLBACK_URL}`
-      );
-
-      console.log(
-        "========================================"
+        `ProTraders FX running on port ${PORT}`
       );
     }
   );
