@@ -14,16 +14,14 @@ app.use(express.urlencoded({ extended: true }));
 ========================================================= */
 
 const BASE_URL =
-  (process.env.BASE_URL || "https://www.protradersfx.com")
-    .replace(/\/+$/, "");
+  process.env.BASE_URL || "https://www.protradersfx.com";
 
 const CLIENT_ID =
-  process.env.DERIV_CLIENT_ID ||
-  "348m9hYwW0YkB5rM2ki9f";
+  process.env.DERIV_CLIENT_ID || "348m9hYwW0YkB5rM2ki9f";
 
 const SESSION_SECRET =
   process.env.SESSION_SECRET ||
-  "protraders-fx-session-secret-change-this";
+  "CHANGE-THIS-IN-VERCEL";
 
 const PORT =
   process.env.PORT || 3000;
@@ -31,16 +29,16 @@ const PORT =
 const CALLBACK_URL =
   `${BASE_URL}/oauth/callback`;
 
-const DERIV_AUTH_URL =
+const AUTH_URL =
   "https://auth.deriv.com/oauth2/auth";
 
-const DERIV_TOKEN_URL =
+const TOKEN_URL =
   "https://auth.deriv.com/oauth2/token";
 
 const DERIV_API =
   "https://api.derivws.com";
 
-const COOKIE_NAME =
+const SESSION_COOKIE =
   "protraders_session";
 
 
@@ -65,11 +63,6 @@ app.use((req, res, next) => {
     "strict-origin-when-cross-origin"
   );
 
-  res.setHeader(
-    "Cache-Control",
-    "no-store"
-  );
-
   next();
 });
 
@@ -85,40 +78,6 @@ app.use(
     index: false
   })
 );
-
-
-/* =========================================================
-   HOME
-========================================================= */
-
-app.get("/", (req, res) => {
-
-  res.sendFile(
-    path.join(ROOT, "index.html")
-  );
-
-});
-
-
-/* =========================================================
-   HEALTH
-========================================================= */
-
-app.get("/health", (req, res) => {
-
-  res.status(200).json({
-
-    ok: true,
-
-    service:
-      "protraders-fx",
-
-    time:
-      new Date().toISOString()
-
-  });
-
-});
 
 
 /* =========================================================
@@ -143,7 +102,7 @@ function parseCookies(req) {
         return;
       }
 
-      const name =
+      const key =
         part
           .slice(0, index)
           .trim();
@@ -153,77 +112,44 @@ function parseCookies(req) {
           .slice(index + 1)
           .trim();
 
-      if (name) {
-        cookies[name] =
-          decodeURIComponent(value);
-      }
-
+      cookies[key] =
+        decodeURIComponent(value);
     });
 
   return cookies;
 }
 
 
-function setSessionCookie(res, value, maxAge) {
-
-  const cookie = [
-    `${COOKIE_NAME}=${encodeURIComponent(value)}`,
-    "Path=/",
-    "HttpOnly",
-    "Secure",
-    "SameSite=Lax",
-    `Max-Age=${maxAge}`
-  ].join("; ");
-
-  res.setHeader(
-    "Set-Cookie",
-    cookie
-  );
-}
-
-
-function clearSessionCookie(res) {
-
-  res.setHeader(
-    "Set-Cookie",
-    `${COOKIE_NAME}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`
-  );
-
-}
-
-
 /* =========================================================
-   ENCRYPTED SERVER SESSION
+   ENCRYPTED SESSION
 ========================================================= */
 
 /*
- * The Deriv access token is NEVER returned to app.js.
+ * The access token is NEVER returned to app.js.
  *
- * It is encrypted before being placed inside the
- * HttpOnly session cookie.
+ * The browser only receives an encrypted,
+ * HttpOnly cookie.
  *
- * Browser JavaScript cannot read the cookie.
- *
- * SESSION_SECRET is required to decrypt it.
+ * The server decrypts the token when it needs
+ * to communicate with Deriv.
  */
 
-function encryptionKey() {
+function getEncryptionKey() {
 
   return crypto
     .createHash("sha256")
     .update(SESSION_SECRET)
     .digest();
-
 }
 
 
-function encryptSession(payload) {
+function encryptSession(data) {
+
+  const key =
+    getEncryptionKey();
 
   const iv =
     crypto.randomBytes(12);
-
-  const key =
-    encryptionKey();
 
   const cipher =
     crypto.createCipheriv(
@@ -233,7 +159,7 @@ function encryptSession(payload) {
     );
 
   const plaintext =
-    JSON.stringify(payload);
+    JSON.stringify(data);
 
   const encrypted =
     Buffer.concat([
@@ -259,8 +185,12 @@ function decryptSession(value) {
 
   try {
 
+    if (!value) {
+      return null;
+    }
+
     const parts =
-      String(value).split(".");
+      value.split(".");
 
     if (parts.length !== 3) {
       return null;
@@ -287,20 +217,22 @@ function decryptSession(value) {
     const decipher =
       crypto.createDecipheriv(
         "aes-256-gcm",
-        encryptionKey(),
+        getEncryptionKey(),
         iv
       );
 
     decipher.setAuthTag(tag);
 
-    const plaintext =
+    const decrypted =
       Buffer.concat([
-        decipher.update(encrypted),
+        decipher.update(
+          encrypted
+        ),
         decipher.final()
-      ]).toString("utf8");
+      ]);
 
     return JSON.parse(
-      plaintext
+      decrypted.toString("utf8")
     );
 
   } catch (error) {
@@ -312,49 +244,13 @@ function decryptSession(value) {
 
     return null;
   }
-
 }
 
 
-/* =========================================================
-   GET CURRENT SESSION
-========================================================= */
-
-function getSession(req) {
-
-  const cookies =
-    parseCookies(req);
-
-  const value =
-    cookies[COOKIE_NAME];
-
-  if (!value) {
-    return null;
-  }
-
-  const session =
-    decryptSession(value);
-
-  if (!session) {
-    return null;
-  }
-
-  if (
-    session.expiresAt &&
-    Date.now() >= session.expiresAt
-  ) {
-    return null;
-  }
-
-  return session;
-}
-
-
-/* =========================================================
-   SAVE SESSION
-========================================================= */
-
-function saveSession(res, session) {
+function setSessionCookie(
+  res,
+  session
+) {
 
   const encrypted =
     encryptSession(session);
@@ -363,57 +259,718 @@ function saveSession(res, session) {
     Math.max(
       60,
       Math.floor(
-        (session.expiresAt - Date.now()) /
+        (session.expiresAt -
+          Date.now()) /
         1000
       )
     );
 
-  setSessionCookie(
-    res,
-    encrypted,
-    maxAge
-  );
+  const cookie =
+    [
+      `${SESSION_COOKIE}=${encodeURIComponent(encrypted)}`,
+      "Path=/",
+      "HttpOnly",
+      "Secure",
+      "SameSite=Lax",
+      `Max-Age=${maxAge}`
+    ].join("; ");
 
+  res.setHeader(
+    "Set-Cookie",
+    cookie
+  );
+}
+
+
+function clearSessionCookie(res) {
+
+  res.setHeader(
+    "Set-Cookie",
+    [
+      `${SESSION_COOKIE}=`,
+      "Path=/",
+      "HttpOnly",
+      "Secure",
+      "SameSite=Lax",
+      "Max-Age=0"
+    ].join("; ")
+  );
+}
+
+
+function getSession(req) {
+
+  const cookies =
+    parseCookies(req);
+
+  return decryptSession(
+    cookies[SESSION_COOKIE]
+  );
 }
 
 
 /* =========================================================
-   AUTH MIDDLEWARE
+   DERIV API HELPERS
 ========================================================= */
 
-function requireAuth(req, res, next) {
+async function derivRequest(
+  endpoint,
+  token,
+  options = {}
+) {
 
-  const session =
-    getSession(req);
+  const headers = {
+    "Authorization":
+      `Bearer ${token}`,
 
-  if (!session) {
+    "Deriv-App-ID":
+      String(CLIENT_ID),
 
-    return res.status(401).json({
+    "Accept":
+      "application/json"
+  };
 
-      ok: false,
+  if (options.body) {
 
-      authenticated: false,
-
-      error:
-        "Authentication required"
-
-    });
-
+    headers[
+      "Content-Type"
+    ] =
+      "application/json";
   }
 
-  req.session =
-    session;
+  const response =
+    await fetch(
+      `${DERIV_API}${endpoint}`,
+      {
+        method:
+          options.method || "GET",
 
-  next();
+        headers,
 
+        body:
+          options.body
+            ? JSON.stringify(
+                options.body
+              )
+            : undefined
+      }
+    );
+
+  const text =
+    await response.text();
+
+  let data;
+
+  try {
+
+    data =
+      text
+        ? JSON.parse(text)
+        : {};
+
+  } catch {
+
+    data = {
+      raw: text
+    };
+  }
+
+  return {
+    response,
+    data
+  };
 }
+
+
+/* =========================================================
+   GET AUTHENTICATED DERIV ACCOUNTS
+========================================================= */
+
+async function getDerivAccounts(token) {
+
+  return derivRequest(
+    "/trading/v1/options/accounts",
+    token
+  );
+}
+
+
+/* =========================================================
+   BUILD ACCOUNT RESPONSE
+========================================================= */
+
+function normalizeAccounts(data) {
+
+  let accounts = [];
+
+  if (
+    data &&
+    Array.isArray(data.data)
+  ) {
+
+    accounts =
+      data.data;
+
+  } else if (
+    data &&
+    data.data &&
+    typeof data.data === "object"
+  ) {
+
+    accounts = [
+      data.data
+    ];
+  }
+
+  return accounts
+    .filter(Boolean)
+    .map((account) => {
+
+      return {
+
+        accountId:
+          account.account_id ||
+          account.accountId ||
+          null,
+
+        balance:
+          account.balance ??
+          null,
+
+        currency:
+          account.currency ||
+          null,
+
+        accountType:
+          account.account_type ||
+          account.accountType ||
+          null,
+
+        status:
+          account.status ||
+          null,
+
+        group:
+          account.group ||
+          null
+      };
+    });
+}
+
+
+/* =========================================================
+   SELECT ACTIVE ACCOUNT
+========================================================= */
+
+function selectAccount(
+  accounts
+) {
+
+  if (!accounts.length) {
+    return null;
+  }
+
+  return (
+    accounts.find(
+      (account) =>
+        account.status ===
+        "active"
+    ) ||
+    accounts.find(
+      (account) =>
+        account.accountType ===
+        "demo"
+    ) ||
+    accounts[0]
+  );
+}
+
+
+/* =========================================================
+   HOME
+========================================================= */
+
+app.get(
+  "/",
+  (req, res) => {
+
+    res.sendFile(
+      path.join(
+        ROOT,
+        "index.html"
+      )
+    );
+  }
+);
+
+
+/* =========================================================
+   HEALTH
+========================================================= */
+
+app.get(
+  "/health",
+  (req, res) => {
+
+    res.status(200).json({
+
+      ok: true,
+
+      service:
+        "protraders-fx",
+
+      time:
+        new Date().toISOString()
+    });
+  }
+);
+
+
+/* =========================================================
+   PUBLIC CONFIG
+========================================================= */
+
+app.get(
+  "/api/config",
+  (req, res) => {
+
+    res.status(200).json({
+
+      ok: true,
+
+      oauthConfigured:
+        Boolean(CLIENT_ID),
+
+      baseUrl:
+        BASE_URL,
+
+      callback:
+        CALLBACK_URL
+    });
+  }
+);
+
+
+/* =========================================================
+   AUTH STATUS
+========================================================= */
+
+app.get(
+  "/api/auth/status",
+  async (req, res) => {
+
+    try {
+
+      const session =
+        getSession(req);
+
+      if (!session) {
+
+        return res.json({
+
+          ok: true,
+
+          authenticated:
+            false,
+
+          accountId:
+            null,
+
+          balance:
+            null,
+
+          currency:
+            null
+        });
+      }
+
+
+      if (
+        !session.accessToken ||
+        !session.expiresAt
+      ) {
+
+        clearSessionCookie(res);
+
+        return res.json({
+
+          ok: true,
+
+          authenticated:
+            false,
+
+          accountId:
+            null,
+
+          balance:
+            null,
+
+          currency:
+            null
+        });
+      }
+
+
+      /*
+       * OAuth tokens are short lived.
+       */
+
+      if (
+        Date.now() >=
+        session.expiresAt
+      ) {
+
+        clearSessionCookie(res);
+
+        return res.json({
+
+          ok: true,
+
+          authenticated:
+            false,
+
+          expired:
+            true,
+
+          accountId:
+            null,
+
+          balance:
+            null,
+
+          currency:
+            null
+        });
+      }
+
+
+      const result =
+        await getDerivAccounts(
+          session.accessToken
+        );
+
+
+      /*
+       * Token rejected by Deriv.
+       */
+
+      if (
+        result.response.status ===
+          401 ||
+        result.response.status ===
+          403
+      ) {
+
+        console.error(
+          "DERIV SESSION REJECTED:",
+          result.data
+        );
+
+        clearSessionCookie(res);
+
+        return res.json({
+
+          ok: true,
+
+          authenticated:
+            false,
+
+          accountId:
+            null,
+
+          balance:
+            null,
+
+          currency:
+            null
+        });
+      }
+
+
+      if (
+        !result.response.ok
+      ) {
+
+        console.error(
+          "DERIV ACCOUNT REQUEST FAILED:",
+          result.data
+        );
+
+        return res.status(502).json({
+
+          ok: false,
+
+          authenticated:
+            true,
+
+          error:
+            "Unable to retrieve Deriv account"
+        });
+      }
+
+
+      const accounts =
+        normalizeAccounts(
+          result.data
+        );
+
+      const account =
+        selectAccount(
+          accounts
+        );
+
+
+      return res.json({
+
+        ok: true,
+
+        authenticated:
+          true,
+
+        accountId:
+          account
+            ? account.accountId
+            : null,
+
+        balance:
+          account
+            ? account.balance
+            : null,
+
+        currency:
+          account
+            ? account.currency
+            : null,
+
+        accountType:
+          account
+            ? account.accountType
+            : null,
+
+        status:
+          account
+            ? account.status
+            : null,
+
+        accounts:
+          accounts.map(
+            (item) => ({
+
+              accountId:
+                item.accountId,
+
+              balance:
+                item.balance,
+
+              currency:
+                item.currency,
+
+              accountType:
+                item.accountType,
+
+              status:
+                item.status
+            })
+          ),
+
+        expiresAt:
+          session.expiresAt
+      });
+
+    } catch (error) {
+
+      console.error(
+        "AUTH STATUS ERROR:",
+        error
+      );
+
+      return res.status(500).json({
+
+        ok: false,
+
+        authenticated:
+          false,
+
+        error:
+          "Unable to check authentication"
+      });
+    }
+  }
+);
+
+
+/* =========================================================
+   AUTHENTICATED ACCOUNT DATA
+========================================================= */
+
+app.get(
+  "/api/account",
+  async (req, res) => {
+
+    try {
+
+      const session =
+        getSession(req);
+
+      if (
+        !session ||
+        !session.accessToken
+      ) {
+
+        return res.status(401).json({
+
+          ok: false,
+
+          authenticated:
+            false,
+
+          error:
+            "Not authenticated"
+        });
+      }
+
+
+      if (
+        Date.now() >=
+        session.expiresAt
+      ) {
+
+        clearSessionCookie(res);
+
+        return res.status(401).json({
+
+          ok: false,
+
+          authenticated:
+            false,
+
+          error:
+            "Session expired"
+        });
+      }
+
+
+      const result =
+        await getDerivAccounts(
+          session.accessToken
+        );
+
+
+      if (
+        !result.response.ok
+      ) {
+
+        if (
+          result.response.status ===
+            401 ||
+          result.response.status ===
+            403
+        ) {
+
+          clearSessionCookie(res);
+
+          return res.status(401).json({
+
+            ok: false,
+
+            authenticated:
+              false,
+
+            error:
+              "Deriv authentication expired"
+          });
+        }
+
+
+        return res.status(502).json({
+
+          ok: false,
+
+          authenticated:
+            true,
+
+          error:
+            "Deriv account request failed"
+        });
+      }
+
+
+      const accounts =
+        normalizeAccounts(
+          result.data
+        );
+
+      const account =
+        selectAccount(
+          accounts
+        );
+
+
+      return res.json({
+
+        ok: true,
+
+        authenticated:
+          true,
+
+        account:
+          account || null,
+
+        accounts
+      });
+
+    } catch (error) {
+
+      console.error(
+        "ACCOUNT API ERROR:",
+        error
+      );
+
+      return res.status(500).json({
+
+        ok: false,
+
+        authenticated:
+          false,
+
+        error:
+          "Unable to retrieve account"
+      });
+    }
+  }
+);
+
+
+/* =========================================================
+   LOGOUT
+========================================================= */
+
+app.get(
+  "/api/deriv/logout",
+  (req, res) => {
+
+    clearSessionCookie(
+      res
+    );
+
+    return res.json({
+
+      ok: true,
+
+      authenticated:
+        false
+    });
+  }
+);
 
 
 /* =========================================================
    PKCE
 ========================================================= */
 
-function base64UrlEncode(buffer) {
+function base64UrlEncode(
+  buffer
+) {
 
   return Buffer
     .from(buffer)
@@ -421,16 +978,14 @@ function base64UrlEncode(buffer) {
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=/g, "");
-
 }
 
 
 function createCodeVerifier() {
 
   return base64UrlEncode(
-    crypto.randomBytes(48)
+    crypto.randomBytes(64)
   );
-
 }
 
 
@@ -444,52 +999,44 @@ function createCodeChallenge(
       .update(verifier)
       .digest()
   );
-
 }
 
 
-/* =========================================================
-   OAUTH STATE
-========================================================= */
-
-function signState(data) {
-
-  return crypto
-    .createHmac(
-      "sha256",
-      SESSION_SECRET
-    )
-    .update(data)
-    .digest("hex");
-
-}
-
-
-function createState(verifier) {
+function createState(
+  verifier
+) {
 
   const timestamp =
     Date.now().toString();
 
   const nonce =
-    crypto.randomBytes(16)
+    crypto
+      .randomBytes(16)
       .toString("hex");
 
   const data =
     `${timestamp}:${nonce}:${verifier}`;
 
   const signature =
-    signState(data);
+    crypto
+      .createHmac(
+        "sha256",
+        SESSION_SECRET
+      )
+      .update(data)
+      .digest("hex");
 
   return base64UrlEncode(
     Buffer.from(
       `${data}:${signature}`
     )
   );
-
 }
 
 
-function decodeState(state) {
+function decodeState(
+  state
+) {
 
   try {
 
@@ -504,7 +1051,10 @@ function decodeState(state) {
     const parts =
       decoded.split(":");
 
-    if (parts.length !== 4) {
+    if (
+      parts.length !== 4
+    ) {
+
       return null;
     }
 
@@ -524,35 +1074,54 @@ function decodeState(state) {
       `${timestamp}:${nonce}:${verifier}`;
 
     const expected =
-      signState(data);
+      crypto
+        .createHmac(
+          "sha256",
+          SESSION_SECRET
+        )
+        .update(data)
+        .digest("hex");
+
 
     if (
       signature.length !==
       expected.length
     ) {
+
       return null;
     }
 
+
     if (
       !crypto.timingSafeEqual(
-        Buffer.from(signature),
-        Buffer.from(expected)
+        Buffer.from(
+          signature
+        ),
+        Buffer.from(
+          expected
+        )
       )
     ) {
+
       return null;
     }
+
 
     const age =
       Date.now() -
       Number(timestamp);
 
+
     if (
       !Number.isFinite(age) ||
       age < 0 ||
-      age > 10 * 60 * 1000
+      age >
+        10 * 60 * 1000
     ) {
+
       return null;
     }
+
 
     return {
       verifier
@@ -567,7 +1136,6 @@ function decodeState(state) {
 
     return null;
   }
-
 }
 
 
@@ -575,7 +1143,11 @@ function decodeState(state) {
    OAUTH START
 ========================================================= */
 
-function startOAuth(req, res, signup) {
+function startOAuth(
+  req,
+  res,
+  signup = false
+) {
 
   try {
 
@@ -587,10 +1159,9 @@ function startOAuth(req, res, signup) {
 
         error:
           "DERIV_CLIENT_ID is not configured"
-
       });
-
     }
+
 
     const verifier =
       createCodeVerifier();
@@ -604,6 +1175,7 @@ function startOAuth(req, res, signup) {
       createState(
         verifier
       );
+
 
     const params =
       new URLSearchParams({
@@ -627,8 +1199,8 @@ function startOAuth(req, res, signup) {
 
         code_challenge_method:
           "S256"
-
       });
+
 
     if (signup) {
 
@@ -636,20 +1208,22 @@ function startOAuth(req, res, signup) {
         "prompt",
         "registration"
       );
-
     }
 
+
     const authorizationUrl =
-      `${DERIV_AUTH_URL}?${params.toString()}`;
+      `${AUTH_URL}?${params.toString()}`;
+
 
     console.log(
-      "PROTRADERS FX OAUTH"
+      "PROTRADERS FX OAUTH:"
     );
 
     console.log(
       "Callback:",
       CALLBACK_URL
     );
+
 
     return res.redirect(
       authorizationUrl
@@ -668,11 +1242,8 @@ function startOAuth(req, res, signup) {
 
       error:
         "Unable to start OAuth"
-
     });
-
   }
-
 }
 
 
@@ -684,30 +1255,28 @@ app.get(
   "/api/deriv/login",
   (req, res) => {
 
-    startOAuth(
+    return startOAuth(
       req,
       res,
       false
     );
-
   }
 );
 
 
 /* =========================================================
-   CREATE ACCOUNT
+   SIGNUP
 ========================================================= */
 
 app.get(
   "/api/deriv/signup",
   (req, res) => {
 
-    startOAuth(
+    return startOAuth(
       req,
       res,
       true
     );
-
   }
 );
 
@@ -740,7 +1309,7 @@ app.get(
     if (error) {
 
       console.error(
-        "DERIV ERROR:",
+        "DERIV OAUTH ERROR:",
         error,
         error_description
       );
@@ -751,7 +1320,6 @@ app.get(
           error
         )}`
       );
-
     }
 
 
@@ -764,7 +1332,6 @@ app.get(
       return res.redirect(
         "/?oauth=error&message=No%20authorization%20code"
       );
-
     }
 
 
@@ -777,22 +1344,24 @@ app.get(
       return res.redirect(
         "/?oauth=error&message=Missing%20OAuth%20state"
       );
-
     }
 
 
     const stateData =
       decodeState(
-        state
+        String(state)
       );
 
 
     if (!stateData) {
 
-      return res.redirect(
-        "/?oauth=error&message=Invalid%20OAuth%20state"
+      console.error(
+        "INVALID OAUTH STATE"
       );
 
+      return res.redirect(
+        "/?oauth=error&message=Invalid%20or%20expired%20OAuth%20state"
+      );
     }
 
 
@@ -802,51 +1371,50 @@ app.get(
 
     try {
 
-      console.log(
-        "PROTRADERS FX EXCHANGING CODE"
-      );
+      const body =
+        new URLSearchParams({
+
+          grant_type:
+            "authorization_code",
+
+          client_id:
+            CLIENT_ID,
+
+          code:
+            String(code),
+
+          code_verifier:
+            stateData.verifier,
+
+          redirect_uri:
+            CALLBACK_URL
+        });
+
 
       const tokenResponse =
         await fetch(
-          DERIV_TOKEN_URL,
+          TOKEN_URL,
           {
-
             method:
               "POST",
 
             headers: {
-
               "Content-Type":
-                "application/x-www-form-urlencoded"
+                "application/x-www-form-urlencoded",
 
+              "Accept":
+                "application/json"
             },
 
             body:
-              new URLSearchParams({
-
-                grant_type:
-                  "authorization_code",
-
-                client_id:
-                  CLIENT_ID,
-
-                code:
-                  String(code),
-
-                redirect_uri:
-                  CALLBACK_URL,
-
-                code_verifier:
-                  stateData.verifier
-
-              }).toString()
-
+              body.toString()
           }
         );
 
 
       const tokenText =
         await tokenResponse.text();
+
 
       let tokenData;
 
@@ -860,9 +1428,9 @@ app.get(
       } catch {
 
         tokenData = {
-          raw: tokenText
+          raw:
+            tokenText
         };
-
       }
 
 
@@ -883,170 +1451,138 @@ app.get(
             "Token exchange failed"
           )}`
         );
-
       }
 
 
-      const accessToken =
-        tokenData.access_token;
-
-
       /*
-       * NEVER send accessToken to the browser.
+       * Deriv OAuth tokens are short-lived.
+       * Store expiry time rather than trusting
+       * a hard-coded duration.
        */
-
 
       const expiresIn =
         Number(
-          tokenData.expires_in ||
-          3600
-        );
+          tokenData.expires_in
+        ) || 3600;
 
 
       const expiresAt =
         Date.now() +
-        Math.max(
-          60,
-          expiresIn - 60
-        ) *
-        1000;
+        expiresIn * 1000;
 
 
       /* ---------------------------------------------------
-         GET AUTHENTICATED ACCOUNTS
+         SAVE AUTHENTICATED SESSION
       --------------------------------------------------- */
 
-      const accountsResponse =
-        await derivFetch(
-          "/trading/v1/options/accounts",
-          accessToken
-        );
-
-
-      if (!accountsResponse.ok) {
-
-        console.error(
-          "ACCOUNT LOOKUP FAILED:",
-          accountsResponse.data
-        );
-
-        return res.redirect(
-          `/?oauth=error&message=${encodeURIComponent(
-            "Authentication succeeded but account data could not be loaded"
-          )}`
-        );
-
-      }
-
-
-      const accounts =
-        extractAccounts(
-          accountsResponse.data
-        );
-
-
-      if (!accounts.length) {
-
-        console.error(
-          "NO OPTIONS ACCOUNTS FOUND"
-        );
-
-        return res.redirect(
-          `/?oauth=error&message=${encodeURIComponent(
-            "No Deriv trading account was returned"
-          )}`
-        );
-
-      }
-
-
-      /*
-       * Prefer an active demo account.
-       * Otherwise use the first active account.
-       */
-
-      let selected =
-        accounts.find(
-          (account) =>
-            account.status === "active" &&
-            account.account_type === "demo"
-        );
-
-
-      if (!selected) {
-
-        selected =
-          accounts.find(
-            (account) =>
-              account.status === "active"
-          );
-
-      }
-
-
-      if (!selected) {
-
-        selected =
-          accounts[0];
-
-      }
-
-
-      const session = {
-
-        authenticated:
-          true,
-
-        accountId:
-          selected.account_id ||
-          selected.loginid ||
-          null,
-
-        balance:
-          selected.balance ??
-          null,
-
-        currency:
-          selected.currency ||
-          null,
-
-        accountType:
-          selected.account_type ||
-          null,
-
-        status:
-          selected.status ||
-          null,
-
-        expiresAt,
-
-        accessToken
-
-      };
-
-
-      /*
-       * Encrypted HttpOnly cookie.
-       *
-       * app.js cannot read accessToken.
-       */
-
-      saveSession(
+      setSessionCookie(
         res,
-        session
+        {
+          accessToken:
+            tokenData.access_token,
+
+          expiresAt
+        }
       );
 
 
       console.log(
-        "PROTRADERS FX AUTHENTICATED:",
-        session.accountId
+        "PROTRADERS FX: TOKEN STORED IN SECURE SESSION"
       );
+
+
+      /* ---------------------------------------------------
+         VERIFY ACCOUNT BEFORE RETURNING
+      --------------------------------------------------- */
+
+      const accountResult =
+        await getDerivAccounts(
+          tokenData.access_token
+        );
+
+
+      if (
+        accountResult.response.status ===
+          401 ||
+        accountResult.response.status ===
+          403
+      ) {
+
+        console.error(
+          "TOKEN AUTHENTICATED BUT ACCOUNT ACCESS FAILED:",
+          accountResult.data
+        );
+
+        clearSessionCookie(
+          res
+        );
+
+        return res.redirect(
+          `/?oauth=error&message=${encodeURIComponent(
+            "Deriv authorised the application, but account access was not granted"
+          )}`
+        );
+      }
+
+
+      if (
+        !accountResult.response.ok
+      ) {
+
+        console.error(
+          "ACCOUNT LOOKUP FAILED:",
+          accountResult.data
+        );
+
+        /*
+         * Keep the authenticated session.
+         *
+         * The frontend can retry /api/auth/status.
+         */
+
+        return res.redirect(
+          "/?oauth=success"
+        );
+      }
+
+
+      const accounts =
+        normalizeAccounts(
+          accountResult.data
+        );
+
+      const account =
+        selectAccount(
+          accounts
+        );
+
+
+      console.log(
+        "PROTRADERS FX AUTHENTICATED ACCOUNT:",
+        account
+          ? account.accountId
+          : "none"
+      );
+
+
+      /*
+       * IMPORTANT:
+       *
+       * The access token is NOT put in:
+       *
+       * - URL
+       * - localStorage
+       * - sessionStorage
+       * - JavaScript
+       *
+       * It stays inside the encrypted HttpOnly
+       * session cookie.
+       */
 
 
       return res.redirect(
         "/?oauth=success"
       );
-
 
     } catch (error) {
 
@@ -1057,618 +1593,157 @@ app.get(
 
       return res.redirect(
         `/?oauth=error&message=${encodeURIComponent(
-          "Authentication could not be completed"
+          "Unable to complete Deriv authentication"
         )}`
       );
-
     }
-
   }
 );
 
 
 /* =========================================================
-   DERIV REST HELPER
+   AUTHENTICATED OTP
 ========================================================= */
 
-async function derivFetch(
-  endpoint,
-  accessToken,
-  options = {}
-) {
+/*
+ * This is needed later by the trading engine.
+ *
+ * The frontend asks our server for an OTP.
+ * The Deriv OAuth token NEVER reaches app.js.
+ */
 
-  const headers = {
-
-    "Authorization":
-      `Bearer ${accessToken}`,
-
-    "Deriv-App-ID":
-      CLIENT_ID,
-
-    ...(options.headers || {})
-
-  };
-
-
-  const response =
-    await fetch(
-      `${DERIV_API}${endpoint}`,
-      {
-        ...options,
-        headers
-      }
-    );
-
-
-  const text =
-    await response.text();
-
-  let data;
-
-  try {
-
-    data =
-      text
-        ? JSON.parse(text)
-        : {};
-
-  } catch {
-
-    data = {
-      raw: text
-    };
-
-  }
-
-
-  return {
-
-    ok:
-      response.ok,
-
-    status:
-      response.status,
-
-    data
-
-  };
-
-}
-
-
-/* =========================================================
-   EXTRACT ACCOUNTS
-========================================================= */
-
-function extractAccounts(data) {
-
-  if (!data) {
-    return [];
-  }
-
-  if (Array.isArray(data.data)) {
-    return data.data;
-  }
-
-  if (
-    data.data &&
-    typeof data.data === "object"
-  ) {
-    return [
-      data.data
-    ];
-  }
-
-  if (Array.isArray(data.accounts)) {
-    return data.accounts;
-  }
-
-  return [];
-
-}
-
-
-/* =========================================================
-   AUTH STATUS
-========================================================= */
-
-app.get(
-  "/api/auth/status",
-  (req, res) => {
-
-    const session =
-      getSession(req);
-
-
-    if (!session) {
-
-      return res.status(200).json({
-
-        ok: true,
-
-        authenticated:
-          false,
-
-        accountId:
-          null,
-
-        balance:
-          null,
-
-        currency:
-          null,
-
-        accountType:
-          null
-
-      });
-
-    }
-
-
-    return res.status(200).json({
-
-      ok: true,
-
-      authenticated:
-        true,
-
-      accountId:
-        session.accountId,
-
-      balance:
-        session.balance,
-
-      currency:
-        session.currency,
-
-      accountType:
-        session.accountType,
-
-      status:
-        session.status,
-
-      expiresAt:
-        session.expiresAt
-
-    });
-
-  }
-);
-
-
-/* =========================================================
-   AUTHENTICATED ACCOUNT
-========================================================= */
-
-app.get(
-  "/api/account",
-  requireAuth,
+app.post(
+  "/api/deriv/otp",
   async (req, res) => {
 
     try {
 
-      const result =
-        await derivFetch(
-          "/trading/v1/options/accounts",
-          req.session.accessToken
-        );
+      const session =
+        getSession(req);
 
 
-      if (!result.ok) {
+      if (
+        !session ||
+        !session.accessToken
+      ) {
 
-        if (
-          result.status === 401
-        ) {
-
-          clearSessionCookie(
-            res
-          );
-
-        }
-
-        return res.status(
-          result.status
-        ).json({
+        return res.status(401).json({
 
           ok: false,
 
           authenticated:
-            result.status !== 401,
+            false,
 
           error:
-            "Unable to load account",
+            "Not authenticated"
+        });
+      }
+
+
+      const accountId =
+        String(
+          req.body.accountId ||
+          ""
+        ).trim();
+
+
+      if (!accountId) {
+
+        return res.status(400).json({
+
+          ok: false,
+
+          error:
+            "accountId is required"
+        });
+      }
+
+
+      const result =
+        await derivRequest(
+          `/trading/v1/options/accounts/${encodeURIComponent(
+            accountId
+          )}/otp`,
+          session.accessToken,
+          {
+            method:
+              "POST"
+          }
+        );
+
+
+      if (
+        result.response.status ===
+          401 ||
+        result.response.status ===
+          403
+      ) {
+
+        clearSessionCookie(
+          res
+        );
+
+        return res.status(401).json({
+
+          ok: false,
+
+          authenticated:
+            false,
+
+          error:
+            "Deriv authentication expired"
+        });
+      }
+
+
+      if (
+        !result.response.ok
+      ) {
+
+        console.error(
+          "OTP ERROR:",
+          result.data
+        );
+
+        return res.status(
+          result.response.status
+        ).json({
+
+          ok: false,
+
+          error:
+            "Unable to create trading session",
 
           details:
             result.data
-
         });
-
-      }
-
-
-      const accounts =
-        extractAccounts(
-          result.data
-        );
-
-
-      let selected =
-        accounts.find(
-          (account) =>
-            account.account_id ===
-            req.session.accountId
-        );
-
-
-      if (!selected) {
-
-        selected =
-          accounts.find(
-            (account) =>
-              account.status === "active" &&
-              account.account_type === "demo"
-          );
-
-      }
-
-
-      if (!selected) {
-        selected = accounts[0];
-      }
-
-
-      if (!selected) {
-
-        return res.status(404).json({
-
-          ok: false,
-
-          authenticated:
-            true,
-
-          error:
-            "No account found"
-
-        });
-
       }
 
 
       /*
-       * Refresh the encrypted session
-       * with the latest account data.
-       */
-
-      req.session.accountId =
-        selected.account_id ||
-        selected.loginid ||
-        req.session.accountId;
-
-      req.session.balance =
-        selected.balance ??
-        req.session.balance ??
-        null;
-
-      req.session.currency =
-        selected.currency ||
-        req.session.currency ||
-        null;
-
-      req.session.accountType =
-        selected.account_type ||
-        req.session.accountType ||
-        null;
-
-      req.session.status =
-        selected.status ||
-        req.session.status ||
-        null;
-
-
-      saveSession(
-        res,
-        req.session
-      );
-
-
-      return res.status(200).json({
-
-        ok: true,
-
-        authenticated:
-          true,
-
-        accountId:
-          req.session.accountId,
-
-        balance:
-          req.session.balance,
-
-        currency:
-          req.session.currency,
-
-        accountType:
-          req.session.accountType,
-
-        status:
-          req.session.status
-
-      });
-
-
-    } catch (error) {
-
-      console.error(
-        "ACCOUNT API ERROR:",
-        error
-      );
-
-      return res.status(500).json({
-
-        ok: false,
-
-        authenticated:
-          true,
-
-        error:
-          "Account request failed"
-
-      });
-
-    }
-
-  }
-);
-
-
-/* =========================================================
-   BALANCE
-========================================================= */
-
-/*
- * The new Deriv balance endpoint is a WebSocket
- * account endpoint. The Options account REST
- * response also supplies balance data for the
- * authenticated Options account.
- *
- * We refresh the account before returning balance.
- */
-
-app.get(
-  "/api/account/balance",
-  requireAuth,
-  async (req, res) => {
-
-    try {
-
-      const result =
-        await derivFetch(
-          "/trading/v1/options/accounts",
-          req.session.accessToken
-        );
-
-
-      if (!result.ok) {
-
-        if (
-          result.status === 401
-        ) {
-
-          clearSessionCookie(
-            res
-          );
-
-        }
-
-        return res.status(
-          result.status
-        ).json({
-
-          ok: false,
-
-          authenticated:
-            result.status !== 401,
-
-          error:
-            "Unable to retrieve balance"
-
-        });
-
-      }
-
-
-      const accounts =
-        extractAccounts(
-          result.data
-        );
-
-
-      const account =
-        accounts.find(
-          (item) =>
-            (
-              item.account_id ||
-              item.loginid
-            ) ===
-            req.session.accountId
-        ) ||
-        accounts[0];
-
-
-      if (!account) {
-
-        return res.status(404).json({
-
-          ok: false,
-
-          authenticated:
-            true,
-
-          error:
-            "Account not found"
-
-        });
-
-      }
-
-
-      req.session.balance =
-        account.balance ??
-        null;
-
-      req.session.currency =
-        account.currency ||
-        null;
-
-
-      saveSession(
-        res,
-        req.session
-      );
-
-
-      return res.status(200).json({
-
-        ok: true,
-
-        authenticated:
-          true,
-
-        accountId:
-          account.account_id ||
-          account.loginid ||
-          req.session.accountId,
-
-        balance:
-          account.balance ??
-          null,
-
-        currency:
-          account.currency ||
-          null
-
-      });
-
-
-    } catch (error) {
-
-      console.error(
-        "BALANCE ERROR:",
-        error
-      );
-
-      return res.status(500).json({
-
-        ok: false,
-
-        authenticated:
-          true,
-
-        error:
-          "Balance request failed"
-
-      });
-
-    }
-
-  }
-);
-
-
-/* =========================================================
-   AUTHENTICATED ACCOUNT LIST
-========================================================= */
-
-app.get(
-  "/api/accounts",
-  requireAuth,
-  async (req, res) => {
-
-    try {
-
-      const result =
-        await derivFetch(
-          "/trading/v1/options/accounts",
-          req.session.accessToken
-        );
-
-
-      if (!result.ok) {
-
-        return res.status(
-          result.status
-        ).json({
-
-          ok: false,
-
-          error:
-            "Unable to retrieve accounts"
-
-        });
-
-      }
-
-
-      const accounts =
-        extractAccounts(
-          result.data
-        );
-
-
-      /*
-       * Only safe account information is
-       * exposed to the frontend.
+       * The returned WebSocket URL/OTP is
+       * deliberately returned only for the
+       * authenticated request.
        *
-       * accessToken is NEVER returned.
+       * The OAuth access token remains server-side.
        */
 
-      const safeAccounts =
-        accounts.map(
-          (account) => ({
-
-            accountId:
-              account.account_id ||
-              account.loginid ||
-              null,
-
-            balance:
-              account.balance ??
-              null,
-
-            currency:
-              account.currency ||
-              null,
-
-            accountType:
-              account.account_type ||
-              null,
-
-            status:
-              account.status ||
-              null
-
-          })
-        );
-
-
-      return res.status(200).json({
+      return res.json({
 
         ok: true,
 
         authenticated:
           true,
 
-        accounts:
-          safeAccounts
-
+        data:
+          result.data.data ||
+          result.data
       });
-
 
     } catch (error) {
 
       console.error(
-        "ACCOUNTS ERROR:",
+        "OTP ROUTE ERROR:",
         error
       );
 
@@ -1677,118 +1752,54 @@ app.get(
         ok: false,
 
         error:
-          "Unable to retrieve accounts"
-
+          "Unable to create trading session"
       });
-
     }
-
   }
 );
 
 
 /* =========================================================
-   LOGOUT
+   TRACKING
 ========================================================= */
 
-app.get(
-  "/api/logout",
+app.post(
+  "/api/track",
   (req, res) => {
 
-    clearSessionCookie(
-      res
-    );
+    res.status(200).json({
+      ok: true
+    });
+  }
+);
 
-    return res.redirect(
-      "/"
-    );
 
+app.get(
+  "/api/track",
+  (req, res) => {
+
+    res.status(200).json({
+      ok: true
+    });
   }
 );
 
 
 /* =========================================================
-   TRADING FEATURES
+   ANALYTICS
 ========================================================= */
 
-/*
- * These routes provide the authenticated
- * feature structure for the ProTraders FX
- * dashboard.
- *
- * Actual trading execution must use the
- * authenticated Deriv WebSocket/OTP flow.
- */
-
 app.get(
-  "/api/trading/features",
+  "/api/analytics",
   (req, res) => {
 
-    const session =
-      getSession(req);
-
-
-    return res.status(200).json({
+    res.status(200).json({
 
       ok: true,
 
-      authenticated:
-        Boolean(session),
-
-      features: [
-
-        {
-          id: "manual",
-          name: "Manual Trade",
-          enabled: Boolean(session)
-        },
-
-        {
-          id: "bots",
-          name: "Create Bots",
-          enabled: Boolean(session)
-        },
-
-        {
-          id: "bulk",
-          name: "Bulk Create Bots",
-          enabled: Boolean(session)
-        },
-
-        {
-          id: "ai",
-          name: "AI Scanner",
-          enabled: Boolean(session)
-        },
-
-        {
-          id: "analysis",
-          name: "AI Analysis",
-          enabled: Boolean(session)
-        },
-
-        {
-          id: "open-trades",
-          name: "Open Trades",
-          enabled: Boolean(session)
-        },
-
-        {
-          id: "history",
-          name: "History",
-          enabled: Boolean(session)
-        },
-
-        {
-          id: "risk",
-          name: "Risk",
-          enabled: Boolean(session)
-        }
-
-      ]
-
+      service:
+        "protraders-fx"
     });
-
   }
 );
 
@@ -1806,15 +1817,8 @@ app.get(
       ok: true,
 
       service:
-        "protraders-fx",
-
-      authenticated:
-        Boolean(
-          getSession(req)
-        )
-
+        "protraders-fx"
     });
-
   }
 );
 
@@ -1837,7 +1841,6 @@ app.get(
         "app.js"
       )
     );
-
   }
 );
 
@@ -1860,7 +1863,6 @@ app.get(
         "style.css"
       )
     );
-
   }
 );
 
@@ -1883,7 +1885,6 @@ app.get(
         "tracker.js"
       )
     );
-
   }
 );
 
@@ -1897,7 +1898,6 @@ app.get(
   (req, res) => {
 
     res.status(204).end();
-
   }
 );
 
@@ -1918,9 +1918,7 @@ app.use(
 
       path:
         req.path
-
     });
-
   }
 );
 
@@ -1943,9 +1941,7 @@ app.use(
 
       error:
         "Internal server error"
-
     });
-
   }
 );
 
@@ -1972,8 +1968,6 @@ if (
       console.log(
         `ProTraders FX running on port ${PORT}`
       );
-
     }
   );
-
 }
