@@ -1,23 +1,34 @@
-# ProTraders FX — production starter
+# ProTraders FX — Trading Workspace
 
-## What is included
-- Production-style landing page and responsive design
-- Deriv OAuth 2.0 Authorization Code flow with PKCE
-- Separate existing-user Login and new-user Sign Up flows; only Sign Up sends `prompt=registration`
-- CSRF-protected, encrypted OAuth state
-- Deriv signup attribution via the exact affiliate parameter configured in `.env`
-- Basic privacy-conscious visitor and registration analytics
-- Security headers, CORS allow-list, API rate limiting, and no token exposure to the browser
-- Required Deriv risk warning and independent-partner disclosure
+TraderScheme-inspired UX/layout for ProTraders FX, using the supplied ProTraders FX foundation and a dark, compact professional terminal design.
 
-## Required before deployment
-1. Create/register your Deriv OAuth 2.0 application and whitelist exactly:
-   `https://protradersfx.com/oauth/callback`
-2. Copy the `client_id` into `DERIV_CLIENT_ID`.
-3. Copy the tracking token and parameter name (`t`, `affiliate_token`, `sidi`, or `ca`) from your Deriv referral link/Partners dashboard into `DERIV_AFFILIATE_PARAM` and `DERIV_AFFILIATE_TOKEN`.
-4. Set a strong `SESSION_SECRET`.
-5. Set `BASE_URL` and `ALLOWED_ORIGINS` to the final HTTPS domain.
-6. Run `npm install` then `npm start`.
+## Included
+- Homepage with Log In / Create Account
+- Deriv OAuth 2.0 + PKCE foundation
+- Existing-user login flow without registration prompt
+- New-user partner attribution flow
+- Live synthetic-market ticker/price chart when `DERIV_PUBLIC_APP_ID` is configured
+- Market analysis workspace
+- Account overview shell
+- Free-bot interface (execution intentionally disabled until controlled live-test integration)
+- Trading interface (execution intentionally disabled until server-side Deriv trading adapter is configured)
+- Privacy-conscious analytics
+- Vercel deployment configuration
 
-## Analytics limitation
-The site counts visitors and successful OAuth registrations. It does **not** invent or infer funded accounts. Confirmed funded/trading referral data should be taken from Deriv Partner Hub reports.
+## Important
+This project does not fabricate balances, trades, funded accounts or execution results. Live trading must be enabled only after the authenticated Deriv WebSocket/trading adapter is implemented and tested with the official production credentials.
+
+## Production environment
+Set the values from `.env.example` in Vercel Project Settings → Environment Variables. Never commit `.env` or access tokens.
+
+Production OAuth callback:
+`https://protradersfx.com/oauth/callback`
+
+## Design reference
+The interface takes inspiration from the public structure and trading-workspace presentation of TraderScheme, but uses original ProTraders FX branding, content and implementation. Do not copy proprietary assets or source code.
+
+## Run locally
+```bash
+npm install
+npm start
+```

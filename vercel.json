@@ -1,36 +1,10 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "server.js",
-      "use": "@vercel/node"
-    }
-  ],
+  "builds": [{"src":"server.js","use":"@vercel/node"}],
   "routes": [
-    {
-      "src": "/app.js",
-      "headers": {
-        "Content-Type": "application/javascript; charset=utf-8"
-      },
-      "continue": true
-    },
-    {
-      "src": "/style.css",
-      "headers": {
-        "Content-Type": "text/css; charset=utf-8"
-      },
-      "continue": true
-    },
-    {
-      "src": "/tracker.js",
-      "headers": {
-        "Content-Type": "application/javascript; charset=utf-8"
-      },
-      "continue": true
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/server.js"
-    }
+    {"src":"/app.js","headers":{"Content-Type":"application/javascript; charset=utf-8"},"continue":true},
+    {"src":"/style.css","headers":{"Content-Type":"text/css; charset=utf-8"},"continue":true},
+    {"src":"/tracker.js","headers":{"Content-Type":"application/javascript; charset=utf-8"},"continue":true},
+    {"src":"/(.*)","dest":"/server.js"}
   ]
 }
