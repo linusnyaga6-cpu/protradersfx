@@ -253,6 +253,7 @@ app.get('/logo.svg', (req, res) => res.type('image/svg+xml').send(FRONTEND.logo)
 app.get('/workspace', (req, res) => res.type('html').send(FRONTEND.workspace));
 app.get('/workspace.html', (req, res) => res.type('html').send(FRONTEND.workspace));
 for (const page of ['marketplace', 'course', 'signals', 'manual', 'builder']) app.get(`/${page}`, (req, res) => res.type('html').send(CANONICAL_INDEX));
+app.get('/', (req, res) => res.type('html').send(CANONICAL_INDEX));
 app.use(express.static(PUBLIC_DIR, { extensions: ['html'] }));
 app.get('*', (req, res) => res.type('html').send(CANONICAL_INDEX));
 app.use((error, req, res, next) => { console.error(error); res.status(500).json({ error: 'Internal server error' }); });
