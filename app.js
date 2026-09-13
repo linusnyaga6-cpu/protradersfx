@@ -16,7 +16,7 @@
     currentMarket: "EUR/USD", currentSymbol: "frxEURUSD", decimals: 5,
     price: null, previousPrice: null, prices: [], times: [], connected: false,
     selectedMode: localStorage.getItem("protraders-account-mode") || "demo",
-    selectedContract: "CALL", authenticated: false, accounts: [], activeView: "dashboard"
+    selectedContract: "CALL", authenticated: false, accounts: [], activeView: "dashboard", bulkContract: "EVEN", scannerTimer: null
   };
 
   const $ = (selector) => document.querySelector(selector);
@@ -113,6 +113,34 @@
     const { response, body } = await api("/api/trades", { method: "POST", body: JSON.stringify({ mode: state.selectedMode, symbol: state.currentSymbol, contract_type: state.selectedContract, stake, duration }) });
     button.disabled = false; button.innerHTML = "REVIEW &amp; EXECUTE <span>→</span>"; if (response.ok) { showMessage(body.message || "Trade executed."); await loadAccount(); } else showMessage(body?.message || body?.error || "Trade was not executed.");
   }
+  function updateBulkMatrix() {
+    if (state.price == null) return;
+    const recent = state.prices.slice(-24);
+    const digits = recent.map((value) => Math.floor(Math.abs(Number(value) * 10)) % 10);
+    const counts = Array.from({ length: 10 }, (_, digit) => digits.filter((value) => value === digit).length);
+    const total = Math.max(digits.length, 1);
+    $$('[data-digit-probability]').forEach((element) => { const digit = Number(element.dataset.digitProbability); element.textContent = `${(100 * (counts[digit] + 1) / (total + 10)).toFixed(2)}%`; });
+    $$('[data-digit-sequence] span').forEach((element, index) => { const digit = digits[digits.length - 10 + index]; element.textContent = digit == null ? "—" : String(digit); });
+    setText('[data-bulk-current-tick]', format(state.price));
+    const even = digits.length ? Math.round(100 * digits.filter((digit) => digit % 2 === 0).length / digits.length) : 50;
+    setText('[data-even-percent]', `${even.toFixed(2)}%`); setText('[data-odd-percent]', `${(100 - even).toFixed(2)}%`);
+  }
+  function closeModal(modal) { if (modal) modal.hidden = true; }
+  function appendScannerLine(text) { const consoleEl = $('[data-scanner-console]'); if (!consoleEl) return; const lines = consoleEl.textContent === 'Waiting for a live market sample…' ? [] : consoleEl.textContent.split("\\n"); lines.push(text); consoleEl.textContent = lines.slice(-9).join("\\n"); consoleEl.scrollTop = consoleEl.scrollHeight; }
+  function stopScanner(review = false) {
+    if (state.scannerTimer) { clearInterval(state.scannerTimer); state.scannerTimer = null; }
+    const stateEl = $('[data-scanner-state]'); const copyEl = $('[data-scanner-copy]'); const button = $('[data-scan-stop]'); const progress = $('[data-scanner-progress]');
+    if (review) { if (stateEl) stateEl.textContent = "REVIEW READY"; if (copyEl) copyEl.textContent = "The scanner found a live sample. No batch order has been sent."; if (button) button.textContent = "REVIEW BATCH"; if (progress) progress.style.width = "100%"; return; }
+    if (stateEl) stateEl.textContent = "STOPPED"; if (copyEl) copyEl.textContent = "Scanner stopped. No batch order has been sent."; if (button) button.textContent = "START SCAN";
+  }
+  function startScanner() {
+    const modal = $('[data-scanner-modal]'); if (!modal) return; modal.hidden = false; const button = $('[data-scan-stop]'); const progress = $('[data-scanner-progress]'); const stateEl = $('[data-scanner-state]'); const copyEl = $('[data-scanner-copy]'); const consoleEl = $('[data-scanner-console]');
+    if (state.scannerTimer) return; if (consoleEl) consoleEl.textContent = "[SCAN] Connecting to live market sample…"; if (stateEl) stateEl.textContent = "SCANNING"; if (copyEl) copyEl.textContent = "Scanning live market samples…"; if (button) button.textContent = "STOP SCANNER"; if (progress) progress.style.width = "8%";
+    let progressValue = 8; state.scannerTimer = setInterval(() => { progressValue = Math.min(92, progressValue + 14); if (progress) progress.style.width = `${progressValue}%`; const sequence = state.prices.slice(-6).map((value) => Math.floor(Math.abs(Number(value) * 10)) % 10).join(","); appendScannerLine(`[SCAN] ${state.currentMarket}: ${sequence || "waiting for ticks…"}`); if (progressValue >= 92) stopScanner(true); }, 420);
+  }
+  function openScanner() { const modal = $('[data-scanner-modal]'); if (modal) modal.hidden = false; if (!state.scannerTimer) startScanner(); }
+  function showBatchReview() { const modal = $('[data-review-modal]'); if (!modal) return; setText('[data-review-market]', state.currentMarket); setText('[data-review-contract]', state.bulkContract); setText('[data-review-trades]', document.querySelector('.bulk-reference input[type="number"]:last-of-type')?.value || "1"); modal.hidden = false; }
+
   function setup() {
     updateModeUI(); updateMarketUI(); updatePriceUI();
     $$('[data-view-target]').forEach((button) => button.addEventListener("click", () => setView(button.dataset.viewTarget)));
@@ -121,7 +149,12 @@
     $$(".timeframe").forEach((button) => button.addEventListener("click", () => { $$(".timeframe").forEach((item) => item.classList.remove("active")); button.classList.add("active"); }));
     $$(".contract-button").forEach((button) => button.addEventListener("click", () => { $$(".contract-button").forEach((item) => item.classList.remove("active")); button.classList.add("active"); state.selectedContract = button.dataset.contract; }));
     $("#execute-button")?.addEventListener("click", executeTrade); $("[data-refresh-account]")?.addEventListener("click", loadAccount);
-    $("[data-bulk-review]")?.addEventListener("click", () => showMessage("Batch ready for review. Manual single-trade execution is enabled; no batch order was sent."));
+    $("[data-bulk-review]")?.forEach?.(() => {});
+    $$('[data-bulk-review]').forEach((button) => button.addEventListener("click", showBatchReview));
+    $$('[data-open-scanner]').forEach((button) => button.addEventListener("click", openScanner));
+    $("[data-scan-stop]")?.addEventListener("click", () => { if (state.scannerTimer) stopScanner(false); else if ($("[data-scan-stop]")?.textContent === "REVIEW BATCH") showBatchReview(); else startScanner(); });
+    $$('[data-close-modal]').forEach((button) => button.addEventListener("click", () => closeModal(button.closest(".modal-backdrop"))));
+    $$("[data-bulk-contract]").forEach((button) => button.addEventListener("click", () => { state.bulkContract = button.dataset.bulkContract; $$("[data-bulk-contract]").forEach((item) => item.classList.toggle("active", item === button)); }));
     $("[data-builder-save]")?.addEventListener("click", () => showMessage("Strategy draft saved locally for this session.", "[data-builder-message]"));
     $$('[data-bot-action]').forEach((button) => button.addEventListener("click", async () => { const { response, body } = await api("/api/bot", { method: "POST", body: JSON.stringify({ action: "start" }) }); setText("[data-bot-message]", response.ok ? body.message : (body?.error || "Connect an account to start a bot.")); setText("[data-bot-label]", response.ok ? "BOT RUNNING →" : "START BOT →"); }));
     connect(); loadSession();
