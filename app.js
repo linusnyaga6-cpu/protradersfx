@@ -94,16 +94,55 @@
   }
   async function api(path, options = {}) { const response = await fetch(path, { credentials: "same-origin", ...options, headers: { "Content-Type": "application/json", ...(options.headers || {}) } }); let body = null; try { body = await response.json(); } catch {} return { response, body }; }
   function showMessage(message, selector = "[data-trade-message]") { setText(selector, message); }
-  function applyAccount(body) { if (!body || !body.authenticated) return; setText("[data-account-balance]", body.balance == null ? "—" : `${Number(body.balance).toFixed(2)} ${body.currency || "USD"}`); setText("[data-balance]", body.balance == null ? "—" : Number(body.balance).toFixed(2)); setText("[data-currency]", body.currency || "USD"); setText("[data-loginid]", body.loginid || "Account connected"); setText("[data-auth-state]", `${state.selectedMode.toUpperCase()} CONNECTED`); }
-  async function loadAccount() { if (!state.authenticated) return; const { response, body } = await api(`/api/account?mode=${encodeURIComponent(state.selectedMode)}`); if (response.ok) applyAccount(body); else if (body?.message) showMessage(body.message); }
+  function money(value, currency = 'USD') { const n = number(value); return n == null ? '—' : `${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`; }
+  function setAccountMessage(message) { setText("[data-account-message]", message || ""); }
+  function applyAccounts(body) {
+    if (!body || !body.authenticated) return;
+    state.accounts = Array.isArray(body.accounts) ? body.accounts : [];
+    ['demo', 'real'].forEach((mode) => {
+      const account = state.accounts.find((item) => mode === 'demo' ? Boolean(item.is_virtual) : !item.is_virtual);
+      setText(`[data-${mode}-balance]`, account ? money(account.balance, account.currency) : 'Not linked');
+      setText(`[data-${mode}-loginid]`, account?.loginid || account?.balanceError || 'Not linked');
+      $$([`[data-account-tile=\"${mode}\"]`]).forEach((tile) => tile.classList.toggle('active', mode === state.selectedMode));
+    });
+  }
+  function applyAccount(body) {
+    if (!body || !body.authenticated) return;
+    setText("[data-account-balance]", body.balance == null ? '—' : money(body.balance, body.currency));
+    setText("[data-balance]", body.balance == null ? '—' : money(body.balance, body.currency));
+    setText("[data-currency]", body.currency || 'USD');
+    setText("[data-loginid]", body.loginid || 'Account connected');
+    setText("[data-auth-state]", `${state.selectedMode.toUpperCase()} CONNECTED`);
+    if (body.accounts) applyAccounts(body);
+  }
+  async function loadAccount() {
+    if (!state.authenticated) return;
+    const { response, body } = await api(`/api/account?mode=${encodeURIComponent(state.selectedMode)}`);
+    if (response.ok) { applyAccount(body); setAccountMessage(''); } else setAccountMessage(body?.message || 'Balance unavailable. Refresh to try again.');
+  }
+  async function refreshAccounts() {
+    if (!state.authenticated) { setAccountMessage('Connect a Deriv account to load balances.'); return; }
+    setAccountMessage('Refreshing linked Deriv balances…');
+    const accounts = await api('/api/accounts');
+    if (accounts.response.ok) { applyAccounts(accounts.body); setAccountMessage('Balances updated from Deriv.'); await loadAccount(); }
+    else setAccountMessage(accounts.body?.message || 'Balances unavailable.');
+  }
   async function loadSession() {
-    const session = await api("/api/session"); state.authenticated = Boolean(session.body?.authenticated); if (!state.authenticated) { setText("[data-auth-state]", "NOT CONNECTED"); return; }
-    setText("[data-auth-state]", `${state.selectedMode.toUpperCase()} CONNECTED`); $$('[data-auth-login]').forEach((link) => { link.textContent = "Account"; link.href = "/workspace.html"; });
-    const accounts = await api("/api/accounts"); if (accounts.response.ok) state.accounts = accounts.body.accounts || []; await loadAccount();
+    const session = await api('/api/session'); state.authenticated = Boolean(session.body?.authenticated);
+    if (!state.authenticated) { setText('[data-auth-state]', 'NOT CONNECTED'); setAccountMessage('Connect a Deriv account to load balances.'); return; }
+    setText('[data-auth-state]', `${state.selectedMode.toUpperCase()} CONNECTED`); $$('[data-auth-login]').forEach((link) => { link.textContent = 'Account'; link.href = '/workspace.html'; });
+    const accounts = await api('/api/accounts');
+    if (accounts.response.ok) applyAccounts(accounts.body); else setAccountMessage(accounts.body?.message || 'Linked accounts unavailable.');
+    await loadAccount();
   }
   async function switchAccount(mode) {
-    if (mode === state.selectedMode) return; state.selectedMode = mode; localStorage.setItem("protraders-account-mode", mode); updateModeUI(); if (!state.authenticated) { showMessage(`Connect a Deriv account before switching to ${mode.toUpperCase()} mode.`); return; }
-    showMessage(`Switching to ${mode.toUpperCase()} account…`); const { response, body } = await api("/api/account/switch", { method: "POST", body: JSON.stringify({ mode }) }); if (!response.ok) { showMessage(body?.message || body?.error || `No ${mode} account is linked.`); return; } applyAccount(body); showMessage(`${mode.toUpperCase()} account selected. Review the ticket before execution.`);
+    if (mode === state.selectedMode) return;
+    const previousMode = state.selectedMode; state.selectedMode = mode; localStorage.setItem('protraders-account-mode', mode); updateModeUI();
+    if (!state.authenticated) { setAccountMessage(`Connect a Deriv account before switching to ${mode.toUpperCase()} mode.`); return; }
+    setAccountMessage(`Switching to ${mode.toUpperCase()} account…`);
+    const { response, body } = await api('/api/account/switch', { method: 'POST', body: JSON.stringify({ mode }) });
+    if (!response.ok) { state.selectedMode = previousMode; updateModeUI(); setAccountMessage(body?.message || body?.error || `No ${mode} account is linked.`); return; }
+    applyAccounts(body); applyAccount(body); setAccountMessage(`${mode.toUpperCase()} account selected.`);
   }
   async function executeTrade() {
     const stake = Number($("#stake-input")?.value); const duration = Number($("#duration-input")?.value); const button = $("#execute-button");
@@ -148,7 +187,7 @@
     $$('[data-account-mode]').forEach((button) => button.addEventListener("click", () => switchAccount(button.dataset.accountMode)));
     $$(".timeframe").forEach((button) => button.addEventListener("click", () => { $$(".timeframe").forEach((item) => item.classList.remove("active")); button.classList.add("active"); }));
     $$(".contract-button").forEach((button) => button.addEventListener("click", () => { $$(".contract-button").forEach((item) => item.classList.remove("active")); button.classList.add("active"); state.selectedContract = button.dataset.contract; }));
-    $("#execute-button")?.addEventListener("click", executeTrade); $("[data-refresh-account]")?.addEventListener("click", loadAccount);
+    $("#execute-button")?.addEventListener("click", executeTrade); $("[data-refresh-account]")?.addEventListener("click", refreshAccounts);
     $("[data-bulk-review]")?.forEach?.(() => {});
     $$('[data-bulk-review]').forEach((button) => button.addEventListener("click", showBatchReview));
     $$('[data-open-scanner]').forEach((button) => button.addEventListener("click", openScanner));
