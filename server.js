@@ -13,7 +13,7 @@ const PORT = Number(process.env.PORT || 3000);
 const BASE_URL = (process.env.BASE_URL || `http://localhost:${PORT}`).replace(/\/$/, '');
 const PUBLIC_DIR = __dirname;
 const DERIV_CLIENT_ID = process.env.DERIV_CLIENT_ID || '';
-const DERIV_PUBLIC_APP_ID = process.env.DERIV_PUBLIC_APP_ID || '';
+const DERIV_PUBLIC_APP_ID = process.env.DERIV_PUBLIC_APP_ID || process.env.DERIV_APP_ID || '';
 const DERIV_AFFILIATE_PARAM = process.env.DERIV_AFFILIATE_PARAM || 't';
 const DERIV_AFFILIATE_TOKEN = process.env.DERIV_AFFILIATE_TOKEN || '';
 const DERIV_AFFILIATE_ID = process.env.DERIV_AFFILIATE_ID || '';
@@ -168,7 +168,7 @@ app.use(express.urlencoded({ extended: false, limit: '20kb' }));
 app.use(cookieParser());
 app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 180, standardHeaders: true, legacyHeaders: false }));
 
-app.get('/api/config', (req, res) => res.json({ configured: Boolean(DERIV_CLIENT_ID && DERIV_AFFILIATE_TOKEN), publicAppId: DERIV_PUBLIC_APP_ID, partnerParam: DERIV_AFFILIATE_PARAM, campaign: DERIV_CAMPAIGN }));
+app.get('/api/config', (req, res) => res.json({ configured: Boolean(DERIV_CLIENT_ID && DERIV_AFFILIATE_TOKEN), publicAppConfigured: Boolean(DERIV_PUBLIC_APP_ID), partnerParam: DERIV_AFFILIATE_PARAM, campaign: DERIV_CAMPAIGN }));
 const PUBLIC_MARKET_SYMBOLS = new Set(['frxEURUSD', 'frxGBPUSD', 'frxUSDJPY', 'frxAUDUSD', 'frxUSDCAD', 'R_100', 'R_25']);
 app.get('/api/market/tick', async (req, res) => {
   const symbol = String(req.query.symbol || 'frxEURUSD');
