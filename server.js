@@ -94,8 +94,6 @@ async function accountBalanceView(account, fallbackToken) {
   catch { return accountSummary(account, null, true); }
 }
 async function accountViews(session, accounts) { return Promise.all(accounts.map((account) => accountBalanceView(account, session.accessToken))); }
-  return Promise.all(accounts.map((account) => accountBalanceView(account, session.accessToken)));
-}
 function normalizeAccounts(auth, fallbackToken) {
   const list = Array.isArray(auth?.account_list) ? auth.account_list : Array.isArray(auth?.accounts) ? auth.accounts : [];
   const accounts = list.map((account) => ({ loginid: account.loginid || account.account_id || '', currency: account.currency || auth.currency || 'USD', is_virtual: accountIsDemo(account), token: account.token || fallbackToken })).filter((account) => account.loginid || account.token);
