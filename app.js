@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const WS_URL = "wss://api.derivws.com/trading/v1/options/ws/public";
+  const MARKET_TICK_URL = "/api/market/tick";
   const MARKETS = {
     "EUR/USD": { symbol: "frxEURUSD", decimals: 5 },
     "GBP/USD": { symbol: "frxGBPUSD", decimals: 5 },
@@ -12,7 +12,7 @@
     "Volatility 25": { symbol: "R_25", decimals: 2 }
   };
   const state = {
-    socket: null, reconnectTimer: null, reconnectDelay: 2000, requestId: 0,
+    socket: null, reconnectTimer: null, reconnectDelay: 2000, requestId: 0, marketPollTimer: null, marketRequestInFlight: false,
     currentMarket: "EUR/USD", currentSymbol: "frxEURUSD", decimals: 5,
     price: null, previousPrice: null, prices: [], times: [], connected: false,
     selectedMode: localStorage.getItem("protraders-account-mode") || "demo",
@@ -68,26 +68,33 @@
     $$("[data-signal]").forEach((element) => { element.textContent = signal; element.classList.remove("buy", "sell", "wait"); element.classList.add(signal === "RISE" ? "buy" : signal === "FALL" ? "sell" : "wait"); });
     setText("#ai-message", `${state.currentMarket} is showing ${momentum.toLowerCase()} ${trend.toLowerCase()} pressure.`); setText("#analysis-message", `The live feed is ${momentum.toLowerCase()} with a ${direction.toLowerCase()} bias.`);
   }
-  function send(payload) { if (!state.socket || state.socket.readyState !== WebSocket.OPEN) return false; state.socket.send(JSON.stringify(payload)); return true; }
-  function subscribe() { send({ ticks: state.currentSymbol, subscribe: 1, req_id: ++state.requestId }); }
-  function processTick(data) {
-    const quote = number(data.tick?.quote); if (quote == null || (data.tick.symbol && data.tick.symbol !== state.currentSymbol)) return;
-    state.previousPrice = state.price; state.price = quote; state.prices.push(quote); state.times.push(data.tick.epoch || Date.now());
-    if (state.prices.length > 180) { state.prices.shift(); state.times.shift(); }
-    setStatus("LIVE"); updatePriceUI(); drawChart(); updateAnalysis();
+  async function fetchMarketTick() {
+    if (state.marketRequestInFlight) return;
+    state.marketRequestInFlight = true;
+    try {
+      const response = await fetch(`/api/market/tick?symbol=${encodeURIComponent(state.currentSymbol)}`, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+      let data = null; try { data = await response.json(); } catch {}
+      if (!response.ok || data?.error) throw new Error(data?.message || data?.error || 'Market feed unavailable');
+      if (data?.msg_type === 'tick') processTick(data);
+    } catch {
+      setStatus(state.price == null ? 'CONNECTING' : 'RECONNECTING');
+    } finally {
+      state.marketRequestInFlight = false;
+    }
   }
   function connect() {
-    if (state.socket && [WebSocket.OPEN, WebSocket.CONNECTING].includes(state.socket.readyState)) return;
-    setStatus("CONNECTING");
-    try { state.socket = new WebSocket(WS_URL); } catch { scheduleReconnect(); return; }
-    state.socket.onopen = () => { state.connected = true; state.reconnectDelay = 2000; setStatus("LIVE"); subscribe(); };
-    state.socket.onmessage = (event) => { try { const data = JSON.parse(event.data); if (data.error) { setStatus("MARKET ERROR"); return; } if (data.msg_type === "tick") processTick(data); } catch { setStatus("MARKET ERROR"); } };
-    state.socket.onerror = () => setStatus("MARKET ERROR");
-    state.socket.onclose = () => { state.connected = false; setStatus("RECONNECTING"); scheduleReconnect(); };
+    if (state.marketPollTimer) return;
+    setStatus('CONNECTING');
+    fetchMarketTick();
+    state.marketPollTimer = setInterval(fetchMarketTick, 5000);
   }
-  function scheduleReconnect() { if (state.reconnectTimer) return; state.reconnectTimer = setTimeout(() => { state.reconnectTimer = null; connect(); state.reconnectDelay = Math.min(state.reconnectDelay * 2, 30000); }, state.reconnectDelay); }
+  function stopMarketFeed() {
+    if (state.marketPollTimer) { clearInterval(state.marketPollTimer); state.marketPollTimer = null; }
+  }
   function changeMarket(name) {
-    const market = MARKETS[name]; if (!market) return; state.currentMarket = name; state.currentSymbol = market.symbol; state.decimals = market.decimals; state.price = null; state.previousPrice = null; state.prices = []; state.times = []; updateMarketUI(); updatePriceUI(); drawChart(); if (state.socket && state.socket.readyState === WebSocket.OPEN) { state.socket.close(); setTimeout(connect, 250); }
+    const market = MARKETS[name]; if (!market) return;
+    state.currentMarket = name; state.currentSymbol = market.symbol; state.decimals = market.decimals; state.price = null; state.previousPrice = null; state.prices = []; state.times = [];
+    updateMarketUI(); updatePriceUI(); drawChart(); setStatus('CONNECTING'); fetchMarketTick();
   }
   function setView(view) {
     state.activeView = view; $$("[data-view]").forEach((panel) => panel.classList.toggle("active", panel.dataset.view === view)); $$("[data-view-target]").forEach((button) => button.classList.toggle("active", button.dataset.viewTarget === view)); window.scrollTo({ top: 0, behavior: "smooth" });
