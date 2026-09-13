@@ -125,6 +125,20 @@ function openDeriv(accessToken, payload, authorizeOnly = false) {
     ws.on('close', () => clearTimeout(timer));
   });
 }
+function openDerivPublic(payload) {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(`wss://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(DERIV_PUBLIC_APP_ID || '1089')}`);
+    const timer = setTimeout(() => { try { ws.close(); } catch {} reject(new Error('Deriv market request timeout')); }, 10_000);
+    ws.on('open', () => ws.send(JSON.stringify(payload)));
+    ws.on('message', (raw) => {
+      let data; try { data = JSON.parse(raw.toString()); } catch { return; }
+      if (data.error) { clearTimeout(timer); try { ws.close(); } catch {}; reject(new Error(data.error.message || 'Deriv market error')); return; }
+      if (data.msg_type === 'tick') { clearTimeout(timer); try { ws.close(); } catch {}; resolve(data); }
+    });
+    ws.on('error', (error) => { clearTimeout(timer); reject(error); });
+    ws.on('close', () => clearTimeout(timer));
+  });
+}
 async function authorizeAccounts(session) {
   const auth = await openDeriv(session.accessToken, null, true);
   session.accounts = normalizeAccounts(auth, session.accessToken);
@@ -155,6 +169,17 @@ app.use(cookieParser());
 app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 180, standardHeaders: true, legacyHeaders: false }));
 
 app.get('/api/config', (req, res) => res.json({ configured: Boolean(DERIV_CLIENT_ID && DERIV_AFFILIATE_TOKEN), publicAppId: DERIV_PUBLIC_APP_ID, partnerParam: DERIV_AFFILIATE_PARAM, campaign: DERIV_CAMPAIGN }));
+const PUBLIC_MARKET_SYMBOLS = new Set(['frxEURUSD', 'frxGBPUSD', 'frxUSDJPY', 'frxAUDUSD', 'frxUSDCAD', 'R_100', 'R_25']);
+app.get('/api/market/tick', async (req, res) => {
+  const symbol = String(req.query.symbol || 'frxEURUSD');
+  if (!PUBLIC_MARKET_SYMBOLS.has(symbol)) return res.status(400).json({ error: 'Unsupported market symbol' });
+  try {
+    const tick = await openDerivPublic({ ticks: symbol });
+    res.set('Cache-Control', 'no-store').json({ msg_type: 'tick', tick: tick.tick, server_time: tick.server_time });
+  } catch (error) {
+    res.status(502).json({ error: 'Market feed unavailable', message: error.message });
+  }
+});
 app.post('/api/track', (req, res) => { const type = String(req.body?.type || 'page_view').slice(0, 40); const data = readData(); if (type === 'page_view') data.visitors++; data.events.push({ type, at: new Date().toISOString(), path: String(req.body?.path || '/').slice(0, 200) }); if (data.events.length > 5000) data.events = data.events.slice(-5000); writeData(data); res.status(204).end(); });
 app.get('/api/analytics', (req, res) => { const data = readData(); res.json({ visitors: data.visitors, registrations: data.registrations || 0, oauthSuccesses: data.events.filter((event) => event.type === 'oauth_login_success' || event.type === 'oauth_signup_success').length, fundedAccounts: null, note: 'Funded-account status must be confirmed in Deriv Partner Hub; it is not fabricated here.' }); });
 app.get('/api/deriv/login', (req, res) => { try { res.redirect(oauthUrl('login')); } catch (error) { res.status(503).json({ error: error.message }); } });
