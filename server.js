@@ -26,7 +26,8 @@ const FRONTEND = {
   index: fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8'),
   workspace: fs.readFileSync(path.join(__dirname, 'workspace.html'), 'utf8'),
   style: fs.readFileSync(path.join(__dirname, 'style.css'), 'utf8'),
-  app: fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8')
+  app: fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8'),
+  logo: fs.readFileSync(path.join(__dirname, 'logo.svg'), 'utf8')
 };
 
 if (!process.env.VERCEL) {
@@ -234,6 +235,7 @@ app.get('/health', (req, res) => res.json({ ok: true, service: 'protraders-fx', 
 app.get('/app-config.js', (req, res) => res.type('application/javascript').send(`window.PROTRADERS_PUBLIC_APP_ID=${JSON.stringify(DERIV_PUBLIC_APP_ID)};`));
 app.get('/style.css', (req, res) => res.type('text/css').send(FRONTEND.style));
 app.get('/app.js', (req, res) => res.type('application/javascript').send(FRONTEND.app));
+app.get('/logo.svg', (req, res) => res.type('image/svg+xml').send(FRONTEND.logo));
 app.get('/workspace', (req, res) => res.type('html').send(FRONTEND.workspace));
 app.get('/workspace.html', (req, res) => res.type('html').send(FRONTEND.workspace));
 for (const page of ['marketplace', 'course', 'signals', 'manual', 'builder']) app.get(`/${page}`, (req, res) => res.type('html').send(FRONTEND.index));
