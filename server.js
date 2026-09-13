@@ -127,7 +127,7 @@ function openDeriv(accessToken, payload, authorizeOnly = false) {
 }
 function openDerivPublic(payload) {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(`wss://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(DERIV_PUBLIC_APP_ID || '1089')}`);
+    const ws = new WebSocket('wss://api.derivws.com/trading/v1/options/ws/public');
     const timer = setTimeout(() => { try { ws.close(); } catch {} reject(new Error('Deriv market request timeout')); }, 10_000);
     ws.on('open', () => ws.send(JSON.stringify(payload)));
     ws.on('message', (raw) => {
@@ -170,7 +170,6 @@ app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 180, standardHeaders
 
 app.get('/api/config', (req, res) => res.json({ configured: Boolean(DERIV_CLIENT_ID && DERIV_AFFILIATE_TOKEN), publicAppConfigured: Boolean(DERIV_PUBLIC_APP_ID), partnerParam: DERIV_AFFILIATE_PARAM, campaign: DERIV_CAMPAIGN }));
 const PUBLIC_MARKET_SYMBOLS = new Set(['frxEURUSD', 'frxGBPUSD', 'frxUSDJPY', 'frxAUDUSD', 'frxUSDCAD', 'R_10', 'R_25', 'R_50', 'R_75', 'R_100', '1HZ10V', '1HZ25V', '1HZ50V', '1HZ75V', '1HZ100V']);
-app.get('/api/market/symbols', async (req, res) => { try { const data = await openDerivPublic({ active_symbols: 'full' }); res.set('Cache-Control', 'no-store').json({ msg_type: data.msg_type, keys: Object.keys(data), active_symbols: data.active_symbols || [], error: data.error || null }); } catch (error) { res.status(502).json({ error: 'Market symbols unavailable', message: error.message }); } });
 app.get('/api/market/tick', async (req, res) => {
   const symbol = String(req.query.symbol || 'frxEURUSD');
   if (!PUBLIC_MARKET_SYMBOLS.has(symbol)) return res.status(400).json({ error: 'Unsupported market symbol' });
