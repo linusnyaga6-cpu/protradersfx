@@ -133,7 +133,7 @@ function openDerivPublic(payload) {
     ws.on('message', (raw) => {
       let data; try { data = JSON.parse(raw.toString()); } catch { return; }
       if (data.error) { clearTimeout(timer); try { ws.close(); } catch {}; reject(new Error(data.error.message || 'Deriv market error')); return; }
-      if (data.msg_type === 'tick') { clearTimeout(timer); try { ws.close(); } catch {}; resolve(data); }
+      if (data.msg_type === 'tick' || data.msg_type === 'active_symbols') { clearTimeout(timer); try { ws.close(); } catch {}; resolve(data); }
     });
     ws.on('error', (error) => { clearTimeout(timer); reject(error); });
     ws.on('close', () => clearTimeout(timer));
