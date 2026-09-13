@@ -170,6 +170,7 @@ app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 180, standardHeaders
 
 app.get('/api/config', (req, res) => res.json({ configured: Boolean(DERIV_CLIENT_ID && DERIV_AFFILIATE_TOKEN), publicAppConfigured: Boolean(DERIV_PUBLIC_APP_ID), partnerParam: DERIV_AFFILIATE_PARAM, campaign: DERIV_CAMPAIGN }));
 const PUBLIC_MARKET_SYMBOLS = new Set(['frxEURUSD', 'frxGBPUSD', 'frxUSDJPY', 'frxAUDUSD', 'frxUSDCAD', 'R_100', 'R_25']);
+app.get('/api/market/symbols', async (req, res) => { try { const data = await openDerivPublic({ active_symbols: 'brief', product_type: 'basic' }); res.set('Cache-Control', 'no-store').json({ active_symbols: data.active_symbols || [] }); } catch (error) { res.status(502).json({ error: 'Market symbols unavailable', message: error.message }); } });
 app.get('/api/market/tick', async (req, res) => {
   const symbol = String(req.query.symbol || 'frxEURUSD');
   if (!PUBLIC_MARKET_SYMBOLS.has(symbol)) return res.status(400).json({ error: 'Unsupported market symbol' });
