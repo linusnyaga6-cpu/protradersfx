@@ -70,23 +70,30 @@ function saveSession(res, session) {
   const maxAge = Math.max(60_000, Number(session.expiresAt || Date.now() + 3_600_000) - Date.now());
   res.cookie('protraders_session', seal(session), { httpOnly: true, secure: BASE_URL.startsWith('https://'), sameSite: 'lax', maxAge, path: '/' });
 }
-function accountIsDemo(account) { return Boolean(account?.is_virtual || account?.isVirtual || /^VRT/i.test(String(account?.loginid || ''))); }
+const OPTIONS_API_BASE = 'https://api.derivws.com/trading/v1/options';
+async function optionsRequest(pathname, accessToken, init = {}) {
+  const headers = { Authorization: 'Bearer ' + accessToken, Accept: 'application/json', ...(init.headers || {}) };
+  const response = await fetch(OPTIONS_API_BASE + pathname, { ...init, headers });
+  let body = null; try { body = await response.json(); } catch {}
+  if (!response.ok) { const detail = body?.errors?.[0]?.message || body?.message || ('Options API request failed (' + response.status + ')'); const error = new Error(detail); error.code = 'OPTIONS_API_' + response.status; throw error; }
+  return body?.data ?? body;
+}
+async function optionsAccounts(accessToken) {
+  const rows = await optionsRequest('/accounts', accessToken);
+  return (Array.isArray(rows) ? rows : []).map((account) => ({ account_id: account.account_id || '', loginid: account.loginid || account.account_id || '', currency: account.currency || 'USD', account_type: account.account_type || (account.is_virtual ? 'demo' : 'real'), is_virtual: account.account_type === 'demo' || Boolean(account.is_virtual), balance: Number(account.balance), token: accessToken })).filter((account) => account.account_id);
+}
+function accountIsDemo(account) { return Boolean(account?.is_virtual || account?.isVirtual || account?.account_type === 'demo' || /^VRT/i.test(String(account?.loginid || ''))); }
 function accountSummary(account, balanceValue = null, balanceError = null) {
-  const summary = { loginid: account.loginid || '', currency: account.currency || 'USD', is_virtual: accountIsDemo(account), balance: Number.isFinite(Number(balanceValue)) ? Number(balanceValue) : null };
+  const summary = { account_id: account.account_id || '', loginid: account.loginid || account.account_id || '', currency: account.currency || 'USD', is_virtual: accountIsDemo(account), balance: Number.isFinite(Number(balanceValue)) ? Number(balanceValue) : null };
   if (balanceError) summary.balanceError = 'Balance unavailable';
   return summary;
 }
 async function accountBalanceView(account, fallbackToken) {
-  try {
-    const response = await openDeriv(account.token || fallbackToken, { balance: 1 });
-    const value = response.balance || {};
-    const balance = Number(value.balance);
-    return { ...accountSummary(account, balance, null), loginid: value.loginid || account.loginid || '', currency: value.currency || account.currency || 'USD' };
-  } catch {
-    return accountSummary(account, null, true);
-  }
+  if (Number.isFinite(account.balance)) return accountSummary(account, account.balance, null);
+  try { const response = await openDeriv(account.token || fallbackToken, { balance: 1 }); const value = response.balance || {}; return { ...accountSummary(account, Number(value.balance), null), loginid: value.loginid || account.loginid || account.account_id || '', currency: value.currency || account.currency || 'USD' }; }
+  catch { return accountSummary(account, null, true); }
 }
-async function accountViews(session, accounts) {
+async function accountViews(session, accounts) { return Promise.all(accounts.map((account) => accountBalanceView(account, session.accessToken))); }
   return Promise.all(accounts.map((account) => accountBalanceView(account, session.accessToken)));
 }
 function normalizeAccounts(auth, fallbackToken) {
@@ -140,13 +147,25 @@ function openDerivPublic(payload) {
   });
 }
 async function authorizeAccounts(session) {
-  const auth = await openDeriv(session.accessToken, null, true);
-  session.accounts = normalizeAccounts(auth, session.accessToken);
-  return session.accounts;
+  try { const accounts = await optionsAccounts(session.accessToken); if (accounts.length) { session.accounts = accounts; return accounts; } } catch (error) { console.warn('[deriv options accounts]', error.message); }
+  const auth = await openDeriv(session.accessToken, null, true); session.accounts = normalizeAccounts(auth, session.accessToken); return session.accounts;
 }
-async function accountsFor(session) {
-  if (Array.isArray(session.accounts) && session.accounts.length) return session.accounts;
-  return authorizeAccounts(session);
+async function accountsFor(session) { if (Array.isArray(session.accounts) && session.accounts.length) return session.accounts; return authorizeAccounts(session); }
+async function refreshAccounts(session) {
+  try { const accounts = await optionsAccounts(session.accessToken); if (accounts.length) { session.accounts = accounts; return accounts; } } catch (error) { console.warn('[deriv options refresh]', error.message); }
+  return accountsFor(session);
+}
+function openOptions(accessToken, account, payload) {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const otp = await optionsRequest('/accounts/' + encodeURIComponent(account.account_id) + '/otp', accessToken, { method: 'POST' });
+      const ws = new WebSocket(otp?.url || '');
+      const timer = setTimeout(() => { try { ws.close(); } catch {}; reject(new Error('Deriv trading connection timeout')); }, 15000);
+      ws.on('open', () => ws.send(JSON.stringify(payload)));
+      ws.on('message', (raw) => { let data; try { data = JSON.parse(raw.toString()); } catch { return; } if (data.error) { clearTimeout(timer); try { ws.close(); } catch {}; const error = new Error(data.error.message || 'Deriv trading error'); error.code = data.error.code || 'DERIV_TRADE_ERROR'; reject(error); return; } if (data.msg_type === 'proposal' || data.msg_type === 'buy') { clearTimeout(timer); try { ws.close(); } catch {}; resolve(data); } });
+      ws.on('error', (error) => { clearTimeout(timer); reject(error); }); ws.on('close', () => clearTimeout(timer));
+    } catch (error) { reject(error); }
+  });
 }
 function selectedAccount(session, mode) {
   const accounts = Array.isArray(session.accounts) ? session.accounts : [];
@@ -202,10 +221,10 @@ app.get('/oauth/callback', async (req, res) => {
 });
 app.get('/api/session', (req, res) => { const session = getSession(req); if (!session) return res.json({ authenticated: false }); res.json({ authenticated: true, expiresAt: session.expiresAt, activeMode: session.activeMode || 'demo' }); });
 app.post('/api/logout', (req, res) => { res.clearCookie('protraders_session', { httpOnly: true, secure: BASE_URL.startsWith('https://'), sameSite: 'lax', path: '/' }); res.status(204).end(); });
-app.get('/api/accounts', async (req, res) => { const session = getSession(req); if (!session) return res.status(401).json({ authenticated: false }); try { const accounts = await accountsFor(session); const views = await accountViews(session, accounts); saveSession(res, session); res.json({ authenticated: true, accounts: views, activeMode: session.activeMode || 'demo' }); } catch (error) { res.status(502).json({ error: 'Account list unavailable', message: error.message }); } });
-app.post('/api/account/switch', async (req, res) => { const session = getSession(req); if (!session) return res.status(401).json({ authenticated: false }); const mode = req.body?.mode === 'real' ? 'real' : 'demo'; try { const accounts = await accountsFor(session); const account = selectedAccount(session, mode); if (!account) return res.status(409).json({ error: 'ACCOUNT_MODE_UNAVAILABLE', message: `No ${mode} account is linked to this Deriv login.` }); session.activeMode = mode; const balance = await openDeriv(account.token || session.accessToken, { balance: 1 }); const value = balance.balance || {}; const views = await accountViews(session, accounts); saveSession(res, session); res.json({ authenticated: true, mode, loginid: account.loginid || value.loginid || null, currency: value.currency || account.currency || 'USD', balance: value.balance ?? null, accounts: views }); } catch (error) { res.status(502).json({ error: 'Account switch failed', message: error.message }); } });
-app.get('/api/account', async (req, res) => { const session = getSession(req); if (!session) return res.status(401).json({ authenticated: false }); const mode = req.query.mode === 'real' ? 'real' : req.query.mode === 'demo' ? 'demo' : session.activeMode || 'demo'; try { const { response, account } = await requestForMode(session, mode, { balance: 1 }); session.activeMode = mode; saveSession(res, session); const value = response.balance || {}; res.json({ authenticated: true, mode, balance: value.balance ?? null, currency: value.currency || account.currency || 'USD', loginid: value.loginid || account.loginid || null, account: accountSummary(account, value.balance), openPnl: 0 }); } catch (error) { res.status(error.code === 'ACCOUNT_MODE_UNAVAILABLE' ? 409 : 502).json({ error: error.code || 'Account data unavailable', message: error.message }); } });
-app.post('/api/trades', async (req, res) => { const session = getSession(req); if (!session) return res.status(401).json({ error: 'Not authenticated' }); const mode = req.body?.mode === 'real' ? 'real' : 'demo'; const symbol = String(req.body?.symbol || 'frxEURUSD'); const type = ['CALL', 'PUT'].includes(req.body?.contract_type) ? req.body.contract_type : null; const stake = Number(req.body?.stake); const duration = Number(req.body?.duration); if (!type || !/^([A-Z0-9_]+|frx[A-Z]+)$/.test(symbol) || !Number.isFinite(stake) || stake <= 0 || !Number.isFinite(duration) || duration < 1 || duration > 3600) return res.status(400).json({ error: 'Invalid trade parameters' }); try { const { response: account, account: selected } = await requestForMode(session, mode, { balance: 1 }); const currency = account.balance?.currency || selected.currency || 'USD'; const proposal = await openDeriv(selected.token || session.accessToken, { proposal: 1, amount: stake, basis: 'stake', contract_type: type, currency, duration, duration_unit: 't', symbol }); if (!proposal.proposal?.id) return res.status(502).json({ error: 'Deriv did not return a proposal' }); const buy = await openDeriv(selected.token || session.accessToken, { buy: proposal.proposal.id, price: stake }); if (buy.error) return res.status(502).json({ error: buy.error.message }); session.activeMode = mode; saveSession(res, session); res.json({ ok: true, mode, contractType: type, message: `${mode.toUpperCase()} ${type === 'CALL' ? 'RISE' : 'FALL'} opened on ${symbol}. Contract ${buy.buy?.contract_id || 'created'}.`, contractId: buy.buy?.contract_id || null }); } catch (error) { res.status(error.code === 'ACCOUNT_MODE_UNAVAILABLE' ? 409 : 502).json({ error: error.code || 'Trade request failed', message: error.message }); } });
+app.get('/api/accounts', async (req, res) => { const session = getSession(req); if (!session) return res.status(401).json({ authenticated: false }); try { const accounts = await refreshAccounts(session); const views = await accountViews(session, accounts); saveSession(res, session); res.json({ authenticated: true, accounts: views, activeMode: session.activeMode || 'demo' }); } catch (error) { res.status(502).json({ error: error.code || 'Account list unavailable', message: error.message }); } });
+app.post('/api/account/switch', async (req, res) => { const session = getSession(req); if (!session) return res.status(401).json({ authenticated: false }); const mode = req.body?.mode === 'real' ? 'real' : 'demo'; try { const accounts = await refreshAccounts(session); const account = selectedAccount(session, mode); if (!account) return res.status(409).json({ error: 'ACCOUNT_MODE_UNAVAILABLE', message: 'No ' + mode + ' account is linked to this Deriv login.' }); session.activeMode = mode; const views = await accountViews(session, accounts); const current = views.find((item) => item.account_id === account.account_id) || accountSummary(account, account.balance); saveSession(res, session); res.json({ authenticated: true, mode, loginid: current.loginid, currency: current.currency, balance: current.balance, accounts: views }); } catch (error) { res.status(502).json({ error: error.code || 'Account switch failed', message: error.message }); } });
+app.get('/api/account', async (req, res) => { const session = getSession(req); if (!session) return res.status(401).json({ authenticated: false }); const mode = req.query.mode === 'real' ? 'real' : req.query.mode === 'demo' ? 'demo' : session.activeMode || 'demo'; try { const accounts = await refreshAccounts(session); const account = selectedAccount(session, mode); if (!account) { const error = new Error('No ' + mode + ' account is linked to this Deriv login'); error.code = 'ACCOUNT_MODE_UNAVAILABLE'; throw error; } const current = accountSummary(account, account.balance); session.activeMode = mode; saveSession(res, session); res.json({ authenticated: true, mode, balance: current.balance, currency: current.currency, loginid: current.loginid, account: current, openPnl: 0, accounts: await accountViews(session, accounts) }); } catch (error) { res.status(error.code === 'ACCOUNT_MODE_UNAVAILABLE' ? 409 : 502).json({ error: error.code || 'Account data unavailable', message: error.message }); } });
+app.post('/api/trades', async (req, res) => { const session = getSession(req); if (!session) return res.status(401).json({ error: 'Not authenticated' }); const mode = req.body?.mode === 'real' ? 'real' : 'demo'; const symbol = String(req.body?.symbol || 'R_100'); const type = ['CALL', 'PUT'].includes(req.body?.contract_type) ? req.body.contract_type : null; const stake = Number(req.body?.stake); const duration = Number(req.body?.duration); if (!type || !/^([A-Z0-9_]+|frx[A-Z]+)$/.test(symbol) || !Number.isFinite(stake) || stake <= 0 || !Number.isFinite(duration) || duration < 1 || duration > 3600) return res.status(400).json({ error: 'Invalid trade parameters' }); try { const accounts = await accountsFor(session); const selected = selectedAccount(session, mode); if (!selected) { const error = new Error('No ' + mode + ' account is linked to this Deriv login'); error.code = 'ACCOUNT_MODE_UNAVAILABLE'; throw error; } const proposal = await openOptions(session.accessToken, selected, { proposal: 1, amount: stake, basis: 'stake', contract_type: type, currency: selected.currency || 'USD', duration, duration_unit: 't', underlying_symbol: symbol }); if (!proposal.proposal?.id) return res.status(502).json({ error: 'Deriv did not return a proposal' }); const buy = await openOptions(session.accessToken, selected, { buy: proposal.proposal.id, price: stake }); session.activeMode = mode; saveSession(res, session); res.json({ ok: true, mode, contractType: type, message: mode.toUpperCase() + ' ' + (type === 'CALL' ? 'RISE' : 'FALL') + ' opened on ' + symbol + '. Contract ' + (buy.buy?.contract_id || 'created') + '.', contractId: buy.buy?.contract_id || null }); } catch (error) { res.status(error.code === 'ACCOUNT_MODE_UNAVAILABLE' ? 409 : 502).json({ error: error.code || 'Trade request failed', message: error.message }); } });
 app.post('/api/bot', async (req, res) => { const session = getSession(req); if (!session) return res.status(401).json({ error: 'Not authenticated' }); const action = req.body?.action === 'start' ? 'start' : 'stop'; res.json({ ok: true, message: action === 'start' ? 'Free bot interface started in controlled mode. Live bot execution remains disabled until the bot adapter is separately tested.' : 'Free bot stopped.', execution: 'interface_only' }); });
 app.get('/api/preflight', (req, res) => res.json({ productionBaseUrl: BASE_URL, redirectUri: `${BASE_URL}/oauth/callback`, https: BASE_URL.startsWith('https://'), oauthClientConfigured: Boolean(DERIV_CLIENT_ID), partnerTrackingConfigured: Boolean(DERIV_AFFILIATE_TOKEN), sessionSecretConfigured: Boolean(process.env.SESSION_SECRET), readyForControlledLiveTest: Boolean(BASE_URL.startsWith('https://') && DERIV_CLIENT_ID && DERIV_AFFILIATE_TOKEN && process.env.SESSION_SECRET) }));
 app.get('/health', (req, res) => res.json({ ok: true, service: 'protraders-fx', time: new Date().toISOString() }));
