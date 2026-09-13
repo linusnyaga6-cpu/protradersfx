@@ -21,6 +21,13 @@ const DERIV_CAMPAIGN = process.env.DERIV_CAMPAIGN || 'protraders-fx';
 const DERIV_SCOPE = process.env.DERIV_SCOPE || 'trade account_manage';
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const DATA_FILE = process.env.VERCEL ? path.join('/tmp', 'protraders-fx-analytics.json') : path.join(__dirname, 'data', 'analytics.json');
+// Read frontend assets explicitly so @vercel/node includes them in the function bundle.
+const FRONTEND = {
+  index: fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8'),
+  workspace: fs.readFileSync(path.join(__dirname, 'workspace.html'), 'utf8'),
+  style: fs.readFileSync(path.join(__dirname, 'style.css'), 'utf8'),
+  app: fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8')
+};
 
 if (!process.env.VERCEL) {
   fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
@@ -161,11 +168,13 @@ app.post('/api/bot', async (req, res) => { const session = getSession(req); if (
 app.get('/api/preflight', (req, res) => res.json({ productionBaseUrl: BASE_URL, redirectUri: `${BASE_URL}/oauth/callback`, https: BASE_URL.startsWith('https://'), oauthClientConfigured: Boolean(DERIV_CLIENT_ID), partnerTrackingConfigured: Boolean(DERIV_AFFILIATE_TOKEN), sessionSecretConfigured: Boolean(process.env.SESSION_SECRET), readyForControlledLiveTest: Boolean(BASE_URL.startsWith('https://') && DERIV_CLIENT_ID && DERIV_AFFILIATE_TOKEN && process.env.SESSION_SECRET) }));
 app.get('/health', (req, res) => res.json({ ok: true, service: 'protraders-fx', time: new Date().toISOString() }));
 app.get('/app-config.js', (req, res) => res.type('application/javascript').send(`window.PROTRADERS_PUBLIC_APP_ID=${JSON.stringify(DERIV_PUBLIC_APP_ID)};`));
-app.get('/workspace', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'workspace.html')));
-app.get('/workspace.html', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'workspace.html')));
-for (const page of ['marketplace', 'course', 'signals', 'manual', 'builder']) app.get(`/${page}`, (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
+app.get('/style.css', (req, res) => res.type('text/css').send(FRONTEND.style));
+app.get('/app.js', (req, res) => res.type('application/javascript').send(FRONTEND.app));
+app.get('/workspace', (req, res) => res.type('html').send(FRONTEND.workspace));
+app.get('/workspace.html', (req, res) => res.type('html').send(FRONTEND.workspace));
+for (const page of ['marketplace', 'course', 'signals', 'manual', 'builder']) app.get(`/${page}`, (req, res) => res.type('html').send(FRONTEND.index));
 app.use(express.static(PUBLIC_DIR, { extensions: ['html'] }));
-app.get('*', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
+app.get('*', (req, res) => res.type('html').send(FRONTEND.index));
 app.use((error, req, res, next) => { console.error(error); res.status(500).json({ error: 'Internal server error' }); });
 
 module.exports = app;
