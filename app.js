@@ -103,7 +103,7 @@
       const account = state.accounts.find((item) => mode === 'demo' ? Boolean(item.is_virtual) : !item.is_virtual);
       setText(`[data-${mode}-balance]`, account ? money(account.balance, account.currency) : 'Not linked');
       setText(`[data-${mode}-loginid]`, account?.loginid || account?.balanceError || 'Not linked');
-      $$([`[data-account-tile=\"${mode}\"]`]).forEach((tile) => tile.classList.toggle('active', mode === state.selectedMode));
+      $$(`[data-account-tile="${mode}"]`).forEach((tile) => tile.classList.toggle('active', mode === state.selectedMode));
     });
   }
   function applyAccount(body) {
