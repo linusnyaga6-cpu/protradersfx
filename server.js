@@ -100,17 +100,19 @@ function normalizeAccounts(auth, fallbackToken) {
   if (accounts.length) return accounts;
   return [{ loginid: auth?.loginid || '', currency: auth?.currency || 'USD', is_virtual: /^VRT/i.test(String(auth?.loginid || '')), token: fallbackToken }];
 }
-function oauthUrl(mode) {
+function safeReturnTo(value) { const target = String(value || '/workspace.html'); return target.startsWith('/') && !target.startsWith('//') ? target : '/workspace.html'; }
+function withQuery(pathname, key, value) { const joiner = pathname.includes('?') ? '&' : '?'; return pathname + joiner + encodeURIComponent(key) + '=' + encodeURIComponent(value); }
+function oauthUrl(mode, returnTo = '/workspace.html') {
   if (!DERIV_CLIENT_ID) throw new Error('DERIV_CLIENT_ID is not configured');
   const codeVerifier = verifier();
-  const state = seal({ verifier: codeVerifier, mode, iat: Date.now() });
-  const params = new URLSearchParams({ response_type: 'code', client_id: DERIV_CLIENT_ID, redirect_uri: `${BASE_URL}/oauth/callback`, scope: DERIV_SCOPE, state, code_challenge: challenge(codeVerifier), code_challenge_method: 'S256' });
+  const state = seal({ verifier: codeVerifier, mode, returnTo: safeReturnTo(returnTo), iat: Date.now() });
+  const params = new URLSearchParams({ response_type: 'code', client_id: DERIV_CLIENT_ID, redirect_uri: BASE_URL + '/oauth/callback', scope: DERIV_SCOPE, state, code_challenge: challenge(codeVerifier), code_challenge_method: 'S256' });
   if (mode === 'signup') {
     if (!DERIV_AFFILIATE_TOKEN) throw new Error('Deriv signup attribution is not configured');
     params.set('prompt', 'registration'); params.set(DERIV_AFFILIATE_PARAM, DERIV_AFFILIATE_TOKEN); params.set('utm_campaign', DERIV_CAMPAIGN); params.set('utm_medium', 'affiliate');
     if (DERIV_AFFILIATE_ID) params.set('utm_source', DERIV_AFFILIATE_ID);
   }
-  return `https://auth.deriv.com/oauth2/auth?${params.toString()}`;
+  return 'https://auth.deriv.com/oauth2/auth?' + params.toString();
 }
 function openDeriv(accessToken, payload, authorizeOnly = false) {
   return new Promise((resolve, reject) => {
@@ -199,23 +201,26 @@ app.get('/api/market/tick', async (req, res) => {
 });
 app.post('/api/track', (req, res) => { const type = String(req.body?.type || 'page_view').slice(0, 40); const data = readData(); if (type === 'page_view') data.visitors++; data.events.push({ type, at: new Date().toISOString(), path: String(req.body?.path || '/').slice(0, 200) }); if (data.events.length > 5000) data.events = data.events.slice(-5000); writeData(data); res.status(204).end(); });
 app.get('/api/analytics', (req, res) => { const data = readData(); res.json({ visitors: data.visitors, registrations: data.registrations || 0, oauthSuccesses: data.events.filter((event) => event.type === 'oauth_login_success' || event.type === 'oauth_signup_success').length, fundedAccounts: null, note: 'Funded-account status must be confirmed in Deriv Partner Hub; it is not fabricated here.' }); });
-app.get('/api/deriv/login', (req, res) => { try { res.redirect(oauthUrl('login')); } catch (error) { res.status(503).json({ error: error.message }); } });
-app.get('/api/deriv/signup', (req, res) => { try { res.redirect(oauthUrl('signup')); } catch (error) { res.status(503).json({ error: error.message }); } });
+app.get('/api/deriv/login', (req, res) => { try { res.redirect(oauthUrl('login', req.query.returnTo)); } catch (error) { res.status(503).json({ error: error.message }); } });
+app.get('/api/deriv/signup', (req, res) => { try { res.redirect(oauthUrl('signup', req.query.returnTo)); } catch (error) { res.status(503).json({ error: error.message }); } });
 app.get('/oauth/callback', async (req, res) => {
+  let state = null;
+  try { state = unseal(req.query.state); } catch {}
+  const returnTo = safeReturnTo(state?.returnTo);
   try {
-    if (req.query.error) return res.redirect(`/?oauth_error=${encodeURIComponent(String(req.query.error))}`);
-    const state = unseal(req.query.state);
+    if (req.query.error) return res.redirect(withQuery(returnTo, 'oauth_error', String(req.query.error)));
     if (!state?.verifier || !['login', 'signup'].includes(state.mode) || Date.now() - state.iat > 600_000) throw new Error('Invalid or expired OAuth state');
-    const body = new URLSearchParams({ grant_type: 'authorization_code', client_id: DERIV_CLIENT_ID, code: String(req.query.code || ''), code_verifier: state.verifier, redirect_uri: `${BASE_URL}/oauth/callback` });
+    if (!req.query.code) throw new Error('Missing OAuth authorization code');
+    const body = new URLSearchParams({ grant_type: 'authorization_code', client_id: DERIV_CLIENT_ID, code: String(req.query.code), code_verifier: state.verifier, redirect_uri: BASE_URL + '/oauth/callback' });
     const tokenResponse = await fetch('https://auth.deriv.com/oauth2/token', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body });
-    if (!tokenResponse.ok) throw new Error(`Token exchange failed (${tokenResponse.status})`);
+    if (!tokenResponse.ok) throw new Error('Token exchange failed (' + tokenResponse.status + ')');
     const token = await tokenResponse.json();
     if (!token.access_token) throw new Error('No access token returned');
     const session = { accessToken: token.access_token, refreshToken: token.refresh_token || null, expiresAt: Date.now() + Number(token.expires_in || 3600) * 1000, accounts: [], activeMode: 'demo' };
     saveSession(res, session);
     const data = readData(); data.events.push({ type: state.mode === 'signup' ? 'oauth_signup_success' : 'oauth_login_success', at: new Date().toISOString() }); if (state.mode === 'signup') { data.registrations = (data.registrations || 0) + 1; data.events.push({ type: 'registration_complete', at: new Date().toISOString() }); } writeData(data);
-    res.redirect('/workspace.html');
-  } catch (error) { console.error(error.message); res.redirect('/?oauth_error=oauth_failed'); }
+    res.redirect(withQuery(returnTo, 'connected', '1'));
+  } catch (error) { console.error(error.message); res.redirect(withQuery(returnTo, 'oauth_error', 'oauth_failed')); }
 });
 app.get('/api/session', (req, res) => { const session = getSession(req); if (!session) return res.json({ authenticated: false }); res.json({ authenticated: true, expiresAt: session.expiresAt, activeMode: session.activeMode || 'demo' }); });
 app.post('/api/logout', (req, res) => { res.clearCookie('protraders_session', { httpOnly: true, secure: BASE_URL.startsWith('https://'), sameSite: 'lax', path: '/' }); res.status(204).end(); });
