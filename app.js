@@ -13,7 +13,7 @@
   };
   const state = {
     socket: null, reconnectTimer: null, reconnectDelay: 2000, requestId: 0, marketPollTimer: null, marketRequestInFlight: false,
-    currentMarket: "EUR/USD", currentSymbol: "frxEURUSD", decimals: 5,
+    currentMarket: "Volatility 100", currentSymbol: "R_100", decimals: 2,
     price: null, previousPrice: null, prices: [], times: [], connected: false,
     selectedMode: localStorage.getItem("protraders-account-mode") || "demo",
     selectedContract: "CALL", authenticated: false, accounts: [], activeView: "dashboard", bulkContract: "EVEN", scannerTimer: null
@@ -76,8 +76,9 @@
       let data = null; try { data = await response.json(); } catch {}
       if (!response.ok || data?.error) throw new Error(data?.message || data?.error || 'Market feed unavailable');
       if (data?.msg_type === 'tick') processTick(data);
-    } catch {
-      setStatus(state.price == null ? 'CONNECTING' : 'RECONNECTING');
+    } catch (error) {
+      const message = String(error?.message || '');
+      setStatus(/closed|not open/i.test(message) ? 'MARKET CLOSED' : (state.price == null ? 'CONNECTING' : 'RECONNECTING'));
     } finally {
       state.marketRequestInFlight = false;
     }
