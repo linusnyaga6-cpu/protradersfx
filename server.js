@@ -11,7 +11,7 @@ const WebSocket = require('ws');
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const BASE_URL = (process.env.BASE_URL || `http://localhost:${PORT}`).replace(/\/$/, '');
-const PUBLIC_DIR = path.join(__dirname, 'public');
+const PUBLIC_DIR = __dirname;
 const DERIV_CLIENT_ID = process.env.DERIV_CLIENT_ID || '';
 const DERIV_PUBLIC_APP_ID = process.env.DERIV_PUBLIC_APP_ID || '';
 const DERIV_AFFILIATE_PARAM = process.env.DERIV_AFFILIATE_PARAM || 't';
@@ -168,5 +168,5 @@ app.use(express.static(PUBLIC_DIR, { extensions: ['html'] }));
 app.get('*', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
 app.use((error, req, res, next) => { console.error(error); res.status(500).json({ error: 'Internal server error' }); });
 
-if (process.env.VERCEL) module.exports = app;
-else app.listen(PORT, () => console.log(`[PROTRADERS FX] running on ${BASE_URL}`));
+module.exports = app;
+if (!process.env.VERCEL && require.main === module) app.listen(PORT, () => console.log(`[PROTRADERS FX] running on ${BASE_URL}`));
