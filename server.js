@@ -12,7 +12,7 @@ const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const BASE_URL = (process.env.BASE_URL || `http://localhost:${PORT}`).replace(/\/$/, '');
 const PUBLIC_DIR = __dirname;
-const BUNDLED_APP_ASSET = fs.readFileSync(path.join(__dirname, 'assets/index-DLc7pXsk.js'), 'utf8');
+const BUNDLED_APP_ASSET = fs.readFileSync(path.join(__dirname, 'assets/index-BUWMkMIF.js'), 'utf8');
 const BUNDLED_STYLE_ASSET = fs.readFileSync(path.join(__dirname, 'assets/index-DBxcVsNZ.css'), 'utf8');
 const CANONICAL_ROBOTS = [
   'User-agent: *',
@@ -360,8 +360,8 @@ app.post('/api/deriv/execute', async (req, res) => {
         currency: contract.currency || execution.proposal.currency || account.currency || 'USD',
         result: contract.status === 'won' ? 'won' : contract.status === 'lost' ? 'lost' : 'pending',
         status: contract.status || null,
-        profit: typeof contract.profit === 'number' ? contract.profit : (typeof contract.payout === 'number' && typeof (contract.buy_price ?? execution.buy.buy_price ?? execution.proposal.ask_price ?? amount) === 'number' ? contract.payout - (contract.buy_price ?? execution.buy.buy_price ?? execution.proposal.ask_price ?? amount) : null),
-        payout: typeof contract.payout === 'number' ? contract.payout : null,
+        profit: contract.profit !== null && contract.profit !== undefined && Number.isFinite(Number(contract.profit)) ? Number(contract.profit) : (contract.payout !== null && contract.payout !== undefined && Number.isFinite(Number(contract.payout)) && Number.isFinite(Number(contract.buy_price ?? execution.buy.buy_price ?? execution.proposal.ask_price ?? amount)) ? Number(contract.payout) - Number(contract.buy_price ?? execution.buy.buy_price ?? execution.proposal.ask_price ?? amount) : null),
+        payout: contract.payout !== null && contract.payout !== undefined && Number.isFinite(Number(contract.payout)) ? Number(contract.payout) : null,
         entrySpot: contract.entry_spot ?? contract.entry_tick ?? null,
         exitSpot: contract.exit_spot ?? contract.exit_tick ?? null
       }});
@@ -376,7 +376,7 @@ app.get('/health', (req, res) => res.json({ ok: true, service: 'protraders-fx', 
 app.get('/robots.txt', (req, res) => res.type('text/plain').send(CANONICAL_ROBOTS));
 app.get('/sitemap.xml', (req, res) => res.type('application/xml').send(CANONICAL_SITEMAP));
 app.get('/app-config.js', (req, res) => res.type('application/javascript').send(`window.PROTRADERS_PUBLIC_APP_ID=${JSON.stringify(DERIV_PUBLIC_APP_ID)};`));
-app.get('/assets/index-DLc7pXsk.js', (req, res) => res.type('application/javascript').send(BUNDLED_APP_ASSET));
+app.get('/assets/index-BUWMkMIF.js', (req, res) => res.type('application/javascript').send(BUNDLED_APP_ASSET));
 app.get('/assets/index-DBxcVsNZ.css', (req, res) => res.type('text/css').send(BUNDLED_STYLE_ASSET));
 app.get('/style.css', (req, res) => res.type('text/css').send(FRONTEND.style));
 app.get('/app.js', (req, res) => res.type('application/javascript').send(FRONTEND.app));
