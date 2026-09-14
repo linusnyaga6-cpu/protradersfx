@@ -12,6 +12,8 @@ const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const BASE_URL = (process.env.BASE_URL || `http://localhost:${PORT}`).replace(/\/$/, '');
 const PUBLIC_DIR = __dirname;
+const BUNDLED_APP_ASSET = fs.readFileSync(path.join(__dirname, 'assets/index-C3bW_93W.js'), 'utf8');
+const BUNDLED_STYLE_ASSET = fs.readFileSync(path.join(__dirname, 'assets/index-DkNkHsrg.css'), 'utf8');
 const CANONICAL_ROBOTS = [
   'User-agent: *',
   'Allow: /',
@@ -343,6 +345,8 @@ app.get('/health', (req, res) => res.json({ ok: true, service: 'protraders-fx', 
 app.get('/robots.txt', (req, res) => res.type('text/plain').send(CANONICAL_ROBOTS));
 app.get('/sitemap.xml', (req, res) => res.type('application/xml').send(CANONICAL_SITEMAP));
 app.get('/app-config.js', (req, res) => res.type('application/javascript').send(`window.PROTRADERS_PUBLIC_APP_ID=${JSON.stringify(DERIV_PUBLIC_APP_ID)};`));
+app.get('/assets/index-C3bW_93W.js', (req, res) => res.type('application/javascript').send(BUNDLED_APP_ASSET));
+app.get('/assets/index-DkNkHsrg.css', (req, res) => res.type('text/css').send(BUNDLED_STYLE_ASSET));
 app.get('/style.css', (req, res) => res.type('text/css').send(FRONTEND.style));
 app.get('/app.js', (req, res) => res.type('application/javascript').send(FRONTEND.app));
 app.get('/logo.svg', (req, res) => res.type('image/svg+xml').send(FRONTEND.logo));
