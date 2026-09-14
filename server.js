@@ -12,8 +12,8 @@ const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const BASE_URL = (process.env.BASE_URL || `http://localhost:${PORT}`).replace(/\/$/, '');
 const PUBLIC_DIR = __dirname;
-const BUNDLED_APP_ASSET = fs.readFileSync(path.join(__dirname, 'assets/index-C3bW_93W.js'), 'utf8');
-const BUNDLED_STYLE_ASSET = fs.readFileSync(path.join(__dirname, 'assets/index-DkNkHsrg.css'), 'utf8');
+const BUNDLED_APP_ASSET = fs.readFileSync(path.join(__dirname, 'assets/index-BLIRltNB.js'), 'utf8');
+const BUNDLED_STYLE_ASSET = fs.readFileSync(path.join(__dirname, 'assets/index-DDkr-Ach.css'), 'utf8');
 const CANONICAL_ROBOTS = [
   'User-agent: *',
   'Allow: /',
@@ -33,6 +33,7 @@ const DERIV_CAMPAIGN = process.env.DERIV_CAMPAIGN || 'protraders-fx';
 const DERIV_SCOPE = process.env.DERIV_SCOPE || 'trade account_manage';
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const DATA_FILE = process.env.VERCEL ? path.join('/tmp', 'protraders-fx-analytics.json') : path.join(__dirname, 'data', 'analytics.json');
+const DERIV_COMMISSION_RATE = Number.isFinite(Number(process.env.DERIV_COMMISSION_RATE)) ? Number(process.env.DERIV_COMMISSION_RATE) : null;
 // Read frontend assets explicitly so @vercel/node includes them in the function bundle.
 const FRONTEND = {
   index: fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8'),
@@ -250,7 +251,18 @@ async function requestForMode(session, mode, payload) {
   return { response: await openDeriv(account.token || session.accessToken, payload), account, accounts };
 }
 
-const allowedOrigins = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',').map((origin) => origin.trim()) : [BASE_URL];
+function activeLoginIdForSession(session) {
+    const account = selectedAccount(session, session.activeMode || 'demo');
+    return account?.loginid || account?.account_id || 'authenticated-deriv-session';
+    }
+    function recordSettledTrade(session, mode, symbol, trade) {
+    const data = readData();
+    if (!Array.isArray(data.events)) data.events = [];
+    data.events.push({ type: 'trade_settled', loginid: activeLoginIdForSession(session), mode, symbol, amount: Number(trade.amount) || 0, profit: typeof trade.profit === 'number' ? trade.profit : null, currency: trade.currency || 'USD', at: new Date().toISOString() });
+    if (data.events.length > 5000) data.events = data.events.slice(-5000);
+    writeData(data);
+    }
+    const allowedOrigins = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',').map((origin) => origin.trim()) : [BASE_URL];
 app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], connectSrc: ["'self'", 'https://auth.deriv.com', 'https://api.derivws.com', 'wss://*.derivws.com', 'https://*.clerk.accounts.dev', 'https://clerk-telemetry.com'], scriptSrc: ["'self'", 'https://*.clerk.accounts.dev'], workerSrc: ["'self'", 'blob:'], styleSrc: ["'self'", "'unsafe-inline'"], imgSrc: ["'self'", 'data:', 'https:'], frameAncestors: ["'none'"] } }, referrerPolicy: { policy: 'strict-origin-when-cross-origin' } }));
 app.disable('x-powered-by');
@@ -272,8 +284,27 @@ app.get('/api/market/tick', async (req, res) => {
   }
 });
 app.post('/api/track', (req, res) => { const type = String(req.body?.type || 'page_view').slice(0, 40); const data = readData(); if (type === 'page_view') data.visitors++; data.events.push({ type, at: new Date().toISOString(), path: String(req.body?.path || '/').slice(0, 200) }); if (data.events.length > 5000) data.events = data.events.slice(-5000); writeData(data); res.status(204).end(); });
-app.get('/api/analytics', (req, res) => { const session = getSession(req); if (!session) return res.status(401).json({ error: 'Owner activity requires a connected Deriv session' }); const data = readData(); const events = Array.isArray(data.events) ? data.events : []; const referralSignupStarts = events.filter((event) => event.type === 'referral_signup_started').length; const referralSignupCompletions = events.filter((event) => event.type === 'oauth_signup_success').length; res.json({ usersOnBoard: data.visitors || 0, siteVisits: data.visitors || 0, referralSignupStarts, referralSignupCompletions, confirmedReferrals: null, expectedCommission: null, commissionStatus: 'PENDING_DERIV_PARTNER_HUB', note: 'Signup completions show OAuth flows launched with the configured referral link. Deriv Partner Hub is required to confirm qualifying referrals and commission.' }); });
-app.get('/api/deriv/login', (req, res) => { try { res.redirect(oauthUrl('login', req.query.returnTo)); } catch (error) { res.status(503).json({ error: error.message }); } });
+app.get('/api/analytics', (req, res) => {
+    const session = getSession(req);
+    if (!session) return res.status(401).json({ error: 'Authenticated Deriv session required' });
+    const data = readData();
+    const events = Array.isArray(data.events) ? data.events : [];
+    const trades = events.filter((event) => event.type === 'trade_settled');
+    const activeUsers = new Set(trades.map((event) => event.loginid).filter(Boolean)).size;
+    const tradingAmount = trades.reduce((total, event) => total + (Number(event.amount) || 0), 0);
+    const currency = trades.find((event) => event.currency)?.currency || 'USD';
+    res.json({
+      loginid: activeLoginIdForSession(session),
+      activeUsers,
+      settledTrades: trades.length,
+      tradingAmount,
+      expectedCommission: DERIV_COMMISSION_RATE === null ? null : tradingAmount * DERIV_COMMISSION_RATE,
+      commissionRate: DERIV_COMMISSION_RATE,
+      currency,
+      recentTrades: trades.slice(-25).reverse().map((event) => ({ loginid: event.loginid || 'authenticated trader', mode: event.mode || 'demo', symbol: event.symbol || '—', amount: Number(event.amount) || 0, profit: typeof event.profit === 'number' ? event.profit : null, at: event.at }))
+    });
+    });
+    app.get('/api/deriv/login', (req, res) => { try { res.redirect(oauthUrl('login', req.query.returnTo)); } catch (error) { res.status(503).json({ error: error.message }); } });
 app.get('/api/deriv/signup', (req, res) => { try { const data = readData(); data.events.push({ type: 'referral_signup_started', at: new Date().toISOString() }); writeData(data); res.redirect(oauthUrl('signup', req.query.returnTo)); } catch (error) { res.status(503).json({ error: error.message }); } });
 app.get('/oauth/callback', async (req, res) => {
   let state = null;
@@ -345,8 +376,8 @@ app.get('/health', (req, res) => res.json({ ok: true, service: 'protraders-fx', 
 app.get('/robots.txt', (req, res) => res.type('text/plain').send(CANONICAL_ROBOTS));
 app.get('/sitemap.xml', (req, res) => res.type('application/xml').send(CANONICAL_SITEMAP));
 app.get('/app-config.js', (req, res) => res.type('application/javascript').send(`window.PROTRADERS_PUBLIC_APP_ID=${JSON.stringify(DERIV_PUBLIC_APP_ID)};`));
-app.get('/assets/index-C3bW_93W.js', (req, res) => res.type('application/javascript').send(BUNDLED_APP_ASSET));
-app.get('/assets/index-DkNkHsrg.css', (req, res) => res.type('text/css').send(BUNDLED_STYLE_ASSET));
+app.get('/assets/index-BLIRltNB.js', (req, res) => res.type('application/javascript').send(BUNDLED_APP_ASSET));
+app.get('/assets/index-DDkr-Ach.css', (req, res) => res.type('text/css').send(BUNDLED_STYLE_ASSET));
 app.get('/style.css', (req, res) => res.type('text/css').send(FRONTEND.style));
 app.get('/app.js', (req, res) => res.type('application/javascript').send(FRONTEND.app));
 app.get('/logo.svg', (req, res) => res.type('image/svg+xml').send(FRONTEND.logo));
