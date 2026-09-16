@@ -58,7 +58,10 @@ type MarketQuote = {
 };
 type ExecutedTrade = {
   contractId?: string | number;
+  transactionId?: string | number;
   type?: string;
+  contractType?: string;
+  barrier?: number;
   buyPrice?: number;
   currency?: string;
   result?: 'won' | 'lost' | 'pending';
@@ -74,6 +77,7 @@ type BatchResult = {
   amount: number;
   trades: number;
   currency: string;
+  tradeResults?: ExecutedTrade[];
 };
 
 function finiteNumber(value: unknown) {
@@ -118,19 +122,83 @@ function totalTradeProfit(trades: ExecutedTrade[]) {
   return profits.reduce<number>((total, profit) => total + (profit === null ? 0 : profit), 0);
 }
 
+function formatTradePoint(value: number | string | null | undefined) {
+  const parsed = finiteNumber(value);
+  if (parsed === null) return '—';
+  return parsed.toLocaleString(undefined, { maximumFractionDigits: 8 });
+}
+
+function tradeContractLabel(trade: ExecutedTrade) {
+  const contractType = trade.contractType ?? trade.type;
+  if (contractType === 'CALL' || contractType === 'RISE') return 'RISE';
+  if (contractType === 'PUT' || contractType === 'FALL') return 'FALL';
+  if (contractType === 'DIGITOVER') return `OVER${trade.barrier === undefined ? '' : ` ${trade.barrier}`}`;
+  if (contractType === 'DIGITUNDER') return `UNDER${trade.barrier === undefined ? '' : ` ${trade.barrier}`}`;
+  if (contractType === 'DIGITEVEN') return 'EVEN';
+  if (contractType === 'DIGITODD') return 'ODD';
+  return contractType ?? 'CONTRACT';
+}
+
 function TradeResultDialog({ result, onClose }: { result: BatchResult | null; onClose: () => void }) {
+  const [activeTab, setActiveTab] = useState<'summary' | 'transactions' | 'entry-exit'>('summary');
+  useEffect(() => {
+    if (result) setActiveTab('summary');
+  }, [result]);
   if (!result) return null;
   const resultTone = result.profit < 0 ? 'is-loss' : result.profit > 0 ? 'is-win' : 'is-flat';
+  const tradeResults = result.tradeResults ?? [];
+  const latestTrade = tradeResults.at(-1);
   return (
     <div className="bot-result-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section className={`bot-result-dialog ai-batch-result ${resultTone}`} role="dialog" aria-modal="true" aria-label="Trade result">
         <button type="button" className="bot-result-close" onClick={onClose} aria-label="Close result">×</button>
         <span className="ai-batch-result-kicker">{result.profit < 0 ? 'LOSS' : result.profit > 0 ? 'PROFIT' : 'FLAT'}</span>
         <strong className="ai-batch-result-value">{formatSignedProfit(result.profit)}</strong>
-        <div className="ai-batch-result-stats">
-          <span><small>PLACED AMOUNT</small><b>{result.amount.toFixed(2)} {result.currency}</b></span>
-          <span><small>TRANSACTIONS</small><b>{result.trades}</b></span>
+        <div className="ai-batch-result-tabs" role="tablist" aria-label="Trade result details">
+          {([
+            ['summary', 'SUMMARY'],
+            ['transactions', 'TRANSACTIONS'],
+            ['entry-exit', 'ENTRY / EXIT'],
+          ] as const).map(([tab, label]) => (
+            <button key={tab} type="button" role="tab" aria-selected={activeTab === tab} className={activeTab === tab ? 'is-active' : ''} onClick={() => setActiveTab(tab)}>{label}</button>
+          ))}
         </div>
+        {activeTab === 'summary' && (
+          <div className="ai-batch-result-summary">
+            <div className="ai-batch-result-stats">
+              <span><small>PLACED AMOUNT</small><b>{result.amount.toFixed(2)} {result.currency}</b></span>
+              <span><small>TRANSACTIONS</small><b>{result.trades}</b></span>
+            </div>
+            <div className="ai-batch-result-points">
+              <span><small>LAST ENTRY POINT</small><b>{formatTradePoint(latestTrade?.entrySpot)}</b></span>
+              <span><small>LAST EXIT POINT</small><b>{formatTradePoint(latestTrade?.exitSpot)}</b></span>
+            </div>
+          </div>
+        )}
+        {activeTab === 'transactions' && (
+          <div className="ai-batch-result-table" role="table" aria-label="Settled transactions">
+            <div className="ai-batch-result-table-row is-head" role="row"><span>TRADE</span><span>AMOUNT</span><span>P/L</span></div>
+            {tradeResults.length ? tradeResults.slice().reverse().map((trade, index) => (
+              <div className="ai-batch-result-table-row" role="row" key={`${trade.contractId ?? 'trade'}-${index}`}>
+                <span><b>#{tradeResults.length - index}</b><small>{tradeContractLabel(trade)}{trade.transactionId ? ` · TX ${trade.transactionId}` : ''}</small></span>
+                <span>{formatTradePoint(trade.stake ?? trade.buyPrice)} {trade.currency ?? result.currency}</span>
+                <b className={resolvedTradeProfit(trade) !== null && resolvedTradeProfit(trade)! < 0 ? 'is-loss' : 'is-win'}>{formatSignedProfit(resolvedTradeProfit(trade))}</b>
+              </div>
+            )) : <p className="ai-batch-result-empty">Settled transactions will appear here.</p>}
+          </div>
+        )}
+        {activeTab === 'entry-exit' && (
+          <div className="ai-batch-result-table ai-batch-result-points-table" role="table" aria-label="Trade entry and exit points">
+            <div className="ai-batch-result-table-row is-head" role="row"><span>TRADE</span><span>ENTRY</span><span>EXIT</span></div>
+            {tradeResults.length ? tradeResults.slice().reverse().map((trade, index) => (
+              <div className="ai-batch-result-table-row" role="row" key={`${trade.contractId ?? 'points'}-${index}`}>
+                <span><b>#{tradeResults.length - index}</b><small>{tradeContractLabel(trade)}</small></span>
+                <strong>{formatTradePoint(trade.entrySpot)}</strong>
+                <strong>{formatTradePoint(trade.exitSpot)}</strong>
+              </div>
+            )) : <p className="ai-batch-result-empty">Entry and exit points will appear after settlement.</p>}
+          </div>
+        )}
       </section>
     </div>
   );
@@ -396,6 +464,37 @@ function quoteLastDigit(quote?: MarketQuote) {
   return formatted.replace(/\D/g, '').slice(-1) || '—';
 }
 
+type DigitDistribution = {
+  counts: number[];
+  percentages: number[];
+  recentDigits: number[];
+  sampleSize: number;
+  evenPercentage: number | null;
+  oddPercentage: number | null;
+};
+
+function getDigitDistribution(quote?: MarketQuote): DigitDistribution {
+  const pipSize = quote?.pipSize ?? 2;
+  const recentTicks = quote?.ticks.slice(-100) ?? [];
+  const recentDigits = recentTicks
+    .map((tick) => Number(formatMarketPrice(tick, pipSize).replace(/\D/g, '').slice(-1)))
+    .filter((digit) => Number.isInteger(digit) && digit >= 0 && digit <= 9);
+  const counts = Array.from({ length: 10 }, () => 0);
+  recentDigits.forEach((digit) => { counts[digit] += 1; });
+  const sampleSize = recentDigits.length;
+  const percentages = counts.map((count) => sampleSize ? (count / sampleSize) * 100 : 0);
+  const evenCount = counts.reduce((total, count, digit) => total + (digit % 2 === 0 ? count : 0), 0);
+  const oddCount = sampleSize - evenCount;
+  return {
+    counts,
+    percentages,
+    recentDigits,
+    sampleSize,
+    evenPercentage: sampleSize ? (evenCount / sampleSize) * 100 : null,
+    oddPercentage: sampleSize ? (oddCount / sampleSize) * 100 : null,
+  };
+}
+
 type MarketAiResult = {
   definition: MarketDefinition;
   quote?: MarketQuote;
@@ -551,6 +650,7 @@ function FloatingMarketAI({ marketQuotes, draggable, accountMode, currency, onTr
     let firstError = '';
     let consecutiveLosses = 0;
     let totalPlaced = 0;
+    const settledTrades: ExecutedTrade[] = [];
     for (let index = 0; index < requestedRuns; index += 1) {
       if (stopRequestedRef.current) {
         stopReason = 'Bot stopped by user.';
@@ -582,6 +682,7 @@ function FloatingMarketAI({ marketQuotes, draggable, accountMode, currency, onTr
         cumulativeProfit += exactProfit;
         totalPlaced += tradeAmount;
         consecutiveLosses = exactProfit < 0 ? consecutiveLosses + 1 : 0;
+        settledTrades.push(trade);
         setTrades((current) => [...current, trade]);
         await onTradeSettled();
         if (takeProfitLimit > 0 && cumulativeProfit >= takeProfitLimit) {
@@ -599,7 +700,7 @@ function FloatingMarketAI({ marketQuotes, draggable, accountMode, currency, onTr
     }
     setExecutionState('idle');
     setExecutionStatus(firstError || stopReason || (completed ? `Completed ${completed} trade${completed === 1 ? '' : 's'}.` : 'No trade settled.'));
-    if (completed > 0) setBatchResult({ profit: cumulativeProfit, amount: totalPlaced, trades: completed, currency });
+    if (completed > 0) setBatchResult({ profit: cumulativeProfit, amount: totalPlaced, trades: completed, currency, tradeResults: settledTrades });
   };
 
   const scanMarkets = () => {
@@ -739,6 +840,7 @@ function Home() {
   const [contractSide, setContractSide] = useState<'RISE' | 'FALL' | 'OVER' | 'UNDER' | 'ODD' | 'EVEN'>('RISE');
   const [stake, setStake] = useState('10');
   const [numberOfTicks, setNumberOfTicks] = useState('1');
+  const [manualBarrier, setManualBarrier] = useState('4');
   const [reviewState, setReviewState] = useState('');
   const [manualTradeResult, setManualTradeResult] = useState<BatchResult | null>(null);
   const [freeBotToOpen, setFreeBotToOpen] = useState<'diagnosis' | 'recovery' | 'margic' | null>(null);
@@ -780,6 +882,7 @@ function Home() {
   const marketQuotes = usePublicMarketBoard();
   const activeDefinition = getMarketDefinition(activeMarket);
   const activeQuote = marketQuotes[activeDefinition.symbol];
+  const digitDistribution = useMemo(() => getDigitDistribution(activeQuote), [activeQuote]);
   const chart = useMemo(() => {
     const values = activeQuote?.ticks.length ? activeQuote.ticks : activeQuote?.price === null ? [] : [activeQuote.price];
     if (!values.length) {
@@ -841,7 +944,7 @@ function Home() {
         : selectedSide === 'EVEN' ? 'DIGITEVEN' : 'DIGITODD';
     const amount = Number(stake);
     const durationTicks = Math.max(1, Number.parseInt(numberOfTicks, 10) || 1);
-    const barrier = contractType === 'OVER/UNDER' ? 4 : undefined;
+    const barrier = contractType === 'OVER/UNDER' ? Math.min(9, Math.max(0, Number.parseInt(manualBarrier, 10) || 0)) : undefined;
     if (!Number.isFinite(amount) || amount < 0.35) {
       setReviewState('Enter a stake of at least USD 0.35.');
       return;
@@ -875,6 +978,7 @@ function Home() {
           amount: payload.trade.stake ?? payload.trade.buyPrice ?? amount,
           trades: 1,
           currency: payload.trade.currency ?? currency,
+          tradeResults: [normalizeExecutedTrade(payload.trade)],
         });
         setReviewState(formatSignedProfit(resolvedTradeProfit(payload.trade)));
       } catch (error) {
@@ -950,7 +1054,8 @@ function Home() {
         </div>
 
         <div className="trading-workspace">
-          <section className="chart-card" aria-label="Market chart">
+           <div className="manual-left-column">
+           <section className="chart-card" aria-label="Market chart">
             <div className="chart-card-header">
               <div className="manual-market-picker">
                 <span className="chart-label">SELECTED MARKET / VOLATILITY</span>
@@ -997,9 +1102,86 @@ function Home() {
               <span>Tick stream · 1s</span>
               <span>{chart.trend} {activeQuote?.ticks.length ? `· ${Math.abs(chart.delta).toFixed(activeQuote.pipSize)} move` : ''}</span>
             </div>
-          </section>
+           </section>
+           <section className="manual-digit-panel" aria-label="Live digit distribution">
+             <header className="manual-digit-panel-header">
+               <div>
+                 <span className="chart-label">DIGIT ANALYSIS · LAST {digitDistribution.sampleSize || 0} TICKS</span>
+                 <strong>{digitDistribution.recentDigits.length ? digitDistribution.recentDigits.slice(-18).join(', ') : 'Waiting for live digits'}</strong>
+               </div>
+               <span className="manual-digit-live"><i /> {activeQuote?.status === 'live' ? 'LIVE DIGITS' : 'CONNECTING'}</span>
+             </header>
+             <div className="manual-digit-summary">
+               {contractType === 'OVER/UNDER' ? (
+                 <>
+                   <span className="manual-summary-label">BARRIER DIGIT</span>
+                   <div className="manual-barrier-picker" aria-label="Set over under barrier">
+                     {Array.from({ length: 10 }, (_, digit) => (
+                       <button key={digit} type="button" className={manualBarrier === String(digit) ? 'is-selected' : ''} onClick={() => setManualBarrier(String(digit))}>{digit}</button>
+                     ))}
+                   </div>
+                   <div className="manual-probability-bars">
+                     {(['OVER', 'UNDER'] as const).map((side) => {
+                       const barrier = Number.parseInt(manualBarrier, 10) || 0;
+                       const percentage = digitDistribution.sampleSize
+                         ? digitDistribution.recentDigits.filter((digit) => side === 'OVER' ? digit > barrier : digit < barrier).length / digitDistribution.sampleSize * 100
+                         : null;
+                       return (
+                         <div className={`manual-probability-row ${side === 'OVER' ? 'is-positive' : 'is-negative'}`} key={side}>
+                           <span>{side} {barrier}</span>
+                           <div><i style={{ width: `${percentage ?? 0}%` }} /></div>
+                           <strong>{percentage === null ? '—' : `${percentage.toFixed(1)}%`}</strong>
+                         </div>
+                       );
+                     })}
+                   </div>
+                 </>
+               ) : (
+                 <>
+                   <span className="manual-summary-label">EVEN / ODD DISTRIBUTION</span>
+                   <div className="manual-probability-bars">
+                     {(['EVEN', 'ODD'] as const).map((side) => {
+                       const percentage = side === 'EVEN' ? digitDistribution.evenPercentage : digitDistribution.oddPercentage;
+                       return (
+                         <div className={`manual-probability-row ${side === 'EVEN' ? 'is-positive' : 'is-negative'}`} key={side}>
+                           <span>{side}</span>
+                           <div><i style={{ width: `${percentage ?? 0}%` }} /></div>
+                           <strong>{percentage === null ? '—' : `${percentage.toFixed(1)}%`}</strong>
+                         </div>
+                       );
+                     })}
+                   </div>
+                 </>
+               )}
+             </div>
+             <div className={`manual-digit-grid ${contractType === 'OVER/UNDER' ? 'is-barrier-mode' : contractType === 'ODD/EVEN' ? 'is-parity-mode' : ''}`}>
+               {digitDistribution.percentages.map((percentage, digit) => {
+                 const barrier = Number.parseInt(manualBarrier, 10) || 0;
+                 const barrierState = contractSide === 'OVER'
+                   ? digit > barrier ? 'is-positive' : 'is-negative'
+                   : contractSide === 'UNDER'
+                     ? digit < barrier ? 'is-positive' : 'is-negative'
+                     : digit % 2 === 0 ? 'is-positive' : 'is-negative';
+                 return (
+                   <button
+                     type="button"
+                     key={digit}
+                     className={`manual-digit-cell ${barrierState} ${manualBarrier === String(digit) && contractType === 'OVER/UNDER' ? 'is-barrier' : ''}`}
+                     onClick={() => contractType === 'OVER/UNDER' && setManualBarrier(String(digit))}
+                     aria-label={`Digit ${digit}, ${percentage.toFixed(1)} percent`}
+                   >
+                     <strong>{digit}</strong>
+                     <span>{digitDistribution.sampleSize ? `${percentage.toFixed(1)}%` : '—'}</span>
+                     <i style={{ height: `${Math.max(4, percentage)}%` }} />
+                   </button>
+                 );
+               })}
+             </div>
+             <footer className="manual-digit-panel-footer"><span>GREEN = SELECTED SET</span><span>RED = OTHER SET</span><span>{digitDistribution.sampleSize ? `${digitDistribution.sampleSize} DIGITS TRACKED` : 'WAITING FOR TICKS'}</span></footer>
+           </section>
+           </div>
 
-          <form className="trade-ticket" onSubmit={(event) => { event.preventDefault(); executeManualTrade('BUY'); }}>
+           <form className="trade-ticket" onSubmit={(event) => { event.preventDefault(); executeManualTrade('BUY'); }}>
             <div className="trade-ticket-header">
               <div><span className="chart-label">TRADE TICKET</span><h2>{contractType.replace('/', ' / ')}</h2></div>
               <span className="ticket-mode">{accountMode} MODE</span>
@@ -1023,6 +1205,8 @@ function Home() {
                    }}>{side} <small>{contractType === 'RISE/FALL' ? (side === 'RISE' ? 'CALL' : 'PUT') : 'SELECT'}</small></button>
                  ))}
                </div>
+                {contractType === 'OVER/UNDER' && <label className="field-label" htmlFor="manual-barrier-digit">SET BARRIER DIGIT <span>ⓘ</span></label>}
+                {contractType === 'OVER/UNDER' && <div className="manual-barrier-input"><input id="manual-barrier-digit" inputMode="numeric" min="0" max="9" value={manualBarrier} onChange={(event) => setManualBarrier(event.target.value.replace(/\D/g, '').slice(-1) || '0')} /><span>OVER / UNDER</span></div>}
                 <label className="field-label" htmlFor="manual-number-of-ticks">NUMBER OF TICKS <span>ⓘ</span></label>
                 <div className="manual-number-row">
                   <button type="button" onClick={() => setNumberOfTicks(String(Math.max(1, Number(numberOfTicks || 0) - 1)))} aria-label="Decrease number of ticks">−</button>
@@ -1721,6 +1905,7 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
     let stopReason = '';
     let consecutiveLosses = 0;
     let totalPlaced = 0;
+    const settledTrades: ExecutedTrade[] = [];
     for (let index = 0; index < count; index += 1) {
       if (stopRequestedRef.current) {
         stopReason = 'Bot stopped by user.';
@@ -1752,6 +1937,7 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
         cumulativeProfit += exactProfit;
         totalPlaced += tradeAmount;
         consecutiveLosses = exactProfit < 0 ? consecutiveLosses + 1 : 0;
+        settledTrades.push(settledTrade);
         setBulkTransactions((current) => [...current, settledTrade]);
         await onTradeSettled();
         if (takeProfitLimit > 0 && cumulativeProfit >= takeProfitLimit) {
@@ -1770,7 +1956,7 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
     }
     setExecutionState('idle');
     const batchProfit = cumulativeProfit;
-    if (completed > 0) setBatchResult({ profit: batchProfit, amount: totalPlaced, trades: completed, currency });
+    if (completed > 0) setBatchResult({ profit: batchProfit, amount: totalPlaced, trades: completed, currency, tradeResults: settledTrades });
     setReviewState(firstError ? firstError : formatSignedProfit(batchProfit));
   };
   const handleBulkReview = (event: FormEvent<HTMLFormElement>) => {
@@ -1836,7 +2022,7 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
              <TradeFigureStrip trades={bulkTransactions} currency={currency} />
             {bulkTransactions.length > 0 && <div className="ai-scanner-history" aria-label="Bulk bot transaction history">
               <div><span>TRANSACTIONS</span><b>{bulkTransactions.length}</b><span>P/L</span><b className={totalTradeProfit(bulkTransactions) !== null && totalTradeProfit(bulkTransactions)! < 0 ? 'is-loss' : 'is-win'}>{formatSignedProfit(totalTradeProfit(bulkTransactions))}</b></div>
-              {bulkTransactions.slice().reverse().map((trade, index) => <div className="ai-scanner-history-row" key={`${trade.contractId ?? 'bulk-run'}-${index}`}><strong>{bulkTransactions.length - index}</strong><span>{(trade.stake ?? trade.buyPrice ?? 0).toFixed(2)} {trade.currency ?? currency}</span><b className={resolvedTradeProfit(trade) !== null && resolvedTradeProfit(trade)! < 0 ? 'is-loss' : 'is-win'}>{formatSignedProfit(resolvedTradeProfit(trade))}</b></div>)}
+              {bulkTransactions.slice().reverse().map((trade, index) => <div className="ai-scanner-history-row" key={`${trade.contractId ?? 'bulk-run'}-${index}`}><strong>{bulkTransactions.length - index}</strong><span>{(trade.stake ?? trade.buyPrice ?? 0).toFixed(2)} {trade.currency ?? currency}<small className="trade-row-points">E {formatTradePoint(trade.entrySpot)} · X {formatTradePoint(trade.exitSpot)}</small></span><b className={resolvedTradeProfit(trade) !== null && resolvedTradeProfit(trade)! < 0 ? 'is-loss' : 'is-win'}>{formatSignedProfit(resolvedTradeProfit(trade))}</b></div>)}
             </div>}
             {reviewState && <div className="ai-scanner-execution-state" role="status">{reviewState}</div>}
               <button type="button" className={`ai-scanner-scan-button ${executionState === 'executing' ? 'is-stop' : ''}`} onClick={(event) => { event.preventDefault(); if (executionState === 'executing') void handleExecuteAiBatch(); else if (scannerState === 'complete' && !autoTrader) void handleExecuteAiBatch(); else scanMarkets(); }}>{scannerState === 'scanning' ? 'SCANNING…' : executionState === 'executing' ? '■ STOP BOT' : scannerState === 'complete' && !autoTrader ? 'RUN BOT' : scannerState === 'complete' ? 'SCAN AGAIN' : 'SCAN MARKET'}</button>
@@ -1919,6 +2105,7 @@ function RecoveryBotView({ accountMode, currency, balance, activeMarket, marketQ
     let stopReason = '';
     let lossStreak = 0;
     let totalPlaced = 0;
+    const settledTrades: ExecutedTrade[] = [];
     for (let runIndex = 0; runIndex < requestedRuns; runIndex += 1) {
       if (stopRequestedRef.current) {
         stopReason = 'Bot stopped by user.';
@@ -1950,6 +2137,7 @@ function RecoveryBotView({ accountMode, currency, balance, activeMarket, marketQ
         cumulativeProfit += exactProfit;
         totalPlaced += tradeAmount;
         lossStreak = exactProfit < 0 ? lossStreak + 1 : 0;
+        settledTrades.push(settledTrade);
         setLastTrade(settledTrade);
         setTransactions((current) => [...current, settledTrade]);
         await onTradeSettled();
@@ -1978,7 +2166,7 @@ function RecoveryBotView({ accountMode, currency, balance, activeMarket, marketQ
     setRunning(false);
     stopRequestedRef.current = false;
     const batchProfit = cumulativeProfit;
-    if (completed > 0) setBatchResult({ profit: batchProfit, amount: totalPlaced, trades: completed, currency });
+    if (completed > 0) setBatchResult({ profit: batchProfit, amount: totalPlaced, trades: completed, currency, tradeResults: settledTrades });
     setProposalState(failed ? 'error' : 'ready');
     setProposalMessage(failed ? `${completed}/${requestedRuns} runs completed before execution stopped.` : completed > 0 ? `${completed}/${requestedRuns} settled · ${formatSignedProfit(batchProfit)}` : stopReason || `${completed}/${requestedRuns} runs completed.`);
   };
@@ -2059,16 +2247,17 @@ function RecoveryBotView({ accountMode, currency, balance, activeMarket, marketQ
             <div className="recovery-empty"><p>When you’re ready to trade, hit <strong>Run Bot</strong>.<br />You’ll be able to track your bot’s<br />performance here.</p></div>
           </>}
           {summaryTab === 'Transactions' && <div className="recovery-transactions">
-            <div className="recovery-transaction-head"><span>TRANSACTION</span><span>AMOUNT</span><span>P/L</span></div>
+             <div className="recovery-transaction-head"><span>TRANSACTION</span><span>ENTRY</span><span>EXIT</span><span>P/L</span></div>
             {transactions.length ? transactions.slice().reverse().map((trade, index) => <div className="recovery-transaction-row" key={`${trade.contractId ?? 'run'}-${index}`}>
-              <strong>#{transactions.length - index}</strong>
-              <span>{(trade.stake ?? trade.buyPrice ?? 0).toFixed(2)} {trade.currency ?? resultCurrency}</span>
-              <em className={resolvedTradeProfit(trade) !== null && resolvedTradeProfit(trade)! < 0 ? 'is-loss' : 'is-win'}>{formatSignedProfit(resolvedTradeProfit(trade))}</em>
+               <span className="recovery-transaction-type"><i className={resolvedTradeProfit(trade) !== null && resolvedTradeProfit(trade)! < 0 ? 'is-loss' : 'is-win'} /><strong>#{transactions.length - index} · {tradeContractLabel(trade)}</strong></span>
+               <span className="recovery-spots"><span><i className="spot-entry" />{formatTradePoint(trade.entrySpot)}</span></span>
+               <span className="recovery-spots"><span><i className="spot-exit" />{formatTradePoint(trade.exitSpot)}</span></span>
+               <span className="recovery-buy-pnl"><span>{formatTradePoint(trade.stake ?? trade.buyPrice)} {trade.currency ?? resultCurrency}</span><em className={resolvedTradeProfit(trade) !== null && resolvedTradeProfit(trade)! < 0 ? 'is-loss' : 'is-win'}>{formatSignedProfit(resolvedTradeProfit(trade))}</em></span>
             </div>) : <div className="recovery-transaction-empty">No bot transactions yet.</div>}
             <a className="recovery-whats-this" href="#recovery-transactions-help">What's this?</a>
           </div>}
           {summaryTab === 'Journal' && <div className="recovery-tab-content"><strong>Journal</strong>{journalEntries.length ? journalEntries.slice(-5).map((entry, index) => <p key={`${entry}-${index}`}>{entry}</p>) : <p>Your bot activity journal will appear here after you run the bot.</p>}</div>}
-          {summaryTab === 'Results' && <div className="recovery-tab-content"><strong>Results</strong><div className="recovery-figure-results"><b className={resultProfit !== null && resultProfit < 0 ? 'is-loss' : 'is-win'}>{formatSignedProfit(resultProfit)} {resultCurrency}</b><span>{resultPayout.toFixed(2)} {resultCurrency}</span><span>{resultRuns}</span><span>{resultWon}</span><span>{resultLost}</span></div></div>}
+           {summaryTab === 'Results' && <div className="recovery-tab-content"><strong>Results</strong><div className="recovery-figure-results"><b className={resultProfit !== null && resultProfit < 0 ? 'is-loss' : 'is-win'}>{formatSignedProfit(resultProfit)} {resultCurrency}</b><span>{resultPayout.toFixed(2)} {resultCurrency}</span><span>{resultRuns}</span><span>{resultWon}</span><span>{resultLost}</span></div>{lastTrade && <div className="recovery-entry-exit-card"><span><small>LAST ENTRY</small><b>{formatTradePoint(lastTrade.entrySpot)}</b></span><span><small>LAST EXIT</small><b>{formatTradePoint(lastTrade.exitSpot)}</b></span></div>}</div>}
           {summaryTab !== 'Journal' && <div className="recovery-metrics">
             {[
               ['Total stake', `${resultStake.toFixed(2)} ${resultCurrency}`],
@@ -2206,6 +2395,7 @@ function FreeBotsView({ accountMode, currency, balance, activeMarket, marketQuot
     let stopReason = '';
     let lossStreak = 0;
     let totalPlaced = 0;
+    const settledTrades: ExecutedTrade[] = [];
     for (let runIndex = 0; runIndex < requestedRuns; runIndex += 1) {
       if (stopRequestedRef.current) {
         stopReason = 'Bot stopped by user.';
@@ -2237,6 +2427,7 @@ function FreeBotsView({ accountMode, currency, balance, activeMarket, marketQuot
         cumulativeProfit += exactProfit;
         totalPlaced += tradeAmount;
         lossStreak = exactProfit < 0 ? lossStreak + 1 : 0;
+        settledTrades.push(settledTrade);
         setBotTransactions((current) => [...current, settledTrade]);
         await onTradeSettled();
         setBotStatus(`${completed}/${requestedRuns} settled · ${cumulativeProfit.toFixed(2)} ${settledTrade.currency ?? currency}`);
@@ -2256,7 +2447,7 @@ function FreeBotsView({ accountMode, currency, balance, activeMarket, marketQuot
     }
     setBotRunning(false);
     stopRequestedRef.current = false;
-    if (completed > 0) setBatchResult({ profit: cumulativeProfit, amount: totalPlaced, trades: completed, currency });
+    if (completed > 0) setBatchResult({ profit: cumulativeProfit, amount: totalPlaced, trades: completed, currency, tradeResults: settledTrades });
     setBotStatus(failed ? `${completed}/${requestedRuns} settled · ${stopReason}` : completed > 0 ? formatSignedProfit(cumulativeProfit) : stopReason || `${completed}/${requestedRuns} runs completed.`);
   };
 
@@ -2347,7 +2538,7 @@ function FreeBotsView({ accountMode, currency, balance, activeMarket, marketQuot
               <label className="margic-toggle-field"><span>RECOVERY MODE</span><VertexToggle checked={recoveryMode} onChange={() => setRecoveryMode(!recoveryMode)} /><small>{recoveryMode ? 'NEXT STAKE AFTER LOSS' : 'FLAT STAKE'}</small></label>
             </div>
           </section>
-          {botTransactions.length > 0 && <section className="margic-transactions"><header><strong>SETTLED TRANSACTIONS</strong><span>{formatSignedProfit(totalTradeProfit(botTransactions))} {currency}</span></header>{botTransactions.slice().reverse().map((trade, index) => <div className="margic-transaction-row" key={`${trade.contractId ?? 'margic-run'}-${index}`}><b>#{botTransactions.length - index}</b><span>{trade.type ?? (margicContractType === 'DIGITEVEN' ? 'EVEN' : 'ODD')} · {(trade.stake ?? trade.buyPrice ?? 0).toFixed(2)} {trade.currency ?? currency}</span><strong className={resolvedTradeProfit(trade) !== null && resolvedTradeProfit(trade)! < 0 ? 'is-loss' : 'is-win'}>{formatSignedProfit(resolvedTradeProfit(trade))}</strong></div>)}</section>}
+           {botTransactions.length > 0 && <section className="margic-transactions"><header><strong>SETTLED TRANSACTIONS</strong><span>{formatSignedProfit(totalTradeProfit(botTransactions))} {currency}</span></header>{botTransactions.slice().reverse().map((trade, index) => <div className="margic-transaction-row" key={`${trade.contractId ?? 'margic-run'}-${index}`}><b>#{botTransactions.length - index}</b><span>{tradeContractLabel(trade)} · {(trade.stake ?? trade.buyPrice ?? 0).toFixed(2)} {trade.currency ?? currency}<small className="trade-row-points">ENTRY {formatTradePoint(trade.entrySpot)} · EXIT {formatTradePoint(trade.exitSpot)}</small></span><strong className={resolvedTradeProfit(trade) !== null && resolvedTradeProfit(trade)! < 0 ? 'is-loss' : 'is-win'}>{formatSignedProfit(resolvedTradeProfit(trade))}</strong></div>)}</section>}
         </main>
       </div>
       <div className="margic-bottom-bar"><span><i /> {selectedBot.name.toUpperCase()} · {accountMode}</span><strong>{botStatus || (botRunning ? 'Settling current contract…' : 'Ready for review')}</strong><button type="button" className={botRunning ? 'is-stop' : ''} onClick={runDiagnosisBot}>{botRunning ? '■ Stop Bot' : '▶ Run Bot'}</button></div>
@@ -2421,7 +2612,7 @@ function FreeBotsView({ accountMode, currency, balance, activeMarket, marketQuot
         <header><strong>TRANSACTIONS</strong><span>{formatSignedProfit(totalTradeProfit(botTransactions))}</span></header>
         {botTransactions.slice().reverse().map((trade, index) => <div className="diagnosis-history-row" key={`${trade.contractId ?? 'diagnosis-run'}-${index}`}>
           <strong>#{botTransactions.length - index}</strong>
-          <span>{(trade.stake ?? trade.buyPrice ?? 0).toFixed(2)} {trade.currency ?? currency}</span>
+          <span>{tradeContractLabel(trade)} · {(trade.stake ?? trade.buyPrice ?? 0).toFixed(2)} {trade.currency ?? currency}<small className="trade-row-points">ENTRY {formatTradePoint(trade.entrySpot)} · EXIT {formatTradePoint(trade.exitSpot)}</small></span>
           <b className={resolvedTradeProfit(trade) !== null && resolvedTradeProfit(trade)! < 0 ? 'is-loss' : 'is-win'}>{formatSignedProfit(resolvedTradeProfit(trade))}</b>
         </div>)}
       </section>}
