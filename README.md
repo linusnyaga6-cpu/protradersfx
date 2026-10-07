@@ -15,3 +15,9 @@ The Deriv OAuth redirect URI must be registered exactly as:
 
 ## Important
 The manual trade endpoint uses Deriv's proposal + buy flow for Rise/Fall (CALL/PUT). Test with a demo account and a very small stake first. Do not advertise simulated results as real performance.
+
+## ProTraders Markets deposits
+
+The `/trade` Markets portal can initiate an UpesiPay M-PESA STK collection and check its provider status. This first release is collection-only: it does not create customer accounts, post a credit to the simulated USD balance, or process withdrawals. Payouts remain manual.
+
+Configure `UPESIPAY_BASIC_AUTH` (the complete Basic authorization header) and `UPESIPAY_CHANNEL_ID` as server-only Vercel environment variables for the `protradersfx` project. Generate/rotate the UpesiPay credentials before use; never place them in browser code, chat, or the repository. Choose an active collection channel from the UpesiPay dashboard. Their `wallet` channel has a published 4.5% collection fee; verify the current fee and channel terms in UpesiPay before enabling it.

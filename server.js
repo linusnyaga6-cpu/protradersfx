@@ -7,8 +7,10 @@ const crypto = require('crypto');
 const fs = require('fs');
 const cookieParser = require('cookie-parser');
 const WebSocket = require('ws');
+const { initiateStkPush, getTransactionStatus } = require('./upesipay');
 
 const app = express();
+if (process.env.VERCEL) app.set('trust proxy', 1);
 const PORT = Number(process.env.PORT || 3000);
 const BASE_URL = (process.env.BASE_URL || `http://localhost:${PORT}`).replace(/\/$/, '');
 const PUBLIC_DIR = __dirname;
@@ -25,7 +27,7 @@ const CANONICAL_ROBOTS = [
   'Disallow: /?view=',
   'Sitemap: https://protradersfx.com/sitemap.xml'
 ].join('\n') + '\n';
-const CANONICAL_SITEMAP = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://protradersfx.com/</loc></url></urlset>\n';
+const CANONICAL_SITEMAP = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://protradersfx.com/</loc></url><url><loc>https://protradersfx.com/forex</loc></url><url><loc>https://protradersfx.com/trade</loc></url></urlset>\n';
 const DERIV_CLIENT_ID = process.env.DERIV_CLIENT_ID || '';
 const DERIV_PUBLIC_APP_ID = process.env.DERIV_PUBLIC_APP_ID || process.env.DERIV_APP_ID || '';
 const DERIV_AFFILIATE_PARAM = process.env.DERIV_AFFILIATE_PARAM || 't';
@@ -277,6 +279,42 @@ app.use('/trade/assets', express.static(path.join(TRADE_DIR, 'assets'), { maxAge
 app.use('/trade', express.static(TRADE_DIR, { extensions: ['html'] }));
 app.get(/^\/trade(?:\/.*)?$/, (req, res) => res.sendFile(path.join(TRADE_DIR, 'index.html')));
 app.get('/api/config', (req, res) => res.json({ configured: Boolean(DERIV_CLIENT_ID && DERIV_AFFILIATE_TOKEN), publicAppConfigured: Boolean(DERIV_PUBLIC_APP_ID), partnerParam: DERIV_AFFILIATE_PARAM, campaign: DERIV_CAMPAIGN }));
+function isSameOriginRequest(req) {
+  const origin = req.get('origin');
+  if (!origin) return true;
+  try {
+    return new URL(origin).host.toLowerCase() === String(req.get('host') || '').toLowerCase();
+  } catch {
+    return false;
+  }
+}
+const upesiCollectionLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false });
+const upesiStatusLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 60, standardHeaders: true, legacyHeaders: false });
+app.get('/api/upesipay/config', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ configured: Boolean(process.env.UPESIPAY_BASIC_AUTH && process.env.UPESIPAY_CHANNEL_ID) });
+});
+app.post('/api/upesipay/collections', upesiCollectionLimiter, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  if (!isSameOriginRequest(req)) return res.status(403).json({ error: 'CROSS_ORIGIN_REQUEST', message: 'This request must come from ProTraders Markets.' });
+  try {
+    const result = await initiateStkPush({ amountKes: req.body?.amountKes, phoneNumber: req.body?.phoneNumber });
+    res.json(result);
+  } catch (error) {
+    console.warn('[upesipay] collection request failed:', error.code || 'UPESIPAY_ERROR');
+    res.status(error.status || 502).json({ error: error.code || 'UPESIPAY_ERROR', message: error.message || 'Payment request failed.' });
+  }
+});
+app.get('/api/upesipay/status', upesiStatusLimiter, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  if (!isSameOriginRequest(req)) return res.status(403).json({ error: 'CROSS_ORIGIN_REQUEST', message: 'This request must come from ProTraders Markets.' });
+  try {
+    res.json(await getTransactionStatus({ reference: req.query.reference }));
+  } catch (error) {
+    console.warn('[upesipay] status request failed:', error.code || 'UPESIPAY_ERROR');
+    res.status(error.status || 502).json({ error: error.code || 'UPESIPAY_ERROR', message: error.message || 'Could not check payment status.' });
+  }
+});
 const PUBLIC_MARKET_SYMBOLS = new Set(['frxEURUSD', 'frxGBPUSD', 'frxUSDJPY', 'frxAUDUSD', 'frxUSDCAD', 'R_10', 'R_25', 'R_50', 'R_75', 'R_100', '1HZ10V', '1HZ25V', '1HZ50V', '1HZ75V', '1HZ100V']);
 app.get('/api/market/tick', async (req, res) => {
   const symbol = String(req.query.symbol || 'frxEURUSD');
