@@ -13,6 +13,7 @@ const PORT = Number(process.env.PORT || 3000);
 const BASE_URL = (process.env.BASE_URL || `http://localhost:${PORT}`).replace(/\/$/, '');
 const PUBLIC_DIR = __dirname;
 const TRADE_DIR = path.join(PUBLIC_DIR, 'trade');
+const FOREX_PAGE = fs.readFileSync(path.join(PUBLIC_DIR, 'forex.html'), 'utf8');
 const BUNDLED_APP_ASSET = fs.readFileSync(path.join(__dirname, 'assets/index-CQBGKLTj.js'), 'utf8');
 const BUNDLED_STYLE_ASSET = fs.readFileSync(path.join(__dirname, 'assets/index-BqzBJgO4.css'), 'utf8');
 const CANONICAL_ROBOTS = [
@@ -387,6 +388,7 @@ app.get('/app.js', (req, res) => res.type('application/javascript').send(FRONTEN
 app.get('/logo.svg', (req, res) => res.type('image/svg+xml').send(FRONTEND.logo));
 app.get('/workspace', (req, res) => res.type('html').send(FRONTEND.workspace));
 app.get('/workspace.html', (req, res) => res.type('html').send(FRONTEND.workspace));
+app.get('/forex', (req, res) => res.type('html').send(FOREX_PAGE));
 for (const page of ['marketplace', 'course', 'signals', 'manual', 'builder']) app.get(`/${page}`, (req, res) => res.type('html').send(CANONICAL_INDEX));
 app.get('/', (req, res) => res.type('html').send(CANONICAL_INDEX));
 app.use(express.static(PUBLIC_DIR, { extensions: ['html'] }));
