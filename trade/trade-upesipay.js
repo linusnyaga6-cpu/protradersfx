@@ -29,14 +29,17 @@
     overlay.hidden = true;
     if (pollTimer) clearTimeout(pollTimer);
     pollTimer = null;
-    activeReference = '';
   }
 
   function openModal() {
     const overlay = document.querySelector('[data-pt-upesi-overlay]');
     if (!overlay) return;
     overlay.hidden = false;
-    if (activeReference) return;
+    if (isSubmitting) return;
+    if (activeReference) {
+      if (!pollTimer) pollStatus(activeReference);
+      return;
+    }
     const status = overlay.querySelector('[data-pt-upesi-status]');
     status.hidden = true;
     status.textContent = '';
@@ -140,10 +143,12 @@
 
         if (result.status === 'success') {
           setStatus(`Payment confirmed by UpesiPay. It has not been added to the demo balance. Reference: ${reference}`, 'success');
+          activeReference = '';
           return;
         }
         if (['failed', 'cancelled', 'timeout'].includes(result.status)) {
           setStatus(`Payment ${result.status}. Reference: ${reference}. You can close this window or start a new deposit.`, 'error');
+          activeReference = '';
           return;
         }
       } catch (error) {
