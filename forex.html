@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f6f9fb">
+    <title>ProTraders FX | A clearer forex workspace</title>
+    <meta name="description" content="A focused forex workspace for market context, deliberate trade planning, and reviewing your process.">
+    <link rel="canonical" href="https://protradersfx.com/forex">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #152b3d;
+        --ink-soft: #496172;
+        --muted: #6d7f8b;
+        --blue: #0072b9;
+        --blue-deep: #07527c;
+        --green: #74c421;
+        --green-dark: #397300;
+        --line: #dce6eb;
+        --paper: #ffffff;
+        --wash: #f3f7f9;
+        --navy: #0c2638;
+        --radius: 18px;
+        --shadow: 0 20px 60px rgba(20, 50, 69, .10);
+        font-family: "Manrope", Inter, ui-sans-serif, system-ui, sans-serif;
+        font-synthesis: none;
+      }
+
+      *, *::before, *::after { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body { margin: 0; color: var(--ink); background: var(--paper); }
+      a { color: inherit; text-decoration: none; }
+      button { font: inherit; }
+      svg { display: block; }
+      .wrap { width: min(1160px, calc(100% - 48px)); margin-inline: auto; }
+      .eyebrow {
+        display: inline-flex; align-items: center; gap: 9px;
+        color: var(--blue); font-size: 11px; font-weight: 800;
+        letter-spacing: .16em; text-transform: uppercase;
+      }
+      .eyebrow::before { width: 22px; height: 2px; background: var(--green); content: ""; }
+      .site-header {
+        position: sticky; z-index: 20; top: 0; border-bottom: 1px solid rgba(220, 230, 235, .82);
+        background: rgba(255,255,255,.94); backdrop-filter: blur(14px);
+      }
+      .nav { display: flex; min-height: 78px; align-items: center; justify-content: space-between; gap: 28px; }
+      .brand { display: inline-flex; align-items: center; gap: 11px; flex: 0 0 auto; }
+      .brand img { width: 39px; height: 39px; border-radius: 10px; }
+      .brand-word { display: grid; gap: 1px; }
+      .brand-word strong { font-size: 14px; font-weight: 800; letter-spacing: -.04em; }
+      .brand-word span { color: var(--muted); font-size: 9px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+      .nav-links { display: flex; align-items: center; gap: 32px; margin-left: auto; }
+      .nav-links a { color: #455b69; font-size: 12px; font-weight: 700; transition: color .18s ease; }
+      .nav-links a:hover { color: var(--blue); }
+      .nav-actions { display: flex; align-items: center; gap: 12px; }
+      .btn {
+        display: inline-flex; min-height: 46px; align-items: center; justify-content: center; gap: 10px;
+        padding: 0 19px; border: 1px solid transparent; border-radius: 8px;
+        font-size: 12px; font-weight: 800; transition: transform .18s ease, box-shadow .18s ease, background .18s ease;
+      }
+      .btn:hover { transform: translateY(-2px); }
+      .btn-primary { color: #fff; background: var(--blue); box-shadow: 0 9px 22px rgba(0,114,185,.17); }
+      .btn-primary:hover { background: var(--blue-deep); box-shadow: 0 12px 25px rgba(0,114,185,.23); }
+      .btn-quiet { border-color: var(--line); color: var(--ink); background: #fff; }
+      .btn-quiet:hover { border-color: #b8d3e2; background: #f7fbfd; }
+      .btn svg { width: 15px; height: 15px; }
+      .menu-toggle { display: none; width: 44px; height: 44px; align-items: center; justify-content: center; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: white; cursor: pointer; }
+
+      .hero { position: relative; overflow: hidden; padding: 84px 0 72px; background: linear-gradient(110deg, #f5f9fb 0%, #f8fafb 55%, #eef6f8 100%); }
+      .hero::before {
+        position: absolute; top: -245px; right: -110px; width: 730px; height: 730px; border: 1px solid rgba(0,114,185,.08);
+        border-radius: 50%; content: ""; box-shadow: 0 0 0 58px rgba(0,114,185,.025), 0 0 0 118px rgba(116,196,33,.025);
+      }
+      .hero-grid { position: relative; display: grid; grid-template-columns: minmax(0, .95fr) minmax(450px, 1.05fr); align-items: center; gap: 70px; }
+      .hero-copy { max-width: 520px; }
+      .hero h1 { max-width: 610px; margin: 20px 0 20px; font-size: clamp(42px, 5.2vw, 66px); line-height: 1.06; letter-spacing: -.065em; }
+      .hero h1 span { color: var(--blue); }
+      .hero-copy > p { max-width: 510px; margin: 0; color: var(--ink-soft); font-size: 15px; line-height: 1.85; }
+      .hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
+      .hero-note { display: flex; align-items: flex-start; gap: 9px; max-width: 430px; margin-top: 24px; color: var(--muted); font-size: 10px; line-height: 1.65; }
+      .hero-note svg { width: 15px; height: 15px; margin-top: 1px; flex: 0 0 auto; color: var(--green-dark); }
+
+      .desk-wrap { position: relative; min-width: 0; padding: 18px 6px 0 0; }
+      .desk-wrap::before { position: absolute; top: 0; right: 20px; width: 150px; height: 150px; border-radius: 50%; background: rgba(116,196,33,.18); filter: blur(35px); content: ""; }
+      .desk { position: relative; padding: 18px; border: 1px solid #d7e2e8; border-radius: 15px; background: #fff; box-shadow: var(--shadow); transform: rotate(.7deg); }
+      .desk-top { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 0 0 15px; border-bottom: 1px solid #edf1f3; }
+      .desk-title { display: flex; align-items: center; gap: 10px; }
+      .desk-mark { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 8px; color: #fff; background: var(--blue); }
+      .desk-mark svg { width: 17px; height: 17px; }
+      .desk-title strong { display: block; font-size: 11px; font-weight: 800; }
+      .desk-title small { display: block; margin-top: 3px; color: var(--muted); font-size: 8px; font-weight: 700; letter-spacing: .1em; }
+      .preview-chip { display: inline-flex; align-items: center; gap: 7px; padding: 7px 9px; border: 1px solid #d7ebc3; border-radius: 6px; color: #4f8124; background: #f6fbf0; font-size: 8px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+      .preview-chip::before { width: 6px; height: 6px; border-radius: 50%; background: var(--green); content: ""; }
+      .desk-body { display: grid; grid-template-columns: minmax(0, 1fr) 144px; gap: 14px; padding-top: 17px; }
+      .chart-card { min-width: 0; padding: 14px; border: 1px solid #e7edf0; border-radius: 9px; background: #fbfcfd; }
+      .chart-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+      .chart-head small, .panel-title { display: block; color: var(--muted); font-size: 8px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+      .chart-head strong { display: block; margin-top: 5px; font-size: 17px; letter-spacing: -.04em; }
+      .pair-tag { padding: 6px 7px; border-radius: 5px; color: var(--blue-deep); background: #eaf5fb; font-size: 8px; font-weight: 800; }
+      .chart { width: 100%; height: 162px; margin-top: 14px; }
+      .chart .grid-line { stroke: #e7edf0; stroke-width: 1; }
+      .chart .fill { fill: url(#chart-fill); }
+      .chart .line { fill: none; stroke: var(--blue); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+      .chart .guide { stroke: var(--green); stroke-dasharray: 4 5; stroke-width: 1.5; }
+      .chart-note { display: flex; justify-content: space-between; gap: 10px; margin-top: 5px; color: #8999a3; font-size: 8px; }
+      .desk-side { display: grid; align-content: start; gap: 10px; }
+      .side-card { padding: 12px 11px; border: 1px solid #e7edf0; border-radius: 9px; background: #fff; }
+      .side-card .panel-title { font-size: 7px; }
+      .side-card strong { display: block; margin-top: 8px; color: var(--ink); font-size: 10px; line-height: 1.45; }
+      .side-card p { margin: 5px 0 0; color: var(--muted); font-size: 8px; line-height: 1.55; }
+      .risk-bar { display: flex; align-items: center; gap: 9px; margin-top: 13px; padding: 10px; border: 1px solid #e8f0e1; border-radius: 8px; background: #f8fbf5; }
+      .risk-bar svg { width: 16px; height: 16px; flex: 0 0 auto; color: var(--green-dark); }
+      .risk-bar strong { display: block; font-size: 9px; }
+      .risk-bar span { display: block; margin-top: 2px; color: var(--muted); font-size: 8px; }
+      .floating-note { position: absolute; right: -24px; bottom: 28px; display: flex; align-items: center; gap: 9px; padding: 12px 15px; border: 1px solid #e2e9ec; border-radius: 9px; background: white; box-shadow: 0 12px 28px rgba(20,50,69,.12); }
+      .floating-note svg { width: 17px; height: 17px; color: var(--green-dark); }
+      .floating-note strong { display: block; font-size: 9px; }
+      .floating-note span { display: block; margin-top: 3px; color: var(--muted); font-size: 8px; }
+
+      .quick-points { border-bottom: 1px solid var(--line); background: #fff; }
+      .quick-grid { display: grid; grid-template-columns: repeat(3, 1fr); }
+      .quick-point { display: flex; min-height: 94px; align-items: center; gap: 13px; padding: 18px 24px; border-right: 1px solid var(--line); }
+      .quick-point:first-child { padding-left: 0; }
+      .quick-point:last-child { border-right: 0; }
+      .quick-icon { display: grid; width: 34px; height: 34px; flex: 0 0 auto; place-items: center; border-radius: 9px; color: var(--blue); background: #eaf5fb; }
+      .quick-icon svg { width: 17px; height: 17px; }
+      .quick-point strong { display: block; font-size: 11px; font-weight: 800; }
+      .quick-point span { display: block; margin-top: 4px; color: var(--muted); font-size: 9px; }
+
+      section { scroll-margin-top: 100px; }
+      .section { padding: 98px 0; }
+      .section-heading { max-width: 620px; margin: 0 auto 46px; text-align: center; }
+      .section-heading .eyebrow { justify-content: center; }
+      .section-heading h2 { margin: 15px 0 13px; font-size: clamp(30px, 4vw, 44px); line-height: 1.14; letter-spacing: -.055em; }
+      .section-heading p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.8; }
+      .feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+      .feature-card { position: relative; overflow: hidden; min-height: 250px; padding: 25px; border: 1px solid var(--line); border-radius: 12px; background: #fff; transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease; }
+      .feature-card:hover { transform: translateY(-4px); border-color: #bfd9e7; box-shadow: 0 18px 40px rgba(20,50,69,.08); }
+      .feature-icon { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 10px; color: var(--blue); background: #edf7fb; }
+      .feature-icon.green { color: var(--green-dark); background: #f2f9e9; }
+      .feature-icon svg { width: 20px; height: 20px; }
+      .feature-card h3 { margin: 22px 0 10px; font-size: 16px; letter-spacing: -.03em; }
+      .feature-card p { max-width: 300px; margin: 0; color: var(--muted); font-size: 11px; line-height: 1.8; }
+      .feature-index { position: absolute; top: 25px; right: 25px; color: #a5b5bd; font-size: 9px; font-weight: 800; letter-spacing: .12em; }
+      .feature-link { display: inline-flex; align-items: center; gap: 8px; margin-top: 19px; color: var(--blue); font-size: 10px; font-weight: 800; }
+      .feature-link svg { width: 13px; height: 13px; }
+
+      .platform { padding: 82px 0; color: white; background: var(--navy); }
+      .platform-grid { display: grid; grid-template-columns: .85fr 1.15fr; align-items: center; gap: 60px; }
+      .platform-copy .eyebrow { color: #9ad65d; }
+      .platform-copy h2 { margin: 16px 0; font-size: clamp(31px, 4.2vw, 48px); line-height: 1.12; letter-spacing: -.06em; }
+      .platform-copy p { max-width: 430px; margin: 0; color: #b7c8d1; font-size: 12px; line-height: 1.85; }
+      .platform-copy .btn { margin-top: 25px; }
+      .platform-copy .btn-primary { color: #132c3c; background: #9ad65d; box-shadow: none; }
+      .platform-copy .btn-primary:hover { background: #b0e47e; }
+      .platform-preview { padding: 15px; border: 1px solid rgba(255,255,255,.14); border-radius: 13px; background: rgba(255,255,255,.06); }
+      .preview-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 3px 4px 14px; color: #dbe8ee; font-size: 9px; font-weight: 800; }
+      .preview-toolbar small { color: #9db1bc; font-size: 8px; font-weight: 600; }
+      .preview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+      .preview-tile { min-height: 82px; padding: 14px; border: 1px solid rgba(255,255,255,.1); border-radius: 8px; background: rgba(7,24,36,.55); }
+      .preview-tile span { display: block; color: #9db1bc; font-size: 8px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+      .preview-tile strong { display: block; margin-top: 11px; font-size: 12px; }
+      .preview-tile em { color: #a4dc6f; font-size: 9px; font-style: normal; }
+      .preview-wide { grid-column: 1 / -1; min-height: 125px; padding: 13px 14px; }
+      .preview-wide svg { width: 100%; height: 76px; margin-top: 6px; }
+      .preview-wide path { fill: none; stroke: #a5df6b; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+      .preview-wide .preview-gridline { stroke: rgba(255,255,255,.12); stroke-width: 1; }
+
+      .steps-section { background: var(--wash); }
+      .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+      .step { position: relative; min-height: 172px; padding: 25px 22px; border-right: 1px solid var(--line); }
+      .step:last-child { border-right: 0; }
+      .step-number { color: var(--green-dark); font-size: 10px; font-weight: 800; letter-spacing: .12em; }
+      .step h3 { margin: 22px 0 9px; font-size: 13px; }
+      .step p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.7; }
+
+      .cta { padding: 82px 0; }
+      .cta-panel { position: relative; overflow: hidden; display: flex; align-items: center; justify-content: space-between; gap: 34px; padding: 42px 48px; border-radius: 14px; color: white; background: linear-gradient(115deg, #07527c, #0072b9); }
+      .cta-panel::after { position: absolute; top: -120px; right: 170px; width: 340px; height: 340px; border: 1px solid rgba(255,255,255,.12); border-radius: 50%; content: ""; box-shadow: 0 0 0 42px rgba(255,255,255,.04), 0 0 0 84px rgba(255,255,255,.035); }
+      .cta-copy, .cta-panel .btn { position: relative; z-index: 1; }
+      .cta-copy .eyebrow { color: #c7f19f; }
+      .cta-copy h2 { margin: 13px 0 8px; font-size: clamp(25px, 3vw, 36px); letter-spacing: -.05em; }
+      .cta-copy p { max-width: 470px; margin: 0; color: #d8eaf3; font-size: 11px; line-height: 1.7; }
+      .cta-panel .btn { color: #183142; background: #a3de6c; white-space: nowrap; }
+      .cta-panel .btn:hover { background: #b8e98d; }
+
+      .risk { padding: 0 0 62px; }
+      .risk-note { display: flex; align-items: flex-start; gap: 13px; padding: 18px 20px; border: 1px solid #e7ebdc; border-radius: 9px; background: #fafbf7; }
+      .risk-note svg { width: 18px; height: 18px; margin-top: 1px; flex: 0 0 auto; color: #73983d; }
+      .risk-note strong { display: block; font-size: 10px; }
+      .risk-note p { margin: 5px 0 0; color: var(--muted); font-size: 9px; line-height: 1.7; }
+      .footer { padding: 27px 0; border-top: 1px solid var(--line); background: #fff; }
+      .footer-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+      .footer-brand { display: flex; align-items: center; gap: 10px; }
+      .footer-brand img { width: 31px; height: 31px; border-radius: 8px; }
+      .footer-brand strong { font-size: 10px; }
+      .footer-links { display: flex; flex-wrap: wrap; gap: 22px; }
+      .footer-links a { color: var(--muted); font-size: 9px; font-weight: 700; }
+      .footer-links a:hover { color: var(--blue); }
+      .footer-copy { color: #84939b; font-size: 8px; }
+
+      @media (max-width: 980px) {
+        .nav-links { gap: 20px; }
+        .hero-grid { grid-template-columns: 1fr 1fr; gap: 36px; }
+        .desk-body { grid-template-columns: 1fr; }
+        .desk-side { grid-template-columns: repeat(2,1fr); }
+        .risk-bar { grid-column: 1 / -1; }
+        .floating-note { right: -9px; bottom: -18px; }
+        .platform-grid { gap: 34px; }
+      }
+      @media (max-width: 740px) {
+        .wrap { width: min(100% - 34px, 560px); }
+        .nav { min-height: 68px; }
+        .menu-toggle { display: inline-flex; }
+        .nav-actions .btn { display: none; }
+        .nav-links {
+          position: absolute; top: 67px; left: 0; right: 0; display: none; align-items: stretch; gap: 0;
+          padding: 10px 17px 16px; border-bottom: 1px solid var(--line); background: white; box-shadow: 0 14px 24px rgba(17,48,65,.07);
+        }
+        .nav-links[data-open="true"] { display: grid; }
+        .nav-links a { padding: 13px 8px; border-bottom: 1px solid #edf1f3; }
+        .nav-links a:last-child { border-bottom: 0; }
+        .hero { padding: 56px 0 50px; }
+        .hero-grid { grid-template-columns: 1fr; gap: 37px; }
+        .hero h1 { font-size: clamp(40px, 12vw, 57px); }
+        .hero-copy > p { font-size: 13px; }
+        .desk-wrap { padding-right: 0; }
+        .desk { padding: 13px; transform: none; }
+        .floating-note { right: 7px; bottom: -20px; }
+        .quick-grid { grid-template-columns: 1fr; padding: 7px 0; }
+        .quick-point, .quick-point:first-child { min-height: 72px; padding: 12px 0; border-right: 0; border-bottom: 1px solid var(--line); }
+        .quick-point:last-child { border-bottom: 0; }
+        .section { padding: 72px 0; }
+        .section-heading { margin-bottom: 30px; text-align: left; }
+        .section-heading .eyebrow { justify-content: flex-start; }
+        .feature-grid { grid-template-columns: 1fr; gap: 12px; }
+        .feature-card { min-height: 0; padding: 21px; }
+        .feature-card h3 { margin-top: 16px; }
+        .platform { padding: 68px 0; }
+        .platform-grid { grid-template-columns: 1fr; gap: 32px; }
+        .steps { grid-template-columns: 1fr 1fr; }
+        .step { min-height: 155px; border-bottom: 1px solid var(--line); }
+        .step:nth-child(2) { border-right: 0; }
+        .step:nth-child(3), .step:nth-child(4) { border-bottom: 0; }
+        .cta { padding: 64px 0; }
+        .cta-panel { align-items: flex-start; flex-direction: column; padding: 30px 24px; }
+        .cta-panel::after { right: -110px; }
+        .footer-row { align-items: flex-start; flex-direction: column; }
+        .footer-copy { line-height: 1.6; }
+      }
+      @media (max-width: 420px) {
+        .wrap { width: calc(100% - 28px); }
+        .brand-word strong { font-size: 13px; }
+        .hero-actions { align-items: stretch; flex-direction: column; }
+        .hero-actions .btn { width: 100%; }
+        .chart-card { padding: 10px; }
+        .chart { height: 130px; }
+        .desk-side { gap: 7px; }
+        .side-card { padding: 10px 9px; }
+        .steps { grid-template-columns: 1fr; }
+        .step, .step:nth-child(2), .step:nth-child(3) { min-height: 0; padding: 20px; border-right: 0; border-bottom: 1px solid var(--line); }
+        .step:last-child { border-bottom: 0; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        html { scroll-behavior: auto; }
+        *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap nav">
+        <a class="brand" href="/forex" aria-label="ProTraders FX home">
+          <img src="/logo.svg" alt="">
+          <span class="brand-word"><strong>ProTraders FX</strong><span>Forex workspace</span></span>
+        </a>
+        <nav class="nav-links" id="primary-nav" aria-label="Main navigation">
+          <a href="#overview">Overview</a>
+          <a href="#tools">Tools</a>
+          <a href="#process">Your process</a>
+          <a href="/trade">Markets</a>
+        </nav>
+        <div class="nav-actions">
+          <a class="btn btn-primary" href="/trade">
+            Open Markets
+            <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4.5 10h10M10 5.5l4.5 4.5-4.5 4.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </a>
+          <button class="menu-toggle" type="button" aria-label="Open navigation" aria-expanded="false" aria-controls="primary-nav">
+            <svg viewBox="0 0 24 24" width="19" height="19" fill="none" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero" id="overview">
+        <div class="wrap hero-grid">
+          <div class="hero-copy">
+            <span class="eyebrow">A focused forex workspace</span>
+            <h1>Trade with a plan. <span>Stay in control.</span></h1>
+            <p>Bring market context, deliberate trade planning, and clear review into one place. ProTraders FX is designed to help you follow your process—not promise an outcome.</p>
+            <div class="hero-actions">
+              <a class="btn btn-primary" href="/trade">
+                Explore Markets
+                <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4.5 10h10M10 5.5l4.5 4.5-4.5 4.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </a>
+              <a class="btn btn-quiet" href="#tools">See how it works</a>
+            </div>
+            <p class="hero-note">
+              <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 2.7 3.5 5.3v4.4c0 4 2.6 6.6 6.5 7.7 3.9-1.1 6.5-3.7 6.5-7.7V5.3L10 2.7Z" stroke="currentColor" stroke-width="1.5"/><path d="m7.2 9.9 1.8 1.8 3.8-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Trading leveraged products carries significant risk. Tools can support a process, but they cannot remove market risk.
+            </p>
+          </div>
+
+          <div class="desk-wrap" aria-label="Illustrative trading workspace preview">
+            <div class="desk">
+              <div class="desk-top">
+                <div class="desk-title">
+                  <span class="desk-mark"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 14.5 7.1 10l3 2.3L16.8 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="16.8" cy="5" r="1.5" fill="#a5df6b"/></svg></span>
+                  <span><strong>Market workspace</strong><small>PROTRADERS FX</small></span>
+                </div>
+                <span class="preview-chip">Preview layout</span>
+              </div>
+              <div class="desk-body">
+                <div class="chart-card">
+                  <div class="chart-head">
+                    <span><small>Forex watch</small><strong>EUR / USD</strong></span>
+                    <span class="pair-tag">FX PAIR</span>
+                  </div>
+                  <svg class="chart" viewBox="0 0 520 180" preserveAspectRatio="none" role="img" aria-label="Illustrative price chart">
+                    <defs><linearGradient id="chart-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0072b9" stop-opacity=".16"/><stop offset="1" stop-color="#0072b9" stop-opacity="0"/></linearGradient></defs>
+                    <path class="grid-line" d="M0 26H520M0 68H520M0 110H520M0 152H520"/>
+                    <path class="guide" d="M0 92H520"/>
+                    <path class="fill" d="M0 126 32 118 61 123 91 93 120 99 151 77 181 87 211 59 241 69 270 56 302 66 332 37 362 47 393 31 423 43 452 22 481 34 520 16V180H0Z"/>
+                    <path class="line" d="M0 126 32 118 61 123 91 93 120 99 151 77 181 87 211 59 241 69 270 56 302 66 332 37 362 47 393 31 423 43 452 22 481 34 520 16"/>
+                  </svg>
+                  <div class="chart-note"><span>Illustrative chart — not live pricing</span><span>Market context</span></div>
+                </div>
+                <div class="desk-side">
+                  <div class="side-card"><span class="panel-title">Trade plan</span><strong>Define the risk first</strong><p>Set your criteria before you act.</p></div>
+                  <div class="side-card"><span class="panel-title">Decision notes</span><strong>Keep your rationale close</strong><p>Review the setup after the session.</p></div>
+                  <div class="risk-bar"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 2.7 3.5 5.3v4.4c0 4 2.6 6.6 6.5 7.7 3.9-1.1 6.5-3.7 6.5-7.7V5.3L10 2.7Z" stroke="currentColor" stroke-width="1.5"/><path d="m7.2 9.9 1.8 1.8 3.8-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span><strong>Risk stays visible</strong><span>A reminder before execution</span></span></div>
+                </div>
+              </div>
+            </div>
+            <div class="floating-note"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 5.5h12M4 10h8M4 14.5h6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="m13.5 13.5 1.7 1.7 2.8-3.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span><strong>One process, clearly laid out</strong><span>Illustrative product preview</span></span></div>
+          </div>
+        </div>
+      </section>
+
+      <div class="quick-points" aria-label="Platform principles">
+        <div class="wrap quick-grid">
+          <div class="quick-point"><span class="quick-icon"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 15.5 7 11l3 2.3L17 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M12.5 5H17v4.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span><strong>Market context</strong><span>See the setup before the decision.</span></span></div>
+          <div class="quick-point"><span class="quick-icon"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 2.8 3.5 5.4v4.3c0 3.9 2.6 6.5 6.5 7.5 3.9-1 6.5-3.6 6.5-7.5V5.4L10 2.8Z" stroke="currentColor" stroke-width="1.5"/><path d="M10 6.5v3.8l2.4 1.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span><span><strong>Deliberate execution</strong><span>Keep the risk decision in view.</span></span></div>
+          <div class="quick-point"><span class="quick-icon"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 3.5h8l4 4v9H4v-13Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M12 3.5v4h4M7 11h6M7 14h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span><span><strong>Useful review</strong><span>Learn from the choices you make.</span></span></div>
+        </div>
+      </div>
+
+      <section class="section" id="tools">
+        <div class="wrap">
+          <div class="section-heading">
+            <span class="eyebrow">Built around your process</span>
+            <h2>Tools that keep your decisions visible.</h2>
+            <p>Move from market context to a considered plan, then review the decision with the details still close at hand.</p>
+          </div>
+          <div class="feature-grid">
+            <article class="feature-card">
+              <span class="feature-index">01 / CONTEXT</span>
+              <span class="feature-icon"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 19V5m0 14h16M7 15l4-4 3 2 6-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20" cy="6" r="1.5" fill="currentColor"/></svg></span>
+              <h3>Read the market clearly</h3>
+              <p>Keep forex pairs and wider market context close while you work through a setup.</p>
+              <a class="feature-link" href="/trade">Explore Markets <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h9m-4-4 4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+            </article>
+            <article class="feature-card">
+              <span class="feature-index">02 / PLAN</span>
+              <span class="feature-icon green"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3 4.5 6v5c0 4.3 2.8 7.3 7.5 9 4.7-1.7 7.5-4.7 7.5-9V6L12 3Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="m8.5 12 2.2 2.2 4.8-5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+              <h3>Plan with risk in mind</h3>
+              <p>Put your criteria and exposure in front of you before confirming a manual trade.</p>
+              <a class="feature-link" href="/trade">Explore Markets <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h9m-4-4 4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+            </article>
+            <article class="feature-card">
+              <span class="feature-index">03 / REVIEW</span>
+              <span class="feature-icon"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 4h14v16H5z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M8 8h8M8 12h8M8 16h5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span>
+              <h3>Make review part of trading</h3>
+              <p>Capture the reasoning behind a decision and give your next review more context.</p>
+              <a class="feature-link" href="#process">See the process <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h9m-4-4 4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="platform" aria-labelledby="platform-title">
+        <div class="wrap platform-grid">
+          <div class="platform-copy">
+            <span class="eyebrow">Your decisions, in context</span>
+            <h2 id="platform-title">A workspace that keeps the important parts together.</h2>
+            <p>See the market view, trade plan, and review notes side by side. The sample screen is illustrative; connect an authorized account for account-specific information.</p>
+            <a class="btn btn-primary" href="/trade">Explore Markets <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4.5 10h10M10 5.5l4.5 4.5-4.5 4.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+          </div>
+          <div class="platform-preview" aria-label="Illustrative workspace modules">
+            <div class="preview-toolbar"><span>ProTraders FX workspace</span><small>ILLUSTRATIVE PREVIEW</small></div>
+            <div class="preview-grid">
+              <div class="preview-tile"><span>Market view</span><strong>Pairs and context</strong></div>
+              <div class="preview-tile"><span>Trade plan</span><strong>Risk before action</strong></div>
+              <div class="preview-tile preview-wide">
+                <span>Market structure · illustrative</span>
+                <svg viewBox="0 0 600 90" preserveAspectRatio="none" aria-hidden="true">
+                  <path class="preview-gridline" d="M0 20H600M0 45H600M0 70H600"/>
+                  <path d="M0 64 34 58 69 62 102 42 137 48 170 33 204 40 238 21 271 31 305 25 339 39 373 20 407 27 441 14 474 26 508 11 542 21 577 6 600 13"/>
+                </svg>
+              </div>
+              <div class="preview-tile"><span>Execution</span><strong>Manual controls</strong></div>
+              <div class="preview-tile"><span>Review</span><strong>Notes and outcomes</strong></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section steps-section" id="process">
+        <div class="wrap">
+          <div class="section-heading">
+            <span class="eyebrow">A repeatable workflow</span>
+            <h2>From idea to review, with fewer blind spots.</h2>
+            <p>Use a simple sequence to make each decision easier to understand before and after you act.</p>
+          </div>
+          <div class="steps">
+            <article class="step"><span class="step-number">STEP 01</span><h3>Choose a market</h3><p>Start with the pair or instrument you want to follow.</p></article>
+            <article class="step"><span class="step-number">STEP 02</span><h3>Define your plan</h3><p>Record what would support the idea and where risk sits.</p></article>
+            <article class="step"><span class="step-number">STEP 03</span><h3>Act deliberately</h3><p>Review the trade details before confirming an order.</p></article>
+            <article class="step"><span class="step-number">STEP 04</span><h3>Review the outcome</h3><p>Compare the result with the plan and note what to improve.</p></article>
+          </div>
+        </div>
+      </section>
+
+      <section class="cta" aria-label="Get started">
+        <div class="wrap">
+          <div class="cta-panel">
+            <div class="cta-copy">
+              <span class="eyebrow">ProTraders FX</span>
+              <h2>Make your process easier to see.</h2>
+              <p>Open the workspace to explore the tools and choose the next step that fits your trading routine.</p>
+            </div>
+            <a class="btn" href="/trade">Explore Markets <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4.5 10h10M10 5.5l4.5 4.5-4.5 4.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+          </div>
+        </div>
+      </section>
+
+      <section class="risk" id="risk">
+        <div class="wrap">
+          <div class="risk-note">
+            <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 2.7 3.5 5.3v4.4c0 4 2.6 6.6 6.5 7.7 3.9-1.1 6.5-3.7 6.5-7.7V5.3L10 2.7Z" stroke="currentColor" stroke-width="1.5"/><path d="M10 7v3.7m0 2.4h.01" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+            <div><strong>Risk disclosure</strong><p>Forex and other leveraged products are high risk and can result in losses. ProTraders FX tools are not financial advice and do not guarantee profit. Only trade with money you can afford to lose; check that any broker or provider is properly authorized for your location.</p></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="wrap footer-row">
+        <a class="footer-brand" href="/forex"><img src="/logo.svg" alt=""><strong>ProTraders FX</strong></a>
+        <nav class="footer-links" aria-label="Footer navigation">
+          <a href="#overview">Overview</a>
+          <a href="#tools">Tools</a>
+          <a href="/trade">Markets</a>
+          <a href="#risk">Risk disclosure</a>
+        </nav>
+        <span class="footer-copy">© <span id="year"></span> ProTraders FX. Trading involves risk.</span>
+      </div>
+    </footer>
+    <script>
+      const menuButton = document.querySelector(".menu-toggle");
+      const menu = document.querySelector("#primary-nav");
+      menuButton?.addEventListener("click", () => {
+        const isOpen = menuButton.getAttribute("aria-expanded") === "true";
+        menuButton.setAttribute("aria-expanded", String(!isOpen));
+        menuButton.setAttribute("aria-label", isOpen ? "Open navigation" : "Close navigation");
+        menu?.setAttribute("data-open", String(!isOpen));
+      });
+      menu?.querySelectorAll("a").forEach((link) => link.addEventListener("click", () => {
+        menu.setAttribute("data-open", "false");
+        menuButton?.setAttribute("aria-expanded", "false");
+        menuButton?.setAttribute("aria-label", "Open navigation");
+      }));
+      document.querySelector("#year").textContent = String(new Date().getFullYear());
+    </script>
+  </body>
+</html>
