@@ -3,7 +3,10 @@
 "builds": [
 {
 "src": "server.js",
-"use": "@vercel/node"
+"use": "@vercel/node",
+"config": {
+"includeFiles": ["trade/**", "assets/**", "index.html", "workspace.html", "style.css", "app.js", "logo.svg", "forex.html"]
+}
 }
 ],
 "routes": [
