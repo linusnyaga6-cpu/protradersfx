@@ -45,6 +45,10 @@ class PaymentProvider {
 class UpesiPayPaymentProvider extends PaymentProvider {}
 
 class ExecutionProvider {
+  async validateOrder() {
+    throw new ProviderUnavailableError('EXECUTION_NOT_CONFIGURED', 'No execution provider is configured.');
+  }
+
   async getQuote() {
     throw new ProviderUnavailableError('EXECUTION_NOT_CONFIGURED', 'No execution provider is configured.');
   }
@@ -89,15 +93,25 @@ class MarketDataProvider {
 }
 
 function getFeatureFlags(env = process.env) {
+  const executionMode = String(env.EXECUTION_MODE || 'DEMO').trim().toUpperCase();
+  const validExecutionMode = ['DEMO', 'REAL', 'BOTH'].includes(executionMode);
+  const demoRequested = executionMode === 'DEMO' || executionMode === 'BOTH';
+  const realRequested = executionMode === 'REAL' || executionMode === 'BOTH';
   return {
-    demoTradingEnabled: env.FOREX_DEMO_TRADING_ENABLED !== 'false',
-    liveTradingRequested: env.FOREX_LIVE_TRADING_ENABLED === 'true',
+    executionMode,
+    validExecutionMode,
+    demoTradingEnabled: validExecutionMode && demoRequested && env.FOREX_DEMO_TRADING_ENABLED !== 'false',
+    realTradingRequested: validExecutionMode && realRequested,
+    realTradingEnabled: env.REAL_TRADING_ENABLED === 'true',
     paymentsRequested: env.FOREX_PAYMENTS_ENABLED === 'true',
   };
 }
 
 function resolveExecutionProvider(mode, providers = {}, env = process.env) {
   const flags = getFeatureFlags(env);
+  if (!flags.validExecutionMode) {
+    throw new ProviderUnavailableError('INVALID_EXECUTION_CONFIGURATION', 'EXECUTION_MODE must be DEMO, REAL, or BOTH.');
+  }
 
   if (mode === 'demo') {
     if (!flags.demoTradingEnabled) {
@@ -109,24 +123,32 @@ function resolveExecutionProvider(mode, providers = {}, env = process.env) {
     return providers.demo;
   }
 
-  if (mode === 'live') {
-    if (!flags.liveTradingRequested) {
-      throw new ProviderUnavailableError('LIVE_TRADING_DISABLED', 'Live trading is unavailable.');
+  if (mode === 'real') {
+    if (!flags.realTradingRequested) {
+      throw new ProviderUnavailableError('REAL_MODE_NOT_CONFIGURED', 'REAL mode is not selected in EXECUTION_MODE.');
     }
-    if (!providers.live) {
-      throw new ProviderUnavailableError('LIVE_EXECUTION_NOT_CONFIGURED', 'Live trading is unavailable.');
+    if (!flags.realTradingEnabled) {
+      throw new ProviderUnavailableError('REAL_TRADING_DISABLED', 'Real-money trading is disabled.');
     }
-    return providers.live;
+    if (!providers.real) {
+      throw new ProviderUnavailableError('REAL_EXECUTION_NOT_CONFIGURED', 'Real-money execution is not configured.');
+    }
+    return providers.real;
   }
 
-  throw new InvalidTradingModeError('Choose demo or live mode explicitly.');
+  throw new InvalidTradingModeError('Choose demo or real mode explicitly.');
 }
 
 function getPublicStatus(env = process.env) {
+  const flags = getFeatureFlags(env);
   return {
     mode: 'demo',
-    demoTradingEnabled: env.FOREX_DEMO_TRADING_ENABLED !== 'false',
-    liveTradingEnabled: false,
+    executionModeSetting: flags.validExecutionMode ? flags.executionMode : 'INVALID',
+    availableAccountModes: flags.demoTradingEnabled ? ['DEMO'] : [],
+    demoTradingEnabled: flags.demoTradingEnabled,
+    realTradingEnabled: false,
+    realModeAvailable: false,
+    realModeBlocker: 'Required real-account infrastructure is not configured.',
     paymentsEnabled: false,
     quoteSource: 'simulated',
     wallet: 'browser-only demo credits; no persistent or withdrawable balance',
