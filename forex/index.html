@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#071b2a">
+  <title>ProTradersFX | Forex demo workspace</title>
+  <meta name="description" content="Explore the ProTradersFX demo workspace. Simulated prices and trades only; deposits, withdrawals, and live trading are unavailable.">
+  <link rel="canonical" href="https://protradersfx.com/forex">
+  <style>
+    :root{color-scheme:dark;--bg:#071b2a;--panel:#0d2637;--panel2:#102e40;--line:#214356;--text:#f0f6f8;--muted:#9db4c0;--cyan:#57c9ed;--green:#8fe0a2;--amber:#f1c86d;--red:#f28b8b;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+    *{box-sizing:border-box}body{margin:0;color:var(--text);background:radial-gradient(ellipse at 12% 0%,#0b2a3d 0,transparent 33%),var(--bg);line-height:1.5}a{color:inherit;text-decoration:none}button,input,select{font:inherit}button{cursor:pointer}.wrap{width:min(1180px,calc(100% - 32px));margin:auto}
+    .notice{padding:10px 16px;background:#342b18;border-bottom:1px solid #5a4b27;color:#f4e4b8;text-align:center;font-size:12px;font-weight:650}.notice strong{color:#ffe08a}.topbar{border-bottom:1px solid #183647;background:rgba(7,27,42,.9);backdrop-filter:blur(12px)}.nav{min-height:72px;display:flex;align-items:center;gap:20px}.brand{display:flex;align-items:center;gap:10px;margin-right:auto}.mark{width:38px;height:38px;display:grid;place-items:center;border:1px solid #28617a;border-radius:12px;color:var(--cyan);font-weight:900;background:linear-gradient(140deg,#16435b,#0a2433)}.brand b{display:block;font-size:14px;letter-spacing:.04em}.brand small{display:block;color:var(--muted);font-size:9px;font-weight:800;letter-spacing:.15em;text-transform:uppercase}.nav a.back{color:#bbced7;font-size:12px;font-weight:700}.mode{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid #6b5726;border-radius:99px;background:#2b2517;color:#ffdf91;font-size:11px;font-weight:850;letter-spacing:.05em}.mode i{width:7px;height:7px;border-radius:50%;background:var(--amber);box-shadow:0 0 0 4px #f1c86d20}
+    main{padding:42px 0 76px}.intro{display:grid;grid-template-columns:1.3fr .7fr;gap:28px;align-items:end;margin-bottom:28px}.eyebrow{color:var(--cyan);font-size:10px;font-weight:850;letter-spacing:.18em;text-transform:uppercase}.intro h1{margin:10px 0 12px;font-size:clamp(30px,5vw,52px);line-height:1.05;letter-spacing:-.05em}.intro h1 span{color:var(--cyan)}.intro p{max-width:690px;margin:0;color:#afc2cb;font-size:14px;line-height:1.75}.state-card{padding:17px;border:1px solid #395234;border-radius:14px;background:linear-gradient(140deg,#162e29,#10252c)}.state-card strong{display:block;color:#b2ecbb;font-size:12px}.state-card p{margin:7px 0 0;color:#bfd0cd;font-size:11px}
+    .terminal{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:16px}.panel{border:1px solid var(--line);border-radius:16px;background:linear-gradient(180deg,#0e293a,#0b2231);box-shadow:0 18px 48px #0002}.market-panel{padding:20px}.panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}.pair{display:flex;align-items:center;gap:12px}.pair-icon{width:40px;height:40px;display:grid;place-items:center;border-radius:12px;background:#14384b;color:var(--cyan);font-size:12px;font-weight:900}.pair h2{margin:0;font-size:15px}.pair small{color:var(--muted);font-size:10px}.sim-tag{padding:6px 9px;border:1px solid #6b5726;border-radius:99px;color:#ffdc83;background:#282315;font-size:9px;font-weight:850;letter-spacing:.1em}.price-row{display:flex;align-items:end;gap:12px;margin:18px 0}.price{font-variant-numeric:tabular-nums;font-size:34px;font-weight:800;letter-spacing:-.04em}.price-sub{padding-bottom:5px;color:var(--muted);font-size:10px}.chart{display:block;width:100%;height:230px;border:1px solid #1a3a4c;border-radius:12px;background:linear-gradient(180deg,#0c2534,#0a202d)}.chart-grid{stroke:#224052;stroke-width:1;stroke-dasharray:3 7}.chart-line{fill:none;stroke:var(--cyan);stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 0 5px #57c9ed66)}.chart-fill{fill:url(#chartFill);opacity:.35}.chart-meta{display:flex;justify-content:space-between;margin-top:9px;color:#829ba8;font-size:9px}
+    .balance-box{padding:15px;border:1px solid #1e485b;border-radius:12px;background:#0b2331}.balance-box small{display:block;color:var(--muted);font-size:10px}.balance-box strong{display:block;margin-top:4px;color:#c5f2cf;font-size:24px;font-variant-numeric:tabular-nums}.balance-box em{display:block;margin-top:3px;color:#7995a2;font-size:9px;font-style:normal}.ticket{padding:18px}.ticket h2{margin:0;font-size:15px}.ticket-copy{margin:5px 0 18px;color:var(--muted);font-size:10px}.field{margin:14px 0}.field label{display:block;margin-bottom:7px;color:#b1c4cd;font-size:10px;font-weight:700}.field input,.field select{width:100%;height:42px;padding:0 11px;border:1px solid #29495a;border-radius:9px;outline:none;color:var(--text);background:#091e2a}.field input:focus,.field select:focus{border-color:var(--cyan)}.side-buttons{display:grid;grid-template-columns:1fr 1fr;gap:8px}.side-button{height:41px;border:1px solid #315061;border-radius:9px;color:#a9bdc6;background:#0a202d;font-size:11px;font-weight:800}.side-button.active.buy{border-color:#36774c;color:#b8f0c1;background:#183629}.side-button.active.sell{border-color:#8d4444;color:#ffc0c0;background:#3b2528}.order-button{width:100%;height:46px;margin-top:6px;border:0;border-radius:10px;color:#06202b;background:var(--cyan);font-size:12px;font-weight:900}.order-button:hover{filter:brightness(1.07)}.ticket-foot{margin-top:10px;color:#8199a5;font-size:9px;line-height:1.55}.ledger-note{margin-top:14px;padding:12px;border:1px dashed #385362;border-radius:10px;color:#9cb2bd;background:#0a202d;font-size:10px;line-height:1.55}.ledger-note strong{color:#d3e1e6}
+    .history{margin-top:16px;padding:18px}.history-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.history h2{margin:0;font-size:14px}.history-head small{color:var(--muted);font-size:9px}.history-list{display:grid;gap:8px}.empty{padding:20px;border:1px dashed #284758;border-radius:10px;color:#8ca3ae;text-align:center;font-size:11px}.trade-row{display:grid;grid-template-columns:1.1fr .8fr .8fr .8fr;gap:8px;align-items:center;padding:10px;border:1px solid #1b3949;border-radius:9px;background:#0a202d;font-size:10px}.trade-row small{display:block;color:var(--muted);font-size:9px}.pnl-positive{color:var(--green)}.pnl-negative{color:var(--red)}
+    .lower{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}.info{padding:19px}.info h2{margin:0 0 11px;font-size:14px}.info p{margin:0;color:#a9bdc7;font-size:11px;line-height:1.7}.fees{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:14px}.fee{padding:12px;border:1px solid #244355;border-radius:10px;background:#0a202d}.fee strong{display:block;color:#c6edf7;font-size:18px}.fee span{display:block;margin-top:4px;color:#a1b4bd;font-size:9px;line-height:1.45}.fee-disclaimer{margin-top:12px;color:#ffdf91!important}.architecture{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:14px}.arch-item{padding:11px;border:1px solid #244355;border-radius:10px;background:#0a202d}.arch-item b{display:block;color:#d8e7ec;font-size:10px}.arch-item span{display:block;margin-top:4px;color:#90a8b3;font-size:9px;line-height:1.45}.footer{padding:20px 0 0;color:#79919d;font-size:9px;text-align:center}
+    @media(max-width:900px){.intro{grid-template-columns:1fr}.terminal{grid-template-columns:1fr}.ticket{order:-1}.lower{grid-template-columns:1fr}.state-card{max-width:580px}}@media(max-width:540px){.wrap{width:min(100% - 22px,1180px)}.nav{min-height:62px}.mode{font-size:9px;padding:7px 9px}.intro{margin-bottom:18px}.market-panel,.ticket,.history,.info{padding:14px}.chart{height:190px}.price{font-size:28px}.fees{grid-template-columns:1fr}.architecture{grid-template-columns:1fr}.trade-row{grid-template-columns:1fr 1fr}.notice{font-size:10px}}
+  </style>
+  <style>
+    .account-modes{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:-8px 0 20px}
+    .account-mode{display:flex;align-items:flex-start;gap:12px;padding:13px 15px;border:1px solid #244355;border-radius:12px;background:#0b2231}
+    .account-mode.active{border-color:#36774c;background:#142d27}
+    .account-mode.disabled{border-style:dashed;opacity:.84}
+    .account-mode b{flex:0 0 auto;color:#dce9ed;font-size:10px;letter-spacing:.05em}
+    .account-mode.active b{color:#b8f0c1}
+    .account-mode.disabled b{color:#ffdf91}
+    .account-mode span{color:#a9bdc7;font-size:10px;line-height:1.5}
+    @media(max-width:540px){.account-modes{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="notice"><strong>DEMO ONLY</strong> — Simulated prices and trades. No deposits, withdrawals, live orders, or withdrawable balances are enabled.</div>
+  <header class="topbar">
+    <div class="wrap nav">
+      <a class="brand" href="/" aria-label="ProTradersFX home">
+        <span class="mark">PT</span><span><b>PROTRADERS FX</b><small>Independent workspace preview</small></span>
+      </a>
+      <a class="back" href="/">Back to home</a>
+      <span class="mode"><i></i> SANDBOX MODE</span>
+    </div>
+  </header>
+  <main class="wrap">
+    <section class="intro">
+      <div>
+        <div class="eyebrow">Forex workspace · preview</div>
+        <h1>Explore the <span>demo terminal.</span></h1>
+        <p>This is a browser-only sandbox to preview the ProTradersFX interface. Its price path and trade outcomes are simulated for demonstration; no trade is sent to a market or trading account.</p>
+      </div>
+      <aside class="state-card">
+        <strong id="systemState">Demo preview only</strong>
+        <p>Live execution and UpesiPay money movement are not connected. The demo balance has no cash value and resets when you leave or refresh.</p>
+      </aside>
+    </section>
+
+    <section class="account-modes" aria-label="Account mode availability">
+      <div class="account-mode active" aria-current="true">
+        <b>DEMO · ACTIVE</b>
+        <span>Simulated orders and browser-only credits. No real money or external execution.</span>
+      </div>
+      <div class="account-mode disabled" aria-disabled="true">
+        <b>REAL · OFF</b>
+        <span>Real-money trading is unavailable until real execution, payment, funds-control, settlement, and regulatory gates are configured and reviewed.</span>
+      </div>
+    </section>
+
+    <section class="terminal" id="terminal" aria-label="Demo trading terminal">
+      <div>
+        <article class="panel market-panel">
+          <div class="panel-head">
+            <div class="pair">
+              <div class="pair-icon">FX</div>
+              <div><h2 id="pairName">EUR/USD · DEMO</h2><small>Simulated price path · not a live quote</small></div>
+            </div>
+            <span class="sim-tag">SIMULATED</span>
+          </div>
+          <div class="price-row">
+            <div class="price" id="currentPrice" aria-live="polite">1.08425</div>
+            <div class="price-sub">illustrative demo price</div>
+          </div>
+          <svg class="chart" viewBox="0 0 760 230" role="img" aria-label="Illustrative simulated price chart">
+            <defs><linearGradient id="chartFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#57c9ed"/><stop offset="100%" stop-color="#57c9ed" stop-opacity="0"/></linearGradient></defs>
+            <path class="chart-grid" d="M0 45H760M0 90H760M0 135H760M0 180H760"/>
+            <polygon id="chartFillPath" class="chart-fill" points="0,150 760,150 760,230 0,230"/>
+            <polyline id="chartLine" class="chart-line" points="0,120 60,112 120,125 180,104 240,118 300,96 360,108 420,82 480,99 540,75 600,89 660,62 720,78 760,70"/>
+          </svg>
+          <div class="chart-meta"><span>Generated in this browser · no market data provider</span><span id="tickStatus">Sandbox feed running</span></div>
+        </article>
+        <article class="panel history">
+          <div class="history-head"><h2>Simulated positions</h2><small>Not saved · not withdrawable</small></div>
+          <div class="history-list" id="historyList"><div class="empty">No demo orders yet. Place a sandbox order to preview the interface.</div></div>
+        </article>
+      </div>
+
+      <aside class="panel ticket">
+        <h2>Demo order ticket</h2>
+        <p class="ticket-copy">Practice controls only. No order leaves this browser.</p>
+        <div class="balance-box"><small>Virtual demo balance</small><strong id="demoBalance">10,000.00</strong><em>DEMO credits · no cash value</em></div>
+        <div class="field">
+          <label>Market</label>
+          <select id="marketSelect" aria-label="Demo market">
+            <option value="EUR/USD">EUR/USD · simulated</option>
+            <option value="GBP/USD">GBP/USD · simulated</option>
+            <option value="USD/JPY">USD/JPY · simulated</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Direction</label>
+          <div class="side-buttons">
+            <button type="button" class="side-button active buy" id="buyButton" aria-pressed="true">Buy / up</button>
+            <button type="button" class="side-button" id="sellButton" aria-pressed="false">Sell / down</button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="stakeInput">Demo stake (credits)</label>
+          <input id="stakeInput" type="number" min="1" max="1000" step="1" value="100" inputmode="decimal">
+        </div>
+        <div class="field">
+          <label for="durationSelect">Simulation duration</label>
+          <select id="durationSelect"><option value="10">10 seconds</option><option value="20">20 seconds</option><option value="30">30 seconds</option></select>
+        </div>
+        <button type="button" id="placeOrder" class="order-button">Place demo order</button>
+        <div class="ticket-foot" id="orderMessage" role="status" aria-live="polite">Demo only. Prices and results are synthetic and can differ from any real market.</div>
+        <div class="ledger-note"><strong>Live account unavailable.</strong> Deposits, withdrawals, and real-money trading are disabled in this preview.</div>
+      </aside>
+    </section>
+
+    <section class="lower">
+      <article class="panel info">
+        <h2>Proposed platform fees</h2>
+        <p>These are your proposed rates, shown for review only. This demo does not collect fees or move money.</p>
+        <div class="fees">
+          <div class="fee"><strong>10%</strong><span>of a gross deposit; the intended example is $1 fee from $10, leaving $9 customer credit.</span></div>
+          <div class="fee"><strong>1%</strong><span>per actually executed trade stake; not applied to simulated demo orders.</span></div>
+          <div class="fee"><strong>20%</strong><span>of verified net realized profit at withdrawal; no fee on principal, estimates, or losses.</span></div>
+        </div>
+        <p class="fee-disclaimer">Proposed and inactive. No deposits, customer ledger, trade execution, or performance-fee calculation is active.</p>
+      </article>
+      <article class="panel info">
+        <h2>Separate system boundaries</h2>
+        <p>ProTradersFX owns the application layer. Integrations stay in separate provider slots; no provider is inferred or enabled by this preview.</p>
+        <div class="architecture">
+          <div class="arch-item"><b>Payments</b><span>UpesiPay belongs only in the future payment adapter for verified collections and payouts.</span></div>
+          <div class="arch-item"><b>Trading</b><span>A separate execution adapter must confirm real orders and settlement; none is connected here.</span></div>
+          <div class="arch-item"><b>Market data</b><span>This sandbox uses generated values. It does not claim live prices or trade results.</span></div>
+        </div>
+      </article>
+    </section>
+    <footer class="footer">Demo-only preview · No real deposits or live trading · Results shown here have no cash value.</footer>
+  </main>
+  <script defer src="/forex-client.js"></script>
+</body>
+</html>
