@@ -10,18 +10,25 @@ const {
   resolveExecutionProvider,
 } = require('./providers');
 
-test('live mode is rejected by default and never falls back to demo', () => {
+test('REAL mode is rejected by default and never falls back to demo', () => {
   const demo = { name: 'demo' };
   assert.throws(
-    () => resolveExecutionProvider('live', { demo }, {}),
-    (error) => error instanceof ProviderUnavailableError && error.code === 'LIVE_TRADING_DISABLED',
+    () => resolveExecutionProvider('real', { demo }, {}),
+    (error) => error instanceof ProviderUnavailableError && error.code === 'REAL_MODE_NOT_CONFIGURED',
   );
 });
 
-test('live mode remains unavailable even when the flag is set without a live adapter', () => {
+test('REAL mode requires an explicit mode and flag and never uses the demo adapter', () => {
   assert.throws(
-    () => resolveExecutionProvider('live', { demo: {} }, { FOREX_LIVE_TRADING_ENABLED: 'true' }),
-    (error) => error.code === 'LIVE_EXECUTION_NOT_CONFIGURED',
+    () => resolveExecutionProvider('real', { demo: {} }, { EXECUTION_MODE: 'REAL' }),
+    (error) => error.code === 'REAL_TRADING_DISABLED',
+  );
+  assert.throws(
+    () => resolveExecutionProvider('real', { demo: {} }, {
+      EXECUTION_MODE: 'REAL',
+      REAL_TRADING_ENABLED: 'true',
+    }),
+    (error) => error.code === 'REAL_EXECUTION_NOT_CONFIGURED',
   );
 });
 
@@ -41,6 +48,19 @@ test('demo mode requires an explicit demo provider and enabled flag', () => {
 test('mode selection rejects missing or unknown mode instead of guessing', () => {
   assert.throws(() => resolveExecutionProvider(undefined, {}, {}), { code: 'INVALID_TRADING_MODE' });
   assert.throws(() => resolveExecutionProvider('practice', {}, {}), { code: 'INVALID_TRADING_MODE' });
+  assert.throws(
+    () => resolveExecutionProvider('demo', { demo: {} }, { EXECUTION_MODE: 'AUTO' }),
+    { code: 'INVALID_EXECUTION_CONFIGURATION' },
+  );
+});
+
+test('BOTH may expose demo while REAL remains disabled without its flag and adapters', () => {
+  const demo = { name: 'demo' };
+  assert.equal(resolveExecutionProvider('demo', { demo }, { EXECUTION_MODE: 'BOTH' }).name, 'demo');
+  assert.throws(
+    () => resolveExecutionProvider('real', { demo }, { EXECUTION_MODE: 'BOTH' }),
+    { code: 'REAL_TRADING_DISABLED' },
+  );
 });
 
 test('payment requests fail closed and public status never claims live payments', async () => {
@@ -50,10 +70,14 @@ test('payment requests fail closed and public status never claims live payments'
   await assert.rejects(provider.getDepositStatus(), { code: 'PAYMENTS_DISABLED' });
   await assert.rejects(provider.requestWithdrawal(), { code: 'PAYMENTS_DISABLED' });
   await assert.rejects(provider.getTransactionHistory(), { code: 'PAYMENTS_DISABLED' });
-  assert.deepEqual(getPublicStatus({ FOREX_PAYMENTS_ENABLED: 'true', FOREX_LIVE_TRADING_ENABLED: 'true' }), {
+  assert.deepEqual(getPublicStatus({ FOREX_PAYMENTS_ENABLED: 'true', REAL_TRADING_ENABLED: 'true' }), {
     mode: 'demo',
+    executionModeSetting: 'DEMO',
+    availableAccountModes: ['DEMO'],
     demoTradingEnabled: true,
-    liveTradingEnabled: false,
+    realTradingEnabled: false,
+    realModeAvailable: false,
+    realModeBlocker: 'Required real-account infrastructure is not configured.',
     paymentsEnabled: false,
     quoteSource: 'simulated',
     wallet: 'browser-only demo credits; no persistent or withdrawable balance',
