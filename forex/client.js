@@ -129,8 +129,8 @@
     .then((response) => response.ok ? response.json() : Promise.reject(new Error('status unavailable')))
     .then((status) => {
       const banner = document.getElementById('systemState');
-      if (status.mode === 'demo' && status.liveTradingEnabled === false && status.paymentsEnabled === false) {
-        banner.textContent = 'Demo only · live trading and payments disabled';
+      if (status.mode === 'demo' && status.realTradingEnabled === false && status.paymentsEnabled === false) {
+        banner.textContent = 'Demo only · real trading and payments disabled';
       }
     })
     .catch(() => {
