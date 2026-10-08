@@ -18,6 +18,17 @@
     .lower{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}.info{padding:19px}.info h2{margin:0 0 11px;font-size:14px}.info p{margin:0;color:#a9bdc7;font-size:11px;line-height:1.7}.fees{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:14px}.fee{padding:12px;border:1px solid #244355;border-radius:10px;background:#0a202d}.fee strong{display:block;color:#c6edf7;font-size:18px}.fee span{display:block;margin-top:4px;color:#a1b4bd;font-size:9px;line-height:1.45}.fee-disclaimer{margin-top:12px;color:#ffdf91!important}.architecture{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:14px}.arch-item{padding:11px;border:1px solid #244355;border-radius:10px;background:#0a202d}.arch-item b{display:block;color:#d8e7ec;font-size:10px}.arch-item span{display:block;margin-top:4px;color:#90a8b3;font-size:9px;line-height:1.45}.footer{padding:20px 0 0;color:#79919d;font-size:9px;text-align:center}
     @media(max-width:900px){.intro{grid-template-columns:1fr}.terminal{grid-template-columns:1fr}.ticket{order:-1}.lower{grid-template-columns:1fr}.state-card{max-width:580px}}@media(max-width:540px){.wrap{width:min(100% - 22px,1180px)}.nav{min-height:62px}.mode{font-size:9px;padding:7px 9px}.intro{margin-bottom:18px}.market-panel,.ticket,.history,.info{padding:14px}.chart{height:190px}.price{font-size:28px}.fees{grid-template-columns:1fr}.architecture{grid-template-columns:1fr}.trade-row{grid-template-columns:1fr 1fr}.notice{font-size:10px}}
   </style>
+  <style>
+    .account-modes{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:-8px 0 20px}
+    .account-mode{display:flex;align-items:flex-start;gap:12px;padding:13px 15px;border:1px solid #244355;border-radius:12px;background:#0b2231}
+    .account-mode.active{border-color:#36774c;background:#142d27}
+    .account-mode.disabled{border-style:dashed;opacity:.84}
+    .account-mode b{flex:0 0 auto;color:#dce9ed;font-size:10px;letter-spacing:.05em}
+    .account-mode.active b{color:#b8f0c1}
+    .account-mode.disabled b{color:#ffdf91}
+    .account-mode span{color:#a9bdc7;font-size:10px;line-height:1.5}
+    @media(max-width:540px){.account-modes{grid-template-columns:1fr}}
+  </style>
 </head>
 <body>
   <div class="notice"><strong>DEMO ONLY</strong> — Simulated prices and trades. No deposits, withdrawals, live orders, or withdrawable balances are enabled.</div>
@@ -41,6 +52,17 @@
         <strong id="systemState">Demo preview only</strong>
         <p>Live execution and UpesiPay money movement are not connected. The demo balance has no cash value and resets when you leave or refresh.</p>
       </aside>
+    </section>
+
+    <section class="account-modes" aria-label="Account mode availability">
+      <div class="account-mode active" aria-current="true">
+        <b>DEMO · ACTIVE</b>
+        <span>Simulated orders and browser-only credits. No real money or external execution.</span>
+      </div>
+      <div class="account-mode disabled" aria-disabled="true">
+        <b>REAL · OFF</b>
+        <span>Real-money trading is unavailable until real execution, payment, funds-control, settlement, and regulatory gates are configured and reviewed.</span>
+      </div>
     </section>
 
     <section class="terminal" id="terminal" aria-label="Demo trading terminal">
