@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const cookieParser = require('cookie-parser');
 const WebSocket = require('ws');
+const { getPublicStatus } = require('./forex/providers');
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -15,6 +16,8 @@ const PUBLIC_DIR = __dirname;
 const TRADE_DIR = path.join(PUBLIC_DIR, 'trade');
 const BUNDLED_APP_ASSET = fs.readFileSync(path.join(__dirname, 'assets/index-CQBGKLTj.js'), 'utf8');
 const BUNDLED_STYLE_ASSET = fs.readFileSync(path.join(__dirname, 'assets/index-BqzBJgO4.css'), 'utf8');
+const FOREX_PAGE = fs.readFileSync(path.join(__dirname, 'forex/index.html'), 'utf8');
+const FOREX_CLIENT = fs.readFileSync(path.join(__dirname, 'forex/client.js'), 'utf8');
 const CANONICAL_ROBOTS = [
   'User-agent: *',
   'Allow: /',
@@ -24,7 +27,7 @@ const CANONICAL_ROBOTS = [
   'Disallow: /?view=',
   'Sitemap: https://protradersfx.com/sitemap.xml'
 ].join('\n') + '\n';
-const CANONICAL_SITEMAP = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://protradersfx.com/</loc></url></urlset>\n';
+const CANONICAL_SITEMAP = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://protradersfx.com/</loc></url><url><loc>https://protradersfx.com/forex</loc></url></urlset>\n';
 const DERIV_CLIENT_ID = process.env.DERIV_CLIENT_ID || '';
 const DERIV_PUBLIC_APP_ID = process.env.DERIV_PUBLIC_APP_ID || process.env.DERIV_APP_ID || '';
 const DERIV_AFFILIATE_PARAM = process.env.DERIV_AFFILIATE_PARAM || 't';
@@ -275,6 +278,9 @@ app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 180, standardHeaders
 app.use('/trade/assets', express.static(path.join(TRADE_DIR, 'assets'), { maxAge: '1y', immutable: true }));
 app.use('/trade', express.static(TRADE_DIR, { extensions: ['html'] }));
 app.get(/^\/trade(?:\/.*)?$/, (req, res) => res.sendFile(path.join(TRADE_DIR, 'index.html')));
+app.get('/forex', (req, res) => res.set('Cache-Control', 'no-store').type('html').send(FOREX_PAGE));
+app.get('/forex-client.js', (req, res) => res.set('Cache-Control', 'no-store').type('application/javascript').send(FOREX_CLIENT));
+app.get('/api/forex/status', (req, res) => res.set('Cache-Control', 'no-store').json(getPublicStatus()));
 app.get('/api/config', (req, res) => res.json({ configured: Boolean(DERIV_CLIENT_ID && DERIV_AFFILIATE_TOKEN), publicAppConfigured: Boolean(DERIV_PUBLIC_APP_ID), partnerParam: DERIV_AFFILIATE_PARAM, campaign: DERIV_CAMPAIGN }));
 const PUBLIC_MARKET_SYMBOLS = new Set(['frxEURUSD', 'frxGBPUSD', 'frxUSDJPY', 'frxAUDUSD', 'frxUSDCAD', 'R_10', 'R_25', 'R_50', 'R_75', 'R_100', '1HZ10V', '1HZ25V', '1HZ50V', '1HZ75V', '1HZ100V']);
 app.get('/api/market/tick', async (req, res) => {
