@@ -411,6 +411,7 @@ app.get('/api/account', async (req, res) => { const session = await requireSessi
       const barrier = req.body?.barrier === undefined || req.body?.barrier === '' ? undefined : Number(req.body.barrier);
       const validSymbol = /^(1HZ\d+V|R_\d+|frx[A-Z]{6})$/.test(symbol);
       const validContract = ['CALL', 'PUT', 'DIGITOVER', 'DIGITUNDER', 'DIGITEVEN', 'DIGITODD'].includes(contractType);
+      if (['DIGITOVER', 'DIGITUNDER', 'DIGITEVEN', 'DIGITODD'].includes(contractType) && !/^(1HZ\d+V|R_\d+)$/.test(symbol)) return res.status(400).json({ error: 'Digit contracts require a Volatility market. Select one before trading.' });
       if (!validSymbol) return res.status(400).json({ error: 'Choose a valid Deriv market symbol.' });
       if (!validContract) return res.status(400).json({ error: 'Unsupported Deriv contract type.' });
       if (!Number.isFinite(amount) || amount < 0.35 || amount > 10000) return res.status(400).json({ error: 'Stake must be between 0.35 and 10,000.' });
@@ -466,6 +467,7 @@ app.get('/api/account', async (req, res) => { const session = await requireSessi
     const barrier = req.body?.barrier === undefined || req.body?.barrier === '' ? undefined : Number(req.body.barrier);
     const validSymbol = /^(1HZ\d+V|R_\d+|frx[A-Z]{6})$/.test(symbol);
     const validContract = ['CALL', 'PUT', 'DIGITOVER', 'DIGITUNDER', 'DIGITEVEN', 'DIGITODD'].includes(contractType);
+    if (['DIGITOVER', 'DIGITUNDER', 'DIGITEVEN', 'DIGITODD'].includes(contractType) && !/^(1HZ\d+V|R_\d+)$/.test(symbol)) return res.status(400).json({ error: 'Digit contracts require a Volatility market. Select one before trading.' });
     if (!validSymbol) return res.status(400).json({ error: 'Choose a valid Deriv market symbol.' });
     if (!validContract) return res.status(400).json({ error: 'Unsupported Deriv contract type "' + contractType.slice(0, 40) + '". Choose CALL, PUT, DIGITOVER, DIGITUNDER, DIGITEVEN, or DIGITODD.' });
     if (!Number.isFinite(amount) || amount < 0.35 || amount > 10000) return res.status(400).json({ error: 'Stake must be between 0.35 and 10,000.' });
@@ -524,6 +526,7 @@ app.post('/api/premium-bots/execute', async (req, res) => {
   const barrier = req.body?.barrier === undefined || req.body?.barrier === '' ? undefined : Number(req.body.barrier);
   const validSymbol = /^(1HZ\d+V|R_\d+|frx[A-Z]{6})$/.test(symbol);
   const validContract = ['CALL', 'PUT', 'DIGITOVER', 'DIGITUNDER', 'DIGITEVEN', 'DIGITODD'].includes(contractType);
+  if (['DIGITOVER', 'DIGITUNDER', 'DIGITEVEN', 'DIGITODD'].includes(contractType) && !/^(1HZ\d+V|R_\d+)$/.test(symbol)) return res.status(400).json({ error: 'Digit contracts require a Volatility market. Select one before trading.' });
   if (!validSymbol) return res.status(400).json({ error: 'Choose a valid Deriv market symbol.' });
   if (!validContract) return res.status(400).json({ error: 'Unsupported Deriv contract type "' + contractType.slice(0, 40) + '". Choose CALL, PUT, DIGITOVER, DIGITUNDER, DIGITEVEN, or DIGITODD.' });
   const allowedContracts = { 1: ['DIGITEVEN', 'DIGITODD'], 2: ['DIGITEVEN', 'DIGITODD'], 3: ['DIGITEVEN', 'DIGITODD'], 4: ['DIGITEVEN', 'DIGITODD'], 5: ['DIGITOVER'], 6: ['DIGITUNDER'], 7: ['CALL', 'PUT'], 8: ['CALL', 'PUT'], 9: ['CALL', 'PUT'], 10: ['DIGITEVEN', 'DIGITODD'] };
