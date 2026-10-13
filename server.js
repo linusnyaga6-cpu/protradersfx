@@ -517,7 +517,7 @@ app.post('/api/premium-bots/execute', async (req, res) => {
   if (!session) return;
   if (req.body?.confirm !== true) return res.status(400).json({ error: 'Start the bot before submitting an order.' });
   const botId = Number(req.body?.botId);
-  if (!Number.isInteger(botId) || botId < 1 || botId > 10) return res.status(400).json({ error: 'Choose a valid Deriv Pro Bot.' });
+  if (!Number.isInteger(botId) || botId < 1 || botId > 12) return res.status(400).json({ error: 'Choose a valid Deriv Pro Bot.' });
   const symbol = String(req.body?.symbol || '');
   const contractType = String(req.body?.contractType || '');
   const amount = Number(req.body?.amount);
@@ -529,7 +529,7 @@ app.post('/api/premium-bots/execute', async (req, res) => {
   if (['DIGITOVER', 'DIGITUNDER', 'DIGITEVEN', 'DIGITODD'].includes(contractType) && !/^(1HZ\d+V|R_\d+)$/.test(symbol)) return res.status(400).json({ error: 'Digit contracts require a Volatility market. Select one before trading.' });
   if (!validSymbol) return res.status(400).json({ error: 'Choose a valid Deriv market symbol.' });
   if (!validContract) return res.status(400).json({ error: 'Unsupported Deriv contract type "' + contractType.slice(0, 40) + '". Choose CALL, PUT, DIGITOVER, DIGITUNDER, DIGITEVEN, or DIGITODD.' });
-  const allowedContracts = { 1: ['DIGITEVEN', 'DIGITODD'], 2: ['DIGITEVEN', 'DIGITODD'], 3: ['DIGITEVEN', 'DIGITODD'], 4: ['DIGITEVEN', 'DIGITODD'], 5: ['DIGITOVER'], 6: ['DIGITUNDER'], 7: ['CALL', 'PUT'], 8: ['CALL', 'PUT'], 9: ['CALL', 'PUT'], 10: ['DIGITEVEN', 'DIGITODD'] };
+  const allowedContracts = { 1: ['DIGITEVEN', 'DIGITODD'], 2: ['DIGITEVEN', 'DIGITODD'], 3: ['DIGITEVEN', 'DIGITODD'], 4: ['DIGITEVEN', 'DIGITODD'], 5: ['DIGITOVER'], 6: ['DIGITUNDER'], 7: ['CALL', 'PUT'], 8: ['CALL', 'PUT'], 9: ['CALL', 'PUT'], 10: ['DIGITEVEN', 'DIGITODD'], 11: ['DIGITEVEN'], 12: ['DIGITODD'] };
   if (!allowedContracts[botId].includes(contractType)) return res.status(400).json({ error: 'This bot cannot place that contract type.' });
   if (!Number.isFinite(amount) || amount < 0.35 || amount > 10000) return res.status(400).json({ error: 'Stake must be between 0.35 and 10,000.' });
   if (!Number.isInteger(duration) || duration < 1 || duration > 365) return res.status(400).json({ error: 'Duration must be a whole number from 1 to 365.' });
