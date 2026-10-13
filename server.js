@@ -248,8 +248,15 @@ function openOptions(accessToken, account, payload) {
     } catch (error) { reject(error); }
   });
 }
+function derivDigitBarrierError(contractType, barrier) {
+  if (contractType === 'DIGITOVER' && (!Number.isInteger(barrier) || barrier < 0 || barrier > 8)) return 'Over barrier must be a whole digit from 0 to 8.';
+  if (contractType === 'DIGITUNDER' && (!Number.isInteger(barrier) || barrier < 1 || barrier > 9)) return 'Under barrier must be a whole digit from 1 to 9.';
+  return null;
+}
 function executeOptions(accessToken, account, input) {
     return new Promise(async (resolve, reject) => {
+      const barrierError = derivDigitBarrierError(input.contractType, input.barrier);
+      if (barrierError) return reject(new Error(barrierError));
       let ws;
       let timer;
       let finished = false;
@@ -417,7 +424,7 @@ app.get('/api/account', async (req, res) => { const session = await requireSessi
       if (!Number.isFinite(amount) || amount < 0.35 || amount > 10000) return res.status(400).json({ error: 'Stake must be between 0.35 and 10,000.' });
       if (!Number.isInteger(duration) || duration < 1 || duration > 365) return res.status(400).json({ error: 'Duration must be a whole number from 1 to 365.' });
       const needsBarrier = contractType === 'DIGITOVER' || contractType === 'DIGITUNDER';
-      if (needsBarrier && (!Number.isInteger(barrier) || barrier < 0 || barrier > 9)) return res.status(400).json({ error: 'Digit Over/Under requires a barrier from 0 to 9.' });
+      const barrierError = derivDigitBarrierError(contractType, barrier); if (barrierError) return res.status(400).json({ error: barrierError });
       try {
         await accountsFor(session);
         const account = selectedAccount(session, mode);
@@ -472,7 +479,7 @@ app.get('/api/account', async (req, res) => { const session = await requireSessi
     if (!validContract) return res.status(400).json({ error: 'Unsupported Deriv contract type "' + contractType.slice(0, 40) + '". Choose CALL, PUT, DIGITOVER, DIGITUNDER, DIGITEVEN, or DIGITODD.' });
     if (!Number.isFinite(amount) || amount < 0.35 || amount > 10000) return res.status(400).json({ error: 'Stake must be between 0.35 and 10,000.' });
     if (!Number.isInteger(duration) || duration < 1 || duration > 365) return res.status(400).json({ error: 'Duration must be a whole number from 1 to 365.' });
-    if (['DIGITOVER', 'DIGITUNDER'].includes(contractType) && (!Number.isInteger(barrier) || barrier < 0 || barrier > 9)) return res.status(400).json({ error: 'Digit Over/Under requires a barrier from 0 to 9.' });
+    const barrierError = derivDigitBarrierError(contractType, barrier); if (barrierError) return res.status(400).json({ error: barrierError });
     try {
       const accounts = await accountsFor(session);
       const account = selectedAccount(session, mode);
@@ -534,7 +541,7 @@ app.post('/api/premium-bots/execute', async (req, res) => {
   if (!Number.isFinite(amount) || amount < 0.35 || amount > 10000) return res.status(400).json({ error: 'Stake must be between 0.35 and 10,000.' });
   if (!Number.isInteger(duration) || duration < 1 || duration > 365) return res.status(400).json({ error: 'Duration must be a whole number from 1 to 365.' });
   const needsBarrier = contractType === 'DIGITOVER' || contractType === 'DIGITUNDER';
-  if (needsBarrier && (!Number.isInteger(barrier) || barrier < 0 || barrier > 9)) return res.status(400).json({ error: 'Digit Over/Under requires a barrier from 0 to 9.' });
+  const barrierError = derivDigitBarrierError(contractType, barrier); if (barrierError) return res.status(400).json({ error: barrierError });
   const requestedMode = req.body?.mode;
   const mode = requestedMode === 'real' || requestedMode === 'demo' ? requestedMode : session.activeMode === 'real' ? 'real' : 'demo';
   try {
