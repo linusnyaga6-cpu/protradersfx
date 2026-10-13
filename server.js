@@ -13,8 +13,8 @@ const PORT = Number(process.env.PORT || 3000);
 const BASE_URL = (process.env.BASE_URL || `http://localhost:${PORT}`).replace(/\/$/, '');
 const PUBLIC_DIR = __dirname;
 const TRADE_DIR = path.join(PUBLIC_DIR, 'trade');
-const BUNDLED_APP_ASSET = fs.readFileSync(path.join(__dirname, 'assets/index-CQBGKLTj.js'), 'utf8');
-const BUNDLED_STYLE_ASSET = fs.readFileSync(path.join(__dirname, 'assets/index-BqzBJgO4.css'), 'utf8');
+const BUNDLED_APP_ASSET = fs.readFileSync(path.join(__dirname, 'assets/index-uMDRSu-e.js'), 'utf8');
+const BUNDLED_STYLE_ASSET = fs.readFileSync(path.join(__dirname, 'assets/index-Cu5S4abW.css'), 'utf8');
 const CANONICAL_ROBOTS = [
   'User-agent: *',
   'Allow: /',
@@ -347,7 +347,11 @@ app.post('/api/deriv/execute', async (req, res) => {
     const barrier = req.body?.barrier === undefined || req.body?.barrier === '' ? undefined : Number(req.body.barrier);
     const validSymbol = /^(1HZ\d+V|R_\d+|frx[A-Z]{6})$/.test(symbol);
     const validContract = ['CALL', 'PUT', 'DIGITOVER', 'DIGITUNDER', 'DIGITEVEN', 'DIGITODD'].includes(contractType);
-    if (!validSymbol || !validContract || !Number.isFinite(amount) || amount < 0.35 || amount > 10000 || !Number.isFinite(duration) || duration < 1 || duration > 365 || (['DIGITOVER', 'DIGITUNDER'].includes(contractType) && (!Number.isInteger(barrier) || barrier < 0 || barrier > 9))) return res.status(400).json({ error: 'Invalid Deriv execution parameters.' });
+    if (!validSymbol) return res.status(400).json({ error: 'Choose a valid Deriv market symbol.' });
+    if (!validContract) return res.status(400).json({ error: 'Unsupported Deriv contract type "' + contractType.slice(0, 40) + '". Choose CALL, PUT, DIGITOVER, DIGITUNDER, DIGITEVEN, or DIGITODD.' });
+    if (!Number.isFinite(amount) || amount < 0.35 || amount > 10000) return res.status(400).json({ error: 'Stake must be between 0.35 and 10,000.' });
+    if (!Number.isInteger(duration) || duration < 1 || duration > 365) return res.status(400).json({ error: 'Duration must be a whole number from 1 to 365.' });
+    if (['DIGITOVER', 'DIGITUNDER'].includes(contractType) && (!Number.isInteger(barrier) || barrier < 0 || barrier > 9)) return res.status(400).json({ error: 'Digit Over/Under requires a barrier from 0 to 9.' });
     try {
       const accounts = await accountsFor(session);
       const account = selectedAccount(session, mode);
@@ -373,15 +377,71 @@ app.post('/api/deriv/execute', async (req, res) => {
       res.status(error.code === 'ACCOUNT_MODE_UNAVAILABLE' ? 409 : 502).json({ error: error.code || 'Trade execution failed', message: error.message });
     }
     });
-    app.post('/api/trades', async (req, res) => { const session = getSession(req); if (!session) return res.status(401).json({ error: 'Not authenticated' }); const mode = req.body?.mode === 'real' ? 'real' : 'demo'; const symbol = String(req.body?.symbol || 'R_100'); const type = ['CALL', 'PUT'].includes(req.body?.contract_type) ? req.body.contract_type : null; const stake = Number(req.body?.stake); const duration = Number(req.body?.duration); if (!type || !/^([A-Z0-9_]+|frx[A-Z]+)$/.test(symbol) || !Number.isFinite(stake) || stake <= 0 || !Number.isFinite(duration) || duration < 1 || duration > 3600) return res.status(400).json({ error: 'Invalid trade parameters' }); try { const accounts = await accountsFor(session); const selected = selectedAccount(session, mode); if (!selected) { const error = new Error('No ' + mode + ' account is linked to this Deriv login'); error.code = 'ACCOUNT_MODE_UNAVAILABLE'; throw error; } const proposal = await openOptions(session.accessToken, selected, { proposal: 1, amount: stake, basis: 'stake', contract_type: type, currency: selected.currency || 'USD', duration, duration_unit: 't', underlying_symbol: symbol }); if (!proposal.proposal?.id) return res.status(502).json({ error: 'Deriv did not return a proposal' }); const buy = await openOptions(session.accessToken, selected, { buy: proposal.proposal.id, price: stake }); session.activeMode = mode; saveSession(res, session); res.json({ ok: true, mode, contractType: type, message: mode.toUpperCase() + ' ' + (type === 'CALL' ? 'RISE' : 'FALL') + ' opened on ' + symbol + '. Contract ' + (buy.buy?.contract_id || 'created') + '.', contractId: buy.buy?.contract_id || null }); } catch (error) { res.status(error.code === 'ACCOUNT_MODE_UNAVAILABLE' ? 409 : 502).json({ error: error.code || 'Trade request failed', message: error.message }); } });
+    app.get('/api/live-trading/eligibility', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ eligible: false, reason: 'Connect a Deriv account to check live-trading booking eligibility.' });
+  try {
+    const accounts = await accountsFor(session);
+    const realAccounts = accounts.filter((account) => !accountIsDemo(account));
+    const hasUsdAccount = realAccounts.some((account) => String(account.currency || '').toUpperCase() === 'USD');
+    const eligible = realAccounts.some((account) => String(account.currency || '').toUpperCase() === 'USD' && Number.isFinite(Number(account.balance)) && Number(account.balance) > 100);
+    return res.json({ eligible, reason: eligible ? 'Verified real USD account above $100.' : !realAccounts.length ? 'A real Deriv account is required for live-trading booking.' : hasUsdAccount ? 'The real USD account balance must be above $100.' : 'A USD-denominated real account is required for live-trading booking.' });
+  } catch (error) {
+    return res.status(502).json({ eligible: false, error: error.code || 'ACCOUNT_DATA_UNAVAILABLE', reason: error.message || 'Unable to verify real-account eligibility.' });
+  }
+});
+
+app.post('/api/premium-bots/execute', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Not authenticated' });
+  if (req.body?.confirm !== true) return res.status(400).json({ error: 'Start the bot before submitting an order.' });
+  const botId = Number(req.body?.botId);
+  if (!Number.isInteger(botId) || botId < 1 || botId > 10) return res.status(400).json({ error: 'Choose a valid Deriv Pro Bot.' });
+  const symbol = String(req.body?.symbol || '');
+  const contractType = String(req.body?.contractType || '');
+  const amount = Number(req.body?.amount);
+  const duration = Number(req.body?.duration);
+  const durationUnit = ['t', 's', 'm'].includes(req.body?.durationUnit) ? req.body.durationUnit : 't';
+  const barrier = req.body?.barrier === undefined || req.body?.barrier === '' ? undefined : Number(req.body.barrier);
+  const validSymbol = /^(1HZ\d+V|R_\d+|frx[A-Z]{6})$/.test(symbol);
+  const validContract = ['CALL', 'PUT', 'DIGITOVER', 'DIGITUNDER', 'DIGITEVEN', 'DIGITODD'].includes(contractType);
+  if (!validSymbol) return res.status(400).json({ error: 'Choose a valid Deriv market symbol.' });
+  if (!validContract) return res.status(400).json({ error: 'Unsupported Deriv contract type "' + contractType.slice(0, 40) + '". Choose CALL, PUT, DIGITOVER, DIGITUNDER, DIGITEVEN, or DIGITODD.' });
+  const allowedContracts = { 1: ['DIGITEVEN', 'DIGITODD'], 2: ['DIGITEVEN', 'DIGITODD'], 3: ['DIGITEVEN', 'DIGITODD'], 4: ['DIGITEVEN', 'DIGITODD'], 5: ['DIGITOVER'], 6: ['DIGITUNDER'], 7: ['CALL', 'PUT'], 8: ['CALL', 'PUT'], 9: ['CALL', 'PUT'], 10: ['DIGITEVEN', 'DIGITODD'] };
+  if (!allowedContracts[botId].includes(contractType)) return res.status(400).json({ error: 'This bot cannot place that contract type.' });
+  if (!Number.isFinite(amount) || amount < 0.35 || amount > 10000) return res.status(400).json({ error: 'Stake must be between 0.35 and 10,000.' });
+  if (!Number.isInteger(duration) || duration < 1 || duration > 365) return res.status(400).json({ error: 'Duration must be a whole number from 1 to 365.' });
+  const needsBarrier = contractType === 'DIGITOVER' || contractType === 'DIGITUNDER';
+  if (needsBarrier && (!Number.isInteger(barrier) || barrier < 0 || barrier > 9)) return res.status(400).json({ error: 'Digit Over/Under requires a barrier from 0 to 9.' });
+  const requestedMode = req.body?.mode;
+  const mode = requestedMode === 'real' || requestedMode === 'demo' ? requestedMode : session.activeMode === 'real' ? 'real' : 'demo';
+  try {
+    await accountsFor(session);
+    const account = selectedAccount(session, mode);
+    if (!account) return res.status(409).json({ error: 'No ' + mode + ' account is linked to this Deriv login.' });
+    const execution = await executeOptions(session.accessToken, account, { symbol, contractType, amount, duration, durationUnit, currency: account.currency || 'USD', barrier: needsBarrier ? barrier : undefined });
+    const { proposal, buy, contract } = execution;
+    const finite = (value) => value === null || value === undefined || value === '' || !Number.isFinite(Number(value)) ? null : Number(value);
+    const buyPrice = finite(contract.buy_price) ?? finite(buy.buy_price) ?? finite(proposal.ask_price) ?? amount;
+    const payout = finite(contract.payout);
+    const profit = finite(contract.profit) ?? (payout !== null ? payout - buyPrice : contract.status === 'lost' ? -Math.abs(buyPrice) : null);
+    const result = contract.status === 'won' || (profit !== null && profit > 0) ? 'won' : contract.status === 'lost' || (profit !== null && profit < 0) ? 'lost' : 'pending';
+    session.activeMode = mode;
+    saveSession(res, session);
+    return res.json({ execution: 'live', trade: { botId, contractId: buy.contract_id || null, transactionId: buy.transaction_id || null, type: contractType, contractType, barrier: needsBarrier ? barrier : undefined, stake: amount, buyPrice, currency: proposal.currency || account.currency || 'USD', mode, result, status: contract.status || null, profit, payout, entrySpot: contract.entry_spot ?? contract.entry_tick ?? null, exitSpot: contract.exit_spot ?? contract.exit_tick ?? null } });
+  } catch (error) {
+    return res.status(error.code === 'ACCOUNT_MODE_UNAVAILABLE' ? 409 : 502).json({ error: error.message || 'Unable to execute this Deriv Pro Bot trade.' });
+  }
+});
+app.post('/api/trades', async (req, res) => { const session = getSession(req); if (!session) return res.status(401).json({ error: 'Not authenticated' }); const mode = req.body?.mode === 'real' ? 'real' : 'demo'; const symbol = String(req.body?.symbol || 'R_100'); const type = ['CALL', 'PUT'].includes(req.body?.contract_type) ? req.body.contract_type : null; const stake = Number(req.body?.stake); const duration = Number(req.body?.duration); if (!type || !/^([A-Z0-9_]+|frx[A-Z]+)$/.test(symbol) || !Number.isFinite(stake) || stake <= 0 || !Number.isFinite(duration) || duration < 1 || duration > 3600) return res.status(400).json({ error: 'Invalid trade parameters' }); try { const accounts = await accountsFor(session); const selected = selectedAccount(session, mode); if (!selected) { const error = new Error('No ' + mode + ' account is linked to this Deriv login'); error.code = 'ACCOUNT_MODE_UNAVAILABLE'; throw error; } const proposal = await openOptions(session.accessToken, selected, { proposal: 1, amount: stake, basis: 'stake', contract_type: type, currency: selected.currency || 'USD', duration, duration_unit: 't', underlying_symbol: symbol }); if (!proposal.proposal?.id) return res.status(502).json({ error: 'Deriv did not return a proposal' }); const buy = await openOptions(session.accessToken, selected, { buy: proposal.proposal.id, price: stake }); session.activeMode = mode; saveSession(res, session); res.json({ ok: true, mode, contractType: type, message: mode.toUpperCase() + ' ' + (type === 'CALL' ? 'RISE' : 'FALL') + ' opened on ' + symbol + '. Contract ' + (buy.buy?.contract_id || 'created') + '.', contractId: buy.buy?.contract_id || null }); } catch (error) { res.status(error.code === 'ACCOUNT_MODE_UNAVAILABLE' ? 409 : 502).json({ error: error.code || 'Trade request failed', message: error.message }); } });
 app.post('/api/bot', async (req, res) => { const session = getSession(req); if (!session) return res.status(401).json({ error: 'Not authenticated' }); const action = req.body?.action === 'start' ? 'start' : 'stop'; res.json({ ok: true, message: action === 'start' ? 'Free bot interface started in controlled mode. Live bot execution remains disabled until the bot adapter is separately tested.' : 'Free bot stopped.', execution: 'interface_only' }); });
 app.get('/api/preflight', (req, res) => res.json({ productionBaseUrl: BASE_URL, redirectUri: `${BASE_URL}/oauth/callback`, https: BASE_URL.startsWith('https://'), oauthClientConfigured: Boolean(DERIV_CLIENT_ID), partnerTrackingConfigured: Boolean(DERIV_AFFILIATE_TOKEN), sessionSecretConfigured: Boolean(process.env.SESSION_SECRET), readyForControlledLiveTest: Boolean(BASE_URL.startsWith('https://') && DERIV_CLIENT_ID && DERIV_AFFILIATE_TOKEN && process.env.SESSION_SECRET) }));
 app.get('/health', (req, res) => res.json({ ok: true, service: 'protraders-fx', time: new Date().toISOString() }));
 app.get('/robots.txt', (req, res) => res.type('text/plain').send(CANONICAL_ROBOTS));
 app.get('/sitemap.xml', (req, res) => res.type('application/xml').send(CANONICAL_SITEMAP));
 app.get('/app-config.js', (req, res) => res.type('application/javascript').send(`window.PROTRADERS_PUBLIC_APP_ID=${JSON.stringify(DERIV_PUBLIC_APP_ID)};`));
-app.get('/assets/index-CQBGKLTj.js', (req, res) => res.type('application/javascript').send(BUNDLED_APP_ASSET));
-app.get('/assets/index-BqzBJgO4.css', (req, res) => res.type('text/css').send(BUNDLED_STYLE_ASSET));
+app.get('/assets/index-uMDRSu-e.js', (req, res) => res.type('application/javascript').send(BUNDLED_APP_ASSET));
+app.get('/assets/index-Cu5S4abW.css', (req, res) => res.type('text/css').send(BUNDLED_STYLE_ASSET));
 app.get('/style.css', (req, res) => res.type('text/css').send(FRONTEND.style));
 app.get('/app.js', (req, res) => res.type('application/javascript').send(FRONTEND.app));
 app.get('/logo.svg', (req, res) => res.type('image/svg+xml').send(FRONTEND.logo));
