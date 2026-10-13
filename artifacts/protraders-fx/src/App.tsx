@@ -1,10 +1,20 @@
-import { type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ErrorBoundary } from '@/components/error-boundary';
+import DerivProBotsView from './components/DerivProBotsView';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import { LegacyAuthProvider, useAppAuth } from '@/auth';
+import {
+  executeDerivTrade,
+  formatDerivContractType,
+  isDerivContractType,
+  mapManualContractToDeriv,
+  type DerivContractType,
+  type ManualContractSide,
+  type ManualContractType,
+} from './lib/deriv-contracts';
 import {
   ArrowUpRight,
   BarChart3,
@@ -38,8 +48,12 @@ import {
 
 const queryClient = new QueryClient();
 const DERIV_REFERRAL_URL = 'https://t.deriv.link?t=SSJBZ9FQTVP8';
+const SUPPORT_PHONE_DISPLAY = '0793614024';
+const SUPPORT_PHONE_LINK = 'tel:+254793614024';
+const WHATSAPP_SUPPORT_URL = 'https://chat.whatsapp.com/CSjckmOKEZgBGgAoKacPNt';
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
 const PUBLIC_MARKET_WS = 'wss://api.derivws.com/trading/v1/options/ws/public';
+const PUBLIC_TICK_BUFFER = 1000;
 
 type MarketDefinition = {
   label: string;
@@ -62,6 +76,8 @@ type ExecutedTrade = {
   type?: string;
   contractType?: string;
   barrier?: number;
+  marketName?: string;
+  mode?: string;
   buyPrice?: number;
   currency?: string;
   result?: 'won' | 'lost' | 'pending';
@@ -89,7 +105,7 @@ function formatSignedProfit(profit: number | string | null | undefined) {
   const value = finiteNumber(profit);
   if (value === null) return '—';
   if (value === 0) return 'FLAT';
-  return `${value >= 0 ? '+' : ''}${value.toFixed(2)}`;
+  return value > 0 ? `+${Math.abs(value).toFixed(2)}` : `-${Math.abs(value).toFixed(2)}`;
 }
 
 function resolvedTradeProfit(trade: ExecutedTrade) {
@@ -99,6 +115,11 @@ function resolvedTradeProfit(trade: ExecutedTrade) {
   const buyPrice = finiteNumber(trade.buyPrice);
   if (payout !== null && buyPrice !== null) {
     return payout - buyPrice;
+  }
+  const settledStatus = trade.result ?? trade.status;
+  if (settledStatus === 'lost') {
+    const lostAmount = buyPrice ?? finiteNumber(trade.stake);
+    return lostAmount === null ? null : -Math.abs(lostAmount);
   }
   return null;
 }
@@ -130,17 +151,11 @@ function formatTradePoint(value: number | string | null | undefined) {
 
 function tradeContractLabel(trade: ExecutedTrade) {
   const contractType = trade.contractType ?? trade.type;
-  if (contractType === 'CALL' || contractType === 'RISE') return 'RISE';
-  if (contractType === 'PUT' || contractType === 'FALL') return 'FALL';
-  if (contractType === 'DIGITOVER') return `OVER${trade.barrier === undefined ? '' : ` ${trade.barrier}`}`;
-  if (contractType === 'DIGITUNDER') return `UNDER${trade.barrier === undefined ? '' : ` ${trade.barrier}`}`;
-  if (contractType === 'DIGITEVEN') return 'EVEN';
-  if (contractType === 'DIGITODD') return 'ODD';
-  return contractType ?? 'CONTRACT';
+  return formatDerivContractType(contractType, trade.barrier);
 }
 
 function TradeResultDialog({ result, onClose }: { result: BatchResult | null; onClose: () => void }) {
-  const [activeTab, setActiveTab] = useState<'summary' | 'transactions' | 'entry-exit'>('summary');
+  const [activeTab, setActiveTab] = useState<'summary' | 'transactions' | 'journal'>('summary');
   useEffect(() => {
     if (result) setActiveTab('summary');
   }, [result]);
@@ -148,6 +163,9 @@ function TradeResultDialog({ result, onClose }: { result: BatchResult | null; on
   const resultTone = result.profit < 0 ? 'is-loss' : result.profit > 0 ? 'is-win' : 'is-flat';
   const tradeResults = result.tradeResults ?? [];
   const latestTrade = tradeResults.at(-1);
+  const totalPayout = tradeResults.length && tradeResults.every((trade) => finiteNumber(trade.payout) !== null)
+    ? tradeResults.reduce((total, trade) => total + (finiteNumber(trade.payout) ?? 0), 0)
+    : null;
   return (
     <div className="bot-result-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section className={`bot-result-dialog ai-batch-result ${resultTone}`} role="dialog" aria-modal="true" aria-label="Trade result">
@@ -158,7 +176,7 @@ function TradeResultDialog({ result, onClose }: { result: BatchResult | null; on
           {([
             ['summary', 'SUMMARY'],
             ['transactions', 'TRANSACTIONS'],
-            ['entry-exit', 'ENTRY / EXIT'],
+            ['journal', 'JOURNAL'],
           ] as const).map(([tab, label]) => (
             <button key={tab} type="button" role="tab" aria-selected={activeTab === tab} className={activeTab === tab ? 'is-active' : ''} onClick={() => setActiveTab(tab)}>{label}</button>
           ))}
@@ -166,7 +184,8 @@ function TradeResultDialog({ result, onClose }: { result: BatchResult | null; on
         {activeTab === 'summary' && (
           <div className="ai-batch-result-summary">
             <div className="ai-batch-result-stats">
-              <span><small>PLACED AMOUNT</small><b>{result.amount.toFixed(2)} {result.currency}</b></span>
+              <span><small>TOTAL STAKE</small><b>{result.amount.toFixed(2)} {result.currency}</b></span>
+              <span><small>TOTAL PAYOUT</small><b>{totalPayout === null ? '—' : `${totalPayout.toFixed(2)} ${result.currency}`}</b></span>
               <span><small>TRANSACTIONS</small><b>{result.trades}</b></span>
             </div>
             <div className="ai-batch-result-points">
@@ -177,26 +196,30 @@ function TradeResultDialog({ result, onClose }: { result: BatchResult | null; on
         )}
         {activeTab === 'transactions' && (
           <div className="ai-batch-result-table" role="table" aria-label="Settled transactions">
-            <div className="ai-batch-result-table-row is-head" role="row"><span>TRADE</span><span>AMOUNT</span><span>P/L</span></div>
-            {tradeResults.length ? tradeResults.slice().reverse().map((trade, index) => (
-              <div className="ai-batch-result-table-row" role="row" key={`${trade.contractId ?? 'trade'}-${index}`}>
-                <span><b>#{tradeResults.length - index}</b><small>{tradeContractLabel(trade)}{trade.transactionId ? ` · TX ${trade.transactionId}` : ''}</small></span>
-                <span>{formatTradePoint(trade.stake ?? trade.buyPrice)} {trade.currency ?? result.currency}</span>
-                <b className={resolvedTradeProfit(trade) !== null && resolvedTradeProfit(trade)! < 0 ? 'is-loss' : 'is-win'}>{formatSignedProfit(resolvedTradeProfit(trade))}</b>
-              </div>
-            )) : <p className="ai-batch-result-empty">Settled transactions will appear here.</p>}
+            <div className="ai-batch-result-table-row is-head" role="row"><span>TYPE</span><span>ENTRY / EXIT SPOT</span><span>BUY PRICE AND P/L</span></div>
+            {tradeResults.length ? tradeResults.slice().reverse().map((trade, index) => {
+              const tradeProfit = resolvedTradeProfit(trade);
+              const tradeTone = tradeProfit === null ? 'is-flat' : tradeProfit < 0 ? 'is-loss' : 'is-win';
+              return (
+                <div className={`ai-batch-result-table-row ${tradeTone}`} role="row" key={`${trade.contractId ?? 'trade'}-${index}`}>
+                  <span><b>#{tradeResults.length - index}</b><small>{tradeContractLabel(trade)}{trade.marketName ? ` · ${trade.marketName}` : ''}{trade.mode ? ` · ${trade.mode}` : ''}{trade.transactionId ? ` · TX ${trade.transactionId}` : ''}</small></span>
+                  <span className="ai-batch-result-row-points"><b><i>ENTRY</i>{formatTradePoint(trade.entrySpot)}</b><b><i>EXIT</i>{formatTradePoint(trade.exitSpot)}</b></span>
+                  <span className="ai-batch-result-row-price"><b>{formatTradePoint(trade.buyPrice ?? trade.stake)} {trade.currency ?? result.currency}</b><strong className={tradeTone}>{formatSignedProfit(tradeProfit)}</strong></span>
+                </div>
+              );
+            }) : <p className="ai-batch-result-empty">Settled transactions will appear here.</p>}
           </div>
         )}
-        {activeTab === 'entry-exit' && (
-          <div className="ai-batch-result-table ai-batch-result-points-table" role="table" aria-label="Trade entry and exit points">
-            <div className="ai-batch-result-table-row is-head" role="row"><span>TRADE</span><span>ENTRY</span><span>EXIT</span></div>
+        {activeTab === 'journal' && (
+          <div className="ai-batch-result-table ai-batch-result-journal-table" role="table" aria-label="Trade journal">
+            <div className="ai-batch-result-table-row is-head" role="row"><span>TRADE</span><span>ENTRY / EXIT SPOT</span><span>BUY PRICE AND P/L</span></div>
             {tradeResults.length ? tradeResults.slice().reverse().map((trade, index) => (
               <div className="ai-batch-result-table-row" role="row" key={`${trade.contractId ?? 'points'}-${index}`}>
-                <span><b>#{tradeResults.length - index}</b><small>{tradeContractLabel(trade)}</small></span>
-                <strong>{formatTradePoint(trade.entrySpot)}</strong>
-                <strong>{formatTradePoint(trade.exitSpot)}</strong>
+                <span><b>#{tradeResults.length - index}</b><small>{tradeContractLabel(trade)}{trade.marketName ? ` · ${trade.marketName}` : ''} · {trade.status ?? trade.result ?? 'pending'}</small></span>
+                <span className="ai-batch-result-row-points"><b><i>ENTRY</i>{formatTradePoint(trade.entrySpot)}</b><b><i>EXIT</i>{formatTradePoint(trade.exitSpot)}</b></span>
+                <span className="ai-batch-result-row-price"><b>{formatTradePoint(trade.buyPrice ?? trade.stake)} {trade.currency ?? result.currency}</b><strong className={resolvedTradeProfit(trade) !== null && resolvedTradeProfit(trade)! < 0 ? 'is-loss' : resolvedTradeProfit(trade) !== null && resolvedTradeProfit(trade)! > 0 ? 'is-win' : 'is-flat'}>{formatSignedProfit(resolvedTradeProfit(trade))}</strong></span>
               </div>
-            )) : <p className="ai-batch-result-empty">Entry and exit points will appear after settlement.</p>}
+            )) : <p className="ai-batch-result-empty">Settled trades will appear in the journal.</p>}
           </div>
         )}
       </section>
@@ -206,7 +229,7 @@ function TradeResultDialog({ result, onClose }: { result: BatchResult | null; on
 
 function TradeFigureStrip({ trades, currency }: { trades: ExecutedTrade[]; currency: string }) {
   if (!trades.length) return null;
-  const placed = trades.reduce((total, trade) => total + (trade.stake ?? trade.buyPrice ?? 0), 0);
+  const placed = trades.reduce((total, trade) => total + (trade.buyPrice ?? trade.stake ?? 0), 0);
   const profit = totalTradeProfit(trades);
   const tone = profit === null ? 'is-flat' : profit < 0 ? 'is-loss' : profit > 0 ? 'is-win' : 'is-flat';
   return (
@@ -215,6 +238,112 @@ function TradeFigureStrip({ trades, currency }: { trades: ExecutedTrade[]; curre
       <span><small>PLACED</small><b>{placed.toFixed(2)} {currency}</b></span>
       <span><small>P/L</small><b>{formatSignedProfit(profit)}</b></span>
     </div>
+  );
+}
+
+type BotTransactionTab = 'Summary' | 'Transactions' | 'Journal';
+
+function BotTransactionPanel({
+  trades,
+  currency,
+  running,
+  activeTab,
+  onTabChange,
+  onViewDetail,
+  historyLabel = 'TRADE HISTORY',
+  sectionLabel = 'Bot transaction details',
+  runningLabel = 'Current bot run is active',
+  emptyMessage,
+}: {
+  trades: ExecutedTrade[];
+  currency: string;
+  running: boolean;
+  activeTab: BotTransactionTab;
+  onTabChange: (tab: BotTransactionTab) => void;
+  onViewDetail: () => void;
+  historyLabel?: string;
+  sectionLabel?: string;
+  runningLabel?: string;
+  emptyMessage?: string;
+}) {
+  const placed = trades.reduce((total, trade) => total + (trade.buyPrice ?? trade.stake ?? 0), 0);
+  const profit = totalTradeProfit(trades);
+  const totalPayout = trades.length && trades.every((trade) => finiteNumber(trade.payout) !== null)
+    ? trades.reduce((total, trade) => total + (finiteNumber(trade.payout) ?? 0), 0)
+    : null;
+  const latestTrade = trades.at(-1);
+
+  const downloadTransactions = () => {
+    if (!trades.length) return;
+    const escapeCsv = (value: string | number | null | undefined) => `"${String(value ?? '').replaceAll('"', '""')}"`;
+    const rows = [
+      ['Type', 'Market', 'Mode', 'Entry spot', 'Exit spot', 'Buy price', 'P/L', 'Currency'],
+      ...trades.map((trade) => [
+        tradeContractLabel(trade),
+        trade.marketName,
+        trade.mode,
+        formatTradePoint(trade.entrySpot),
+        formatTradePoint(trade.exitSpot),
+        formatTradePoint(trade.buyPrice ?? trade.stake),
+        formatSignedProfit(resolvedTradeProfit(trade)),
+        trade.currency ?? currency,
+      ]),
+    ];
+    const csv = rows.map((row) => row.map(escapeCsv).join(',')).join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'protraders-transactions.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <section id="free-bot-transactions" className="bot-transaction-panel" aria-label={sectionLabel}>
+      <header className="bot-transaction-heading">
+        <div><span>{historyLabel}</span><strong>Transactions</strong></div>
+        <div className="bot-transaction-actions">
+          <button type="button" onClick={downloadTransactions} disabled={!trades.length}>Download</button>
+          <button type="button" onClick={onViewDetail} disabled={!trades.length}>View Detail</button>
+        </div>
+      </header>
+      <nav className="bot-transaction-tabs" role="tablist" aria-label="Bot transaction views">
+        {(['Summary', 'Transactions', 'Journal'] as const).map((tab) => (
+          <button key={tab} type="button" role="tab" aria-selected={activeTab === tab} className={activeTab === tab ? 'is-active' : ''} onClick={() => onTabChange(tab)}>{tab}</button>
+        ))}
+      </nav>
+      {activeTab === 'Summary' && (
+        <div className="bot-transaction-summary">
+          <article><span>SETTLED TRADES</span><strong>{trades.length}</strong><small>{running ? runningLabel : 'Completed contracts'}</small></article>
+          <article><span>PLACED AMOUNT</span><strong>{placed.toFixed(2)} {currency}</strong><small>Total buy price</small></article>
+            <article><span>TOTAL PAYOUT</span><strong>{totalPayout === null ? '—' : `${totalPayout.toFixed(2)} ${currency}`}</strong><small>Reported payout values</small></article>
+          <article><span>P/L</span><strong className={profit !== null && profit < 0 ? 'is-loss' : 'is-win'}>{formatSignedProfit(profit)}</strong><small>Settled result</small></article>
+          <article><span>LAST ENTRY / EXIT</span><strong>{formatTradePoint(latestTrade?.entrySpot)} / {formatTradePoint(latestTrade?.exitSpot)}</strong><small>Latest settled contract</small></article>
+        </div>
+      )}
+      {activeTab === 'Transactions' && (
+        <div className="bot-transaction-table" role="table" aria-label="Bot settled transactions">
+          <div className="bot-transaction-row is-head" role="row"><span>TYPE</span><span>ENTRY / EXIT SPOT</span><span>BUY PRICE AND P/L</span></div>
+          {trades.length ? trades.slice().reverse().map((trade, index) => {
+            const tradeProfit = resolvedTradeProfit(trade);
+            return (
+              <div className="bot-transaction-row" role="row" key={`${trade.contractId ?? 'bot-trade'}-${index}`}>
+                <span><strong>{tradeContractLabel(trade)}</strong><small>{[`Trade ${trades.length - index}`, trade.marketName, trade.mode, trade.transactionId ? `TX ${trade.transactionId}` : ''].filter(Boolean).join(' · ')}</small></span>
+                <span className="bot-transaction-points"><b><i>ENTRY</i> {formatTradePoint(trade.entrySpot)}</b><b><i>EXIT</i> {formatTradePoint(trade.exitSpot)}</b></span>
+                <span className="bot-transaction-profit"><b>{formatTradePoint(trade.buyPrice ?? trade.stake)} {trade.currency ?? currency}</b><strong className={tradeProfit !== null && tradeProfit < 0 ? 'is-loss' : 'is-win'}>{formatSignedProfit(tradeProfit)}</strong></span>
+              </div>
+            );
+          }) : <p className="bot-transactions-empty">{emptyMessage ?? (running ? 'The current contract will appear here after it settles.' : 'Press Run Bot to create a transaction.')}</p>}
+        </div>
+      )}
+      {activeTab === 'Journal' && (
+        <div className="bot-transaction-journal">
+          {trades.length ? trades.slice().reverse().map((trade, index) => (
+            <div key={`${trade.contractId ?? 'journal-trade'}-${index}`}><strong>Trade {trades.length - index}</strong><span>{tradeContractLabel(trade)}{trade.marketName ? ` on ${trade.marketName}` : ''}{trade.mode ? ` (${trade.mode})` : ''} settled {trade.status ?? trade.result ?? 'pending'} at {formatTradePoint(trade.exitSpot)}.</span></div>
+          )) : <p className="bot-transactions-empty">No journal entries yet.</p>}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -345,7 +474,7 @@ function usePublicMarketBoard() {
   });
   useEffect(() => {
     try {
-      const compact = Object.fromEntries(Object.entries(quotes).map(([symbol, quote]) => [symbol, { ...quote, ticks: quote.ticks.slice(-120) }]));
+       const compact = Object.fromEntries(Object.entries(quotes).map(([symbol, quote]) => [symbol, { ...quote, ticks: quote.ticks.slice(-PUBLIC_TICK_BUFFER) }]));
       window.localStorage.setItem(MARKET_CACHE_KEY, JSON.stringify(compact));
     } catch {
       // Storage is a convenience cache; the live stream remains the source of truth.
@@ -367,7 +496,7 @@ function usePublicMarketBoard() {
       socket = new WebSocket(PUBLIC_MARKET_WS);
       socket.onopen = () => {
         liveSymbols.forEach((symbol) => {
-          socket?.send(JSON.stringify({ ticks_history: symbol, start: 0, end: 'latest', count: 120 }));
+           socket?.send(JSON.stringify({ ticks_history: symbol, start: 0, end: 'latest', count: PUBLIC_TICK_BUFFER }));
           socket?.send(JSON.stringify({ ticks: symbol, subscribe: 1 }));
         });
       };
@@ -389,7 +518,7 @@ function usePublicMarketBoard() {
                 price: prices.at(-1) ?? null,
                 previousPrice: prices.at(-2) ?? prices.at(-1) ?? null,
                 pipSize: message.tick?.pip_size ?? (historySymbol.startsWith('frx') ? 5 : 2),
-                ticks: prices.slice(-120),
+                 ticks: prices.slice(-PUBLIC_TICK_BUFFER),
                 lastTickAt: message.history.times?.at(-1) ?? null,
               });
             }
@@ -418,7 +547,7 @@ function usePublicMarketBoard() {
                 price: quote,
                 previousPrice: previous[symbol].price ?? previous[symbol].previousPrice,
                 pipSize: message.tick?.pip_size ?? 2,
-                ticks: [...previous[symbol].ticks.slice(-59), quote],
+                 ticks: [...previous[symbol].ticks.slice(-(PUBLIC_TICK_BUFFER - 1)), quote],
                 lastTickAt: Date.now(),
               },
             };
@@ -473,6 +602,26 @@ type DigitDistribution = {
   oddPercentage: number | null;
 };
 
+type DcircleTradeSetup = {
+  contractType: ManualContractType;
+  side: ManualContractSide;
+  stake: string;
+  durationTicks: string;
+  barrier: string;
+};
+
+type DcircleTradeContextValue = {
+  activeMarket: string;
+  setActiveMarket: (market: string) => void;
+  accountMode: 'DEMO' | 'REAL';
+  currency: string;
+  defaultSetup: DcircleTradeSetup;
+  tradeStatus: string;
+  onTradeMarket: (definition: MarketDefinition, setup: DcircleTradeSetup) => Promise<boolean>;
+};
+
+const DcircleTradeContext = createContext<DcircleTradeContextValue | null>(null);
+
 function getDigitDistribution(quote?: MarketQuote): DigitDistribution {
   const pipSize = quote?.pipSize ?? 2;
   const recentTicks = quote?.ticks.slice(-100) ?? [];
@@ -495,6 +644,35 @@ function getDigitDistribution(quote?: MarketQuote): DigitDistribution {
   };
 }
 
+type OverTwoScannerResult = {
+  definition: MarketDefinition;
+  quote?: MarketQuote;
+  digits: number[];
+  counts: number[];
+  percentages: number[];
+  sampleSize: number;
+  qualifies: boolean;
+  score: number;
+};
+
+function getQuoteDigits(quote: MarketQuote | undefined, lookback: number) {
+  const pipSize = quote?.pipSize ?? 2;
+  return (quote?.ticks.slice(-lookback) ?? [])
+    .map((tick) => Number(formatMarketPrice(tick, pipSize).replace(/\D/g, '').slice(-1)))
+    .filter((digit) => Number.isInteger(digit) && digit >= 0 && digit <= 9);
+}
+
+function getOverTwoScannerResult(definition: MarketDefinition, quote: MarketQuote | undefined, lookback: number, maxPercentage: number): OverTwoScannerResult {
+  const digits = getQuoteDigits(quote, lookback);
+  const counts = Array.from({ length: 10 }, () => 0);
+  digits.forEach((digit) => { counts[digit] += 1; });
+  const sampleSize = digits.length;
+  const percentages = counts.map((count) => sampleSize ? (count / sampleSize) * 100 : 0);
+  const qualifies = sampleSize >= lookback && [0, 1, 2].every((digit) => percentages[digit] < maxPercentage);
+  const score = Math.max(percentages[0] ?? 100, percentages[1] ?? 100, percentages[2] ?? 100);
+  return { definition, quote, digits, counts, percentages, sampleSize, qualifies, score };
+}
+
 type MarketAiResult = {
   definition: MarketDefinition;
   quote?: MarketQuote;
@@ -505,7 +683,7 @@ type BulkScanResult = {
   definition: MarketDefinition;
   quote: MarketQuote;
   side: 'Even' | 'Odd' | 'Rise' | 'Fall' | 'Over' | 'Under';
-  contractType: 'DIGITEVEN' | 'DIGITODD' | 'CALL' | 'PUT' | 'DIGITOVER' | 'DIGITUNDER';
+  contractType: DerivContractType;
   confidence: number;
   sampleSize: number;
   rationale: string;
@@ -572,7 +750,7 @@ function getFloatingScanResult(definition: MarketDefinition, quote?: MarketQuote
   return { signal, volatilityScore, sampleSize, recommendations, bestRecommendation };
 }
 
-function FloatingMarketAI({ marketQuotes, draggable, accountMode, currency, onTradeSettled }: { marketQuotes: Record<string, MarketQuote>; draggable: boolean; accountMode: 'DEMO' | 'REAL'; currency: string; onTradeSettled: () => Promise<void> }) {
+ function FloatingMarketAI({ marketQuotes, draggable, accountMode, currency, onTradeSettled }: { marketQuotes: Record<string, MarketQuote>; draggable: boolean; accountMode: 'DEMO' | 'REAL'; currency: string; onTradeSettled: () => Promise<void> }) {
   const [open, setOpen] = useState(false);
   const [scanState, setScanState] = useState<'idle' | 'scanning' | 'complete'>('idle');
   const [executionState, setExecutionState] = useState<'idle' | 'executing'>('idle');
@@ -643,7 +821,7 @@ function FloatingMarketAI({ marketQuotes, draggable, accountMode, currency, onTr
     setExecutionState('executing');
     setBatchResult(null);
     setTrades([]);
-    setExecutionStatus(`Executing ${requestedRuns} ${recommendation.label} trade${requestedRuns === 1 ? '' : 's'} on ${result.signal.definition.name}…`);
+    setExecutionStatus(`Executing ${requestedRuns} ${formatDerivContractType(recommendation.contractType, recommendation.barrier)} trade${requestedRuns === 1 ? '' : 's'} on ${result.signal.definition.name}…`);
     let cumulativeProfit = 0;
     let completed = 0;
     let stopReason = '';
@@ -658,29 +836,26 @@ function FloatingMarketAI({ marketQuotes, draggable, accountMode, currency, onTr
       }
       try {
         const tradeAmount = nextMartingaleStake(amount, martingaleMultiplier, consecutiveLosses);
-        const response = await fetch('/api/deriv/execute', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            symbol: result.signal.definition.symbol,
-            contractType: recommendation.contractType,
-            amount: tradeAmount,
-            duration: durationTicks,
-            durationUnit: 't',
-            currency,
-            barrier: recommendation.barrier,
-            mode: accountMode.toLowerCase(),
-            confirm: true,
-          }),
+        const rawTrade = await executeDerivTrade<ExecutedTrade>({
+          symbol: result.signal.definition.symbol,
+          contractType: recommendation.contractType,
+          amount: tradeAmount,
+          duration: durationTicks,
+          durationUnit: 't',
+          currency,
+          barrier: recommendation.barrier,
+          mode: accountMode === 'REAL' ? 'real' : 'demo',
         });
-        const payload = await response.json() as { error?: string; message?: string; trade?: ExecutedTrade };
-        if (!response.ok || !payload.trade) throw new Error(payload.message ?? payload.error ?? 'Deriv did not execute the contract.');
-        const trade = normalizeExecutedTrade(payload.trade);
+        const trade: ExecutedTrade = {
+          ...normalizeExecutedTrade(rawTrade),
+          marketName: result.signal.definition.name,
+          mode: accountMode,
+        };
         const exactProfit = resolvedTradeProfit(trade);
         if (exactProfit === null) throw new Error('Deriv did not return an exact settled P/L.');
         completed += 1;
         cumulativeProfit += exactProfit;
-        totalPlaced += tradeAmount;
+        totalPlaced += trade.buyPrice ?? trade.stake ?? tradeAmount;
         consecutiveLosses = exactProfit < 0 ? consecutiveLosses + 1 : 0;
         settledTrades.push(trade);
         setTrades((current) => [...current, trade]);
@@ -830,6 +1005,18 @@ function FloatingMarketAI({ marketQuotes, draggable, accountMode, currency, onTr
   );
 }
 
+function ManualTraderLaunchScreen() {
+  return (
+        <section className="manual-launch-screen" aria-label="Manual Trader loading">
+      <div className="manual-launch-content">
+        <div className="manual-launch-mark"><BarChart3 size={34} /></div>
+        <h1>DTRADER</h1>
+        <p>Clean entries beat busy charts.</p>
+      </div>
+    </section>
+  );
+}
+
 function Home() {
   const { isLoaded, isSignedIn, user, activeMode, balance, currency, refreshAccount, switchMode } = useAppAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -843,7 +1030,12 @@ function Home() {
   const [manualBarrier, setManualBarrier] = useState('4');
   const [reviewState, setReviewState] = useState('');
   const [manualTradeResult, setManualTradeResult] = useState<BatchResult | null>(null);
-  const [freeBotToOpen, setFreeBotToOpen] = useState<'diagnosis' | 'recovery' | 'margic' | null>(null);
+  const [manualHistoryByAccount, setManualHistoryByAccount] = useState<Record<string, ExecutedTrade[]>>({});
+  const [manualTransactionTab, setManualTransactionTab] = useState<BotTransactionTab>('Transactions');
+  const manualHistoryKey = `${accountMode}:${currency}`;
+  const manualTradeHistory = manualHistoryByAccount[manualHistoryKey] ?? [];
+  const [freeBotToOpen, setFreeBotToOpen] = useState<'diagnosis' | 'recovery' | 'scanner1' | 'scanner2' | null>(null);
+  const [manualTraderLoading, setManualTraderLoading] = useState(true);
   const [activeTool, setActiveTool] = useState(() => {
     const view = new URLSearchParams(window.location.search).get('view');
     const viewLabels: Record<string, string> = {
@@ -852,7 +1044,8 @@ function Home() {
       'volt-ai': 'Volt AI',
       'auto-ai': 'Auto AI',
       'free-bots': 'Free Bots',
-      'premium-ai-bots': 'Premium AI Bots',
+      'premium-ai-bots': 'Deriv Pro Bots',
+      'deriv-pro-bots': 'Deriv Pro Bots',
       'quick-bot': 'Quick Bot',
       'signal-ai': 'Signal AI',
       'manual-trader': 'Manual Trader',
@@ -865,7 +1058,7 @@ function Home() {
     return (view && viewLabels[view]) || 'Manual Trader';
   });
   const terminalMainRef = useRef<HTMLElement>(null);
-  const openTool = (tool: string, botId?: 'diagnosis' | 'recovery' | 'margic') => {
+  const openTool = (tool: string, botId?: 'diagnosis' | 'recovery' | 'scanner1' | 'scanner2') => {
     setFreeBotToOpen(tool === 'Free Bots' ? botId ?? null : null);
     setActiveTool(tool);
   };
@@ -879,39 +1072,107 @@ function Home() {
   useEffect(() => {
     setAccountMode(activeMode === 'real' ? 'REAL' : 'DEMO');
   }, [activeMode]);
+  useEffect(() => {
+    if (!isSignedIn) {
+      setManualHistoryByAccount({});
+      setManualTradeResult(null);
+    }
+  }, [isSignedIn]);
+  useEffect(() => {
+    if (activeTool !== 'Manual Trader') {
+      setManualTraderLoading(false);
+      return;
+    }
+    setManualTraderLoading(true);
+    const timer = window.setTimeout(() => setManualTraderLoading(false), 850);
+    return () => window.clearTimeout(timer);
+  }, [activeTool]);
   const marketQuotes = usePublicMarketBoard();
   const activeDefinition = getMarketDefinition(activeMarket);
   const activeQuote = marketQuotes[activeDefinition.symbol];
   const digitDistribution = useMemo(() => getDigitDistribution(activeQuote), [activeQuote]);
   const chart = useMemo(() => {
-    const values = activeQuote?.ticks.length ? activeQuote.ticks : activeQuote?.price === null ? [] : [activeQuote.price];
+    const pipSize = activeQuote?.pipSize ?? 2;
+    const values = (activeQuote?.ticks.length ? activeQuote.ticks : activeQuote?.price === null ? [] : [activeQuote.price])
+      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+      .slice(-100);
     if (!values.length) {
-      return { path: '', fill: '', labels: ['—', '—', '—', '—', '—'], trend: 'WAITING FOR TICKS', delta: 0, lastPoint: null };
+      return {
+        path: '',
+        fill: '',
+        labels: ['—', '—', '—', '—', '—'],
+        tickLabels: ['Waiting for ticks', '', ''],
+        trend: 'WAITING FOR TICKS',
+        direction: 'flat' as const,
+        delta: 0,
+        sampleSize: 0,
+        plotTop: 36,
+        plotBottom: 380,
+        lastPoint: null,
+      };
     }
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-    const range = Math.max(max - min, Math.max(max * 0.0005, 0.01));
+    const observedMin = Math.min(...values);
+    const observedMax = Math.max(...values);
+    const tickSize = 10 ** -pipSize;
+    const scaleFactor = 10 ** pipSize;
+    const midpoint = (observedMin + observedMax) / 2;
+    const minimumRange = tickSize * 8;
+    const targetRange = Math.max((observedMax - observedMin) * 1.2, minimumRange);
+    const min = Math.floor((midpoint - targetRange / 2) * scaleFactor) / scaleFactor;
+    let max = Math.ceil((midpoint + targetRange / 2) * scaleFactor) / scaleFactor;
+    if (max - min < minimumRange) max = min + minimumRange;
+    const range = max - min;
+    const plotTop = 36;
+    const plotBottom = 380;
+    const plotHeight = plotBottom - plotTop;
     const path = values.map((value, index) => {
-      const x = values.length === 1 ? 0 : (index / (values.length - 1)) * 920;
-      const y = 360 - ((value - min) / range) * 300;
+      const x = values.length === 1 ? 920 : (index / (values.length - 1)) * 920;
+      const y = plotTop + ((max - value) / range) * plotHeight;
       return `${index === 0 ? 'M' : 'L'}${x.toFixed(1)} ${y.toFixed(1)}`;
     }).join(' ');
-    const delta = values[values.length - 1] - values[0];
-    const lastX = values.length === 1 ? 0 : 920;
-    const lastY = 360 - ((values[values.length - 1] - min) / range) * 300;
-    const labels = [max, max - range * .25, max - range * .5, max - range * .75, min]
-      .map((value) => formatMarketPrice(value, activeQuote?.pipSize ?? 2));
+    const firstValue = values[0];
+    const lastValue = values[values.length - 1];
+    const delta = lastValue - firstValue;
+    const direction = delta > 0 ? 'up' as const : delta < 0 ? 'down' as const : 'flat' as const;
+    const lastX = 920;
+    const lastY = plotTop + ((max - lastValue) / range) * plotHeight;
+    const labels = Array.from({ length: 5 }, (_, index) => formatMarketPrice(max - range * (index / 4), pipSize));
+    const displayedTicks = values.length - 1;
+    const middleTicks = Math.round(displayedTicks / 2);
+    const tickLabels = displayedTicks > 0
+      ? [`${displayedTicks} ticks ago`, `${middleTicks} ticks ago`, 'Latest tick']
+      : ['No prior ticks', '', 'Latest quote'];
     return {
       path,
-      fill: `${path} L 920 420 L 0 420 Z`,
+      fill: `${path} L 920 ${plotBottom} L 0 ${plotBottom} Z`,
       labels,
-      trend: delta > 0 ? 'RISING' : delta < 0 ? 'FALLING' : 'FLAT',
+      tickLabels,
+      trend: values.length < 2 ? 'WAITING FOR TICK' : delta > 0 ? 'RISING' : delta < 0 ? 'FALLING' : 'FLAT',
+      direction,
       delta,
-      lastPoint: { x: lastX, y: lastY },
+      sampleSize: values.length,
+      plotTop,
+      plotBottom,
+      lastPoint: { x: lastX, y: lastY, bottom: plotBottom },
     };
   }, [activeQuote]);
+  const manualPayoutRate = contractType === 'OVER/UNDER' ? 122 : 82;
+  const manualContractName = contractType === 'RISE/FALL' ? 'Rise/Fall' : contractType === 'OVER/UNDER' ? 'Over/Under' : 'Even/Odd';
+  const latestDigit = digitDistribution.recentDigits.at(-1) ?? null;
+  const selectedResultPercentage = useMemo(() => {
+    if (contractType === 'ODD/EVEN') {
+      return contractSide === 'EVEN' ? digitDistribution.evenPercentage : digitDistribution.oddPercentage;
+    }
+    if (contractType === 'OVER/UNDER') {
+      if (!digitDistribution.sampleSize) return null;
+      const barrier = Number.parseInt(manualBarrier, 10) || 0;
+      const qualifyingDigits = digitDistribution.recentDigits.filter((digit) => contractSide === 'OVER' ? digit > barrier : digit < barrier);
+      return (qualifyingDigits.length / digitDistribution.sampleSize) * 100;
+    }
+    return null;
+  }, [contractSide, contractType, digitDistribution.evenPercentage, digitDistribution.oddPercentage, digitDistribution.recentDigits, digitDistribution.sampleSize, manualBarrier]);
   if (!isLoaded) return <PublicLoadingView />;
-  if (!isSignedIn) return <PublicLandingView />;
+  if (!isSignedIn) return <PublicLandingView marketQuotes={marketQuotes} />;
 
   const navItems = [
     { label: 'Dashboard', icon: Gauge },
@@ -920,7 +1181,7 @@ function Home() {
     { label: 'Volt AI', icon: Sparkles },
     { label: 'Auto AI', icon: Sparkles },
     { label: 'Free Bots', icon: Bot },
-    { label: 'Premium AI Bots', icon: Flame },
+    { label: 'Deriv Pro Bots', icon: Flame },
     { label: 'Quick Bot', icon: Zap },
     { label: 'Signal AI', icon: BarChart3 },
     { label: 'Manual Trader', icon: LineChart },
@@ -930,61 +1191,84 @@ function Home() {
     { label: 'Analysis Tools', icon: Search },
   ];
 
-  function executeManualTrade(action: 'BUY' | 'SELL') {
-    const oppositeSide = contractType === 'RISE/FALL'
-      ? contractSide === 'RISE' ? 'FALL' : 'RISE'
-      : contractType === 'OVER/UNDER'
-        ? contractSide === 'OVER' ? 'UNDER' : 'OVER'
-        : contractSide === 'EVEN' ? 'ODD' : 'EVEN';
-    const selectedSide = action === 'BUY' ? contractSide : oppositeSide;
-    const proposalContractType = contractType === 'RISE/FALL'
-      ? selectedSide === 'RISE' ? 'CALL' : 'PUT'
-      : contractType === 'OVER/UNDER'
-        ? selectedSide === 'OVER' ? 'DIGITOVER' : 'DIGITUNDER'
-        : selectedSide === 'EVEN' ? 'DIGITEVEN' : 'DIGITODD';
-    const amount = Number(stake);
-    const durationTicks = Math.max(1, Number.parseInt(numberOfTicks, 10) || 1);
-    const barrier = contractType === 'OVER/UNDER' ? Math.min(9, Math.max(0, Number.parseInt(manualBarrier, 10) || 0)) : undefined;
+  async function executeManualTrade(
+    action: 'BUY' | 'SELL',
+    requestedSide?: ManualContractSide,
+    marketOverride?: MarketDefinition,
+    tradeSetup?: DcircleTradeSetup,
+  ): Promise<boolean> {
+    const selectedContractType = tradeSetup?.contractType ?? contractType;
+    const configuredSide = tradeSetup?.side ?? contractSide;
+    if (action === 'SELL' && selectedContractType !== 'RISE/FALL') {
+      setReviewState('Buy/Sell execution is only available for Rise/Fall contracts.');
+      return false;
+    }
+    const oppositeSide = selectedContractType === 'RISE/FALL'
+      ? configuredSide === 'RISE' ? 'FALL' : 'RISE'
+      : selectedContractType === 'OVER/UNDER'
+        ? configuredSide === 'OVER' ? 'UNDER' : 'OVER'
+        : configuredSide === 'EVEN' ? 'ODD' : 'EVEN';
+    const selectedSide = action === 'BUY' ? requestedSide ?? configuredSide : oppositeSide;
+    const proposalContractType = mapManualContractToDeriv(selectedContractType, selectedSide);
+    if (!proposalContractType) {
+      setReviewState(`Choose a side that matches the ${selectedContractType} contract.`);
+      return false;
+    }
+    const amount = Number(tradeSetup?.stake ?? stake);
+    const durationTicks = Math.max(1, Number.parseInt(tradeSetup?.durationTicks ?? numberOfTicks, 10) || 1);
+    const barrier = selectedContractType === 'OVER/UNDER'
+      ? Math.min(9, Math.max(0, Number.parseInt(tradeSetup?.barrier ?? manualBarrier, 10) || 0))
+      : undefined;
+    const tradeDefinition = marketOverride ?? activeDefinition;
+    if (selectedContractType !== 'RISE/FALL' && tradeDefinition.family !== 'volatility') {
+      setReviewState('Over/Under and Even/Odd contracts require a Volatility market. Select one before trading.');
+      return false;
+    }
     if (!Number.isFinite(amount) || amount < 0.35) {
-      setReviewState('Enter a stake of at least USD 0.35.');
-      return;
+      setReviewState(`Enter a stake of at least ${currency} 0.35.`);
+      return false;
     }
     setManualTradeResult(null);
-    setReviewState(`Executing ${action} in ${accountMode} mode…`);
-    void (async () => {
-      try {
-        const response = await fetch('/api/deriv/execute', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            symbol: activeDefinition.symbol,
-            contractType: proposalContractType,
-            amount,
-            duration: durationTicks,
-            durationUnit: 't',
-            currency,
-            barrier,
-            mode: accountMode.toLowerCase(),
-            confirm: true,
-          }),
-        });
-        const payload = await response.json() as { error?: string; trade?: ExecutedTrade };
-        if (!response.ok || !payload.trade) throw new Error(payload.error ?? 'Deriv did not execute the contract.');
-        const exactProfit = resolvedTradeProfit(payload.trade);
-        if (exactProfit === null) throw new Error('Deriv did not return an exact settled P/L.');
-        await refreshAccount();
-        setManualTradeResult({
-          profit: exactProfit,
-          amount: payload.trade.stake ?? payload.trade.buyPrice ?? amount,
-          trades: 1,
-          currency: payload.trade.currency ?? currency,
-          tradeResults: [normalizeExecutedTrade(payload.trade)],
-        });
-        setReviewState(formatSignedProfit(resolvedTradeProfit(payload.trade)));
-      } catch (error) {
-        setReviewState(error instanceof Error ? error.message : 'Unable to execute the Deriv contract.');
-      }
-    })();
+    const executionLabel = selectedContractType === 'RISE/FALL' ? `${action} ` : '';
+    setReviewState(`Executing ${executionLabel}${formatDerivContractType(proposalContractType, barrier)} on ${tradeDefinition.name} in ${accountMode} mode…`);
+    try {
+      const rawTrade = await executeDerivTrade<ExecutedTrade>({
+        symbol: tradeDefinition.symbol,
+        contractType: proposalContractType,
+        amount,
+        duration: durationTicks,
+        durationUnit: 't',
+        currency,
+        barrier,
+        mode: accountMode === 'REAL' ? 'real' : 'demo',
+      });
+      const exactProfit = resolvedTradeProfit(rawTrade);
+      if (exactProfit === null) throw new Error('Deriv did not return an exact settled P/L.');
+      await refreshAccount();
+      const settledTrade: ExecutedTrade = {
+        ...normalizeExecutedTrade(rawTrade),
+        marketName: tradeDefinition.name,
+        mode: accountMode,
+      };
+      const historyKey = `${accountMode}:${settledTrade.currency ?? currency}`;
+      setManualHistoryByAccount((current) => ({
+        ...current,
+        [historyKey]: [...(current[historyKey] ?? []), settledTrade],
+      }));
+      setManualTransactionTab('Transactions');
+      setManualTradeResult({
+        profit: exactProfit,
+        amount: settledTrade.buyPrice ?? settledTrade.stake ?? amount,
+        trades: 1,
+        currency: settledTrade.currency ?? currency,
+        tradeResults: [settledTrade],
+      });
+      setReviewState(formatSignedProfit(resolvedTradeProfit(rawTrade)));
+      return true;
+    } catch (error) {
+      setReviewState(error instanceof Error ? error.message : 'Unable to execute the Deriv contract.');
+      return false;
+    }
   }
 
   async function handleAccountMode(nextMode: 'DEMO' | 'REAL') {
@@ -997,8 +1281,21 @@ function Home() {
     }
   }
 
+  function openManualHistoryDetail() {
+    if (!manualTradeHistory.length) return;
+    const profit = totalTradeProfit(manualTradeHistory);
+    if (profit === null) return;
+    setManualTradeResult({
+      profit,
+      amount: manualTradeHistory.reduce((total, trade) => total + (trade.buyPrice ?? trade.stake ?? 0), 0),
+      trades: manualTradeHistory.length,
+      currency,
+      tradeResults: manualTradeHistory,
+    });
+  }
+
   return (
-    <div className={`terminal-shell ${activeTool === 'Manual Trader' ? 'is-manual-mode' : ''} ${activeTool === 'Dashboard' ? 'is-dashboard-mode' : ''} ${['Bot Builder', 'Free Bots', 'Premium AI Bots', 'Bulk Trader', 'Quick Bot', 'Analysis Tools', 'Volt AI', 'Auto AI', 'Signal AI', 'Apex Bot', 'Copy Trader'].includes(activeTool) ? 'is-reference-mode' : ''}`}>
+    <div className={`terminal-shell ${activeTool === 'Manual Trader' ? 'is-manual-mode' : ''} ${activeTool === 'Manual Trader' && manualTraderLoading ? 'is-manual-loading' : ''} ${activeTool === 'Dashboard' ? 'is-dashboard-mode' : ''} ${['Bot Builder', 'Free Bots', 'Deriv Pro Bots', 'Bulk Trader', 'Quick Bot', 'Analysis Tools', 'Volt AI', 'Auto AI', 'Signal AI', 'Apex Bot', 'Copy Trader'].includes(activeTool) ? 'is-reference-mode' : ''}`}>
       <header className="terminal-header">
         <a href={basePath || '/'} className="terminal-brand" aria-label="ProTraders FX home">
           <span className="terminal-brand-mark"><BarChart3 size={17} /></span>
@@ -1041,14 +1338,23 @@ function Home() {
         })}
       </div>
 
+      <DcircleTradeContext.Provider value={{
+        activeMarket,
+        setActiveMarket,
+        accountMode,
+        currency,
+        defaultSetup: { contractType, side: contractSide, stake, durationTicks: numberOfTicks, barrier: manualBarrier },
+        tradeStatus: reviewState,
+        onTradeMarket: (definition, setup) => executeManualTrade('BUY', setup.side, definition, setup),
+      }}>
       <main ref={terminalMainRef} id="trading-workspace-panel" className={`terminal-main ${activeTool === 'Manual Trader' ? 'manual-main' : ''}`} role="tabpanel" aria-label={`${activeTool} workspace`}>
-        {activeTool === 'Dashboard' ? <DashboardView accountMode={accountMode} marketQuotes={marketQuotes} onNavigate={setActiveTool} /> : activeTool === 'Owner Activity' ? <OwnerActivityView /> : activeTool === 'Quick Bot' ? <QuickBotView accountMode={accountMode} currency={currency} balance={balance} activeMarket={activeMarket} marketQuotes={marketQuotes} onNavigate={openTool} onTradeSettled={refreshAccount} /> : activeTool === 'Bulk Trader' ? <BulkTraderView accountMode={accountMode} currency={currency} activeMarket={activeMarket} setActiveMarket={setActiveMarket} marketQuotes={marketQuotes} onTradeSettled={refreshAccount} /> : activeTool === 'Analysis Tools' ? <AnalysisToolsView marketQuotes={marketQuotes} /> : activeTool === 'Volt AI' ? <VoltAiView activeMarket={activeMarket} setActiveMarket={setActiveMarket} marketQuotes={marketQuotes} onNavigate={setActiveTool} /> : activeTool === 'Auto AI' ? <AutoAiView activeMarket={activeMarket} setActiveMarket={setActiveMarket} marketQuotes={marketQuotes} onNavigate={setActiveTool} /> : activeTool === 'Signal AI' ? <SignalAiView activeMarket={activeMarket} setActiveMarket={setActiveMarket} marketQuotes={marketQuotes} onNavigate={setActiveTool} /> : activeTool === 'Apex Bot' ? <ApexBotView activeMarket={activeMarket} setActiveMarket={setActiveMarket} marketQuotes={marketQuotes} /> : activeTool === 'Copy Trader' ? <CopyTraderView activeMarket={activeMarket} marketQuotes={marketQuotes} /> : activeTool === 'Free Bots' ? <FreeBotsView accountMode={accountMode} currency={currency} balance={balance} activeMarket={activeMarket} marketQuotes={marketQuotes} onTradeSettled={refreshAccount} initialBotId={freeBotToOpen} /> : activeTool === 'Bot Builder' ? <RecoveryBotView accountMode={accountMode} currency={currency} balance={balance} activeMarket={activeMarket} marketQuotes={marketQuotes} onTradeSettled={refreshAccount} /> : activeTool === 'Premium AI Bots' ? <PremiumBotsExcludedView onNavigate={setActiveTool} /> : activeTool === 'Manual Trader' ? (
-        <>
+        {activeTool === 'Dashboard' ? <DashboardView accountMode={accountMode} marketQuotes={marketQuotes} onNavigate={setActiveTool} /> : activeTool === 'Owner Activity' ? <OwnerActivityView /> : activeTool === 'Quick Bot' ? <QuickBotView accountMode={accountMode} currency={currency} balance={balance} activeMarket={activeMarket} marketQuotes={marketQuotes} onNavigate={openTool} onTradeSettled={refreshAccount} /> : activeTool === 'Bulk Trader' ? <BulkTraderView accountMode={accountMode} currency={currency} activeMarket={activeMarket} setActiveMarket={setActiveMarket} marketQuotes={marketQuotes} onTradeSettled={refreshAccount} /> : activeTool === 'Analysis Tools' ? <AnalysisToolsView marketQuotes={marketQuotes} /> : activeTool === 'Volt AI' ? <VoltAiView activeMarket={activeMarket} setActiveMarket={setActiveMarket} marketQuotes={marketQuotes} onNavigate={setActiveTool} /> : activeTool === 'Auto AI' ? <AutoAiView activeMarket={activeMarket} setActiveMarket={setActiveMarket} marketQuotes={marketQuotes} onNavigate={setActiveTool} /> : activeTool === 'Signal AI' ? <SignalAiView activeMarket={activeMarket} setActiveMarket={setActiveMarket} marketQuotes={marketQuotes} onNavigate={setActiveTool} /> : activeTool === 'Apex Bot' ? <ApexBotView activeMarket={activeMarket} setActiveMarket={setActiveMarket} marketQuotes={marketQuotes} /> : activeTool === 'Copy Trader' ? <CopyTraderView activeMarket={activeMarket} marketQuotes={marketQuotes} /> : activeTool === 'Free Bots' ? <FreeBotsView accountMode={accountMode} currency={currency} balance={balance} activeMarket={activeMarket} marketQuotes={marketQuotes} onTradeSettled={refreshAccount} initialBotId={freeBotToOpen} /> : activeTool === 'Bot Builder' ? <RecoveryBotView accountMode={accountMode} currency={currency} balance={balance} activeMarket={activeMarket} marketQuotes={marketQuotes} onTradeSettled={refreshAccount} /> : activeTool === 'Deriv Pro Bots' ? <DerivProBotsView accountMode={accountMode} currency={currency} balance={balance} activeMarket={activeMarket} setActiveMarket={setActiveMarket} marketDefinitions={MARKET_DEFINITIONS} marketQuotes={marketQuotes} supportPhoneDisplay={SUPPORT_PHONE_DISPLAY} onTradeSettled={refreshAccount} /> : activeTool === 'Manual Trader' ? (
+        manualTraderLoading ? <ManualTraderLaunchScreen /> : <>
         <div className="terminal-heading">
           <div>
             <p className="terminal-eyebrow">MANUAL TRADER</p>
             <h1>Execute with control</h1>
-            <p>Choose a live market, select {contractType}, and trade immediately in the selected mode.</p>
+            <p>Read the live digit frequencies, set a barrier, then execute directly beside the digits.</p>
           </div>
           <span className="mode-badge">{accountMode} MODE</span>
         </div>
@@ -1075,22 +1381,82 @@ function Home() {
               </div>
             </div>
             <div className="chart-stage">
-              <div className="chart-grid" />
+              <span className="chart-window-badge" data-testid="text-chart-window">
+                {chart.sampleSize ? `LAST ${chart.sampleSize} TICKS · ONE POINT PER TICK` : 'WAITING FOR LIVE TICKS'}
+              </span>
               <div className="chart-y-labels">{chart.labels.map((label, index) => <span key={`${label}-${index}`}>{label}</span>)}</div>
-               <svg viewBox="0 0 920 420" preserveAspectRatio="none" className="market-chart" role="img" aria-label={`${activeDefinition.name} live market chart`}>
+              <svg
+                viewBox="0 0 920 420"
+                preserveAspectRatio="none"
+                className="market-chart"
+                role="img"
+                data-testid="chart-live-price"
+                aria-label={`${activeDefinition.name} live price trace from ${chart.sampleSize} consecutive Deriv ticks; latest price ${formatMarketPrice(activeQuote?.price ?? null, activeQuote?.pipSize ?? 2)}`}
+              >
                 <defs>
-                  <linearGradient id="chart-fill" x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="0%" stopColor="#8c989d" stopOpacity=".25" />
-                    <stop offset="100%" stopColor="#8c989d" stopOpacity="0" />
+                   <linearGradient id="manual-chart-fill" x1="0" x2="0" y1="0" y2="1">
+                     <stop offset="0%" stopColor={chart.direction === 'down' ? '#db5f7c' : chart.direction === 'flat' ? '#7657cf' : '#3978f5'} stopOpacity=".22" />
+                     <stop offset="100%" stopColor={chart.direction === 'down' ? '#db5f7c' : chart.direction === 'flat' ? '#7657cf' : '#3978f5'} stopOpacity="0" />
                   </linearGradient>
                 </defs>
-                {chart.fill && <path d={chart.fill} fill="url(#chart-fill)" />}
-                 {chart.path && <path d={chart.path} fill="none" stroke="#4d555a" strokeWidth="2.2" />}
-                 {chart.lastPoint && <circle cx={chart.lastPoint.x} cy={chart.lastPoint.y} r="5" fill="#1aa5b8" />}
+                 <g className="chart-grid-lines" aria-hidden="true">
+                   {Array.from({ length: 5 }, (_, index) => {
+                     const y = chart.plotTop + ((chart.plotBottom - chart.plotTop) * index) / 4;
+                     return <line key={`horizontal-${index}`} x1="0" y1={y} x2="920" y2={y} />;
+                   })}
+                   {Array.from({ length: 6 }, (_, index) => {
+                     const x = (920 * index) / 5;
+                     return <line key={`vertical-${index}`} x1={x} y1={chart.plotTop} x2={x} y2={chart.plotBottom} />;
+                   })}
+                 </g>
+                 {chart.fill && <path className="chart-area-fill" d={chart.fill} fill="url(#manual-chart-fill)" />}
+                 {chart.lastPoint && (
+                   <line
+                     className="chart-price-guide"
+                     x1="0"
+                     y1={chart.lastPoint.y}
+                     x2="920"
+                     y2={chart.lastPoint.y}
+                   />
+                 )}
+                 {chart.path && (
+                   <path
+                     className={`market-chart-line is-${chart.direction}`}
+                     d={chart.path}
+                     fill="none"
+                     stroke={chart.direction === 'down' ? '#db5f7c' : '#3978f5'}
+                     strokeWidth="2.6"
+                     strokeLinecap="round"
+                     strokeLinejoin="round"
+                   />
+                 )}
+                  {chart.lastPoint && (
+                    <g className={`chart-live-cursor is-${chart.direction}`} aria-label="Latest price cursor">
+                      <line x1={chart.lastPoint.x} y1={chart.lastPoint.y} x2={chart.lastPoint.x} y2={chart.lastPoint.bottom} />
+                      <circle cx={chart.lastPoint.x} cy={chart.lastPoint.y} r="7" />
+                      <circle cx={chart.lastPoint.x} cy={chart.lastPoint.y} r="3.5" />
+                    </g>
+                  )}
               </svg>
-              {activeQuote?.price !== null && <div className="price-tag">{formatMarketPrice(activeQuote?.price ?? null, activeQuote?.pipSize ?? 2)}</div>}
+              {chart.lastPoint && activeQuote?.price !== null && activeQuote?.price !== undefined && (
+                <div
+                  className={`chart-price-tag is-${chart.direction}`}
+                  style={{
+                    top: `calc(${(chart.lastPoint.y / 420) * 100}% ${22 - (48 * chart.lastPoint.y / 420) < 0 ? '-' : '+'} ${Math.abs(22 - (48 * chart.lastPoint.y / 420))}px)`,
+                  }}
+                  data-testid="text-chart-live-price"
+                >
+                  <small>LAST</small>
+                  <strong>{formatMarketPrice(activeQuote.price, activeQuote.pipSize)}</strong>
+                </div>
+              )}
               {!chart.path && <div className="chart-empty-state">{activeQuote?.status === 'error' ? 'RECONNECTING TO MARKET' : 'WAITING FOR PRICE FEED'}</div>}
-              <div className="chart-time-labels"><span>11:02:40</span><span>11:02:50</span><span>11:03:00</span><span>11:03:10</span><span>11:03:20</span></div>
+              <div className="chart-time-labels" aria-label="Tick order, oldest to newest">
+                {chart.tickLabels.map((label, index) => <span key={`${label}-${index}`}>{label}</span>)}
+              </div>
+               <button type="button" className="manual-chart-ai-button" onClick={() => window.dispatchEvent(new Event('market-ai-open'))} aria-label="Open floating AI scanner">
+                 <Sparkles size={15} /><span>AI</span>
+               </button>
               <div className="chart-rail" aria-label="Chart tools">
                 <button type="button" aria-label="Chart type"><LineChart size={15} /></button>
                 <button type="button" aria-label="Indicators"><BarChart3 size={15} /></button>
@@ -1099,144 +1465,164 @@ function Home() {
             </div>
             <div className="chart-footer">
               <span><i className={activeQuote?.status === 'live' ? 'positive-dot' : 'status-dot-muted'} /> {activeQuote?.status === 'live' ? 'Live market feed' : 'Last quote available'}</span>
-              <span>Tick stream · 1s</span>
-              <span>{chart.trend} {activeQuote?.ticks.length ? `· ${Math.abs(chart.delta).toFixed(activeQuote.pipSize)} move` : ''}</span>
+              <span>{chart.sampleSize} sequential ticks</span>
+              <span className={`chart-move is-${chart.direction}`} data-testid="text-chart-direction">
+                {chart.trend}{chart.sampleSize > 1 ? ` · ${chart.delta > 0 ? '+' : chart.delta < 0 ? '−' : ''}${formatMarketPrice(Math.abs(chart.delta), activeQuote?.pipSize ?? 2)} price move` : ''}
+              </span>
             </div>
            </section>
-           <section className="manual-digit-panel" aria-label="Live digit distribution">
-             <header className="manual-digit-panel-header">
-               <div>
-                 <span className="chart-label">DIGIT ANALYSIS · LAST {digitDistribution.sampleSize || 0} TICKS</span>
-                 <strong>{digitDistribution.recentDigits.length ? digitDistribution.recentDigits.slice(-18).join(', ') : 'Waiting for live digits'}</strong>
-               </div>
-               <span className="manual-digit-live"><i /> {activeQuote?.status === 'live' ? 'LIVE DIGITS' : 'CONNECTING'}</span>
-             </header>
-             <div className="manual-digit-summary">
-               {contractType === 'OVER/UNDER' ? (
-                 <>
-                   <span className="manual-summary-label">BARRIER DIGIT</span>
-                   <div className="manual-barrier-picker" aria-label="Set over under barrier">
-                     {Array.from({ length: 10 }, (_, digit) => (
-                       <button key={digit} type="button" className={manualBarrier === String(digit) ? 'is-selected' : ''} onClick={() => setManualBarrier(String(digit))}>{digit}</button>
-                     ))}
-                   </div>
-                   <div className="manual-probability-bars">
-                     {(['OVER', 'UNDER'] as const).map((side) => {
-                       const barrier = Number.parseInt(manualBarrier, 10) || 0;
-                       const percentage = digitDistribution.sampleSize
-                         ? digitDistribution.recentDigits.filter((digit) => side === 'OVER' ? digit > barrier : digit < barrier).length / digitDistribution.sampleSize * 100
-                         : null;
-                       return (
-                         <div className={`manual-probability-row ${side === 'OVER' ? 'is-positive' : 'is-negative'}`} key={side}>
-                           <span>{side} {barrier}</span>
-                           <div><i style={{ width: `${percentage ?? 0}%` }} /></div>
-                           <strong>{percentage === null ? '—' : `${percentage.toFixed(1)}%`}</strong>
-                         </div>
-                       );
-                     })}
-                   </div>
-                 </>
-               ) : (
-                 <>
-                   <span className="manual-summary-label">EVEN / ODD DISTRIBUTION</span>
-                   <div className="manual-probability-bars">
-                     {(['EVEN', 'ODD'] as const).map((side) => {
-                       const percentage = side === 'EVEN' ? digitDistribution.evenPercentage : digitDistribution.oddPercentage;
-                       return (
-                         <div className={`manual-probability-row ${side === 'EVEN' ? 'is-positive' : 'is-negative'}`} key={side}>
-                           <span>{side}</span>
-                           <div><i style={{ width: `${percentage ?? 0}%` }} /></div>
-                           <strong>{percentage === null ? '—' : `${percentage.toFixed(1)}%`}</strong>
-                         </div>
-                       );
-                     })}
-                   </div>
-                 </>
-               )}
-             </div>
-             <div className={`manual-digit-grid ${contractType === 'OVER/UNDER' ? 'is-barrier-mode' : contractType === 'ODD/EVEN' ? 'is-parity-mode' : ''}`}>
-               {digitDistribution.percentages.map((percentage, digit) => {
-                 const barrier = Number.parseInt(manualBarrier, 10) || 0;
-                 const barrierState = contractSide === 'OVER'
-                   ? digit > barrier ? 'is-positive' : 'is-negative'
-                   : contractSide === 'UNDER'
-                     ? digit < barrier ? 'is-positive' : 'is-negative'
-                     : digit % 2 === 0 ? 'is-positive' : 'is-negative';
-                 return (
-                   <button
-                     type="button"
-                     key={digit}
-                     className={`manual-digit-cell ${barrierState} ${manualBarrier === String(digit) && contractType === 'OVER/UNDER' ? 'is-barrier' : ''}`}
-                     onClick={() => contractType === 'OVER/UNDER' && setManualBarrier(String(digit))}
-                     aria-label={`Digit ${digit}, ${percentage.toFixed(1)} percent`}
-                   >
-                     <strong>{digit}</strong>
-                     <span>{digitDistribution.sampleSize ? `${percentage.toFixed(1)}%` : '—'}</span>
-                     <i style={{ height: `${Math.max(4, percentage)}%` }} />
-                   </button>
-                 );
-               })}
-             </div>
-             <footer className="manual-digit-panel-footer"><span>GREEN = SELECTED SET</span><span>RED = OTHER SET</span><span>{digitDistribution.sampleSize ? `${digitDistribution.sampleSize} DIGITS TRACKED` : 'WAITING FOR TICKS'}</span></footer>
-           </section>
-           </div>
+             <section className="manual-digit-panel" aria-label="Live digit distribution">
+              <header className="manual-digit-panel-header">
+                <div>
+                  <span className="chart-label">DIGIT DISTRIBUTION</span>
+                  <strong>{digitDistribution.recentDigits.length ? digitDistribution.recentDigits.slice(-18).join(', ') : 'Waiting for live digits'}</strong>
+                </div>
+                <div className="manual-digit-status-group">
+                  <span className="manual-digit-live"><i /> {activeQuote?.status === 'live' ? 'LIVE DIGITS' : 'CONNECTING'}</span>
+                </div>
+              </header>
 
-           <form className="trade-ticket" onSubmit={(event) => { event.preventDefault(); executeManualTrade('BUY'); }}>
-            <div className="trade-ticket-header">
-              <div><span className="chart-label">TRADE TICKET</span><h2>{contractType.replace('/', ' / ')}</h2></div>
-              <span className="ticket-mode">{accountMode} MODE</span>
-            </div>
-             <div className="ticket-body manual-contract-body">
-              <div className="manual-contract-help">Select market and contract type <span>ⓘ</span></div>
-               <div className="manual-contract-card"><button type="button" aria-label="Previous contract">‹</button><span><strong>▰ Accumulators</strong><small>Growth contracts</small></span><button type="button" aria-label="Next contract">›</button></div>
-               <div className="contract-type-tabs" aria-label="Contract type">
-                 {(['RISE/FALL', 'OVER/UNDER', 'ODD/EVEN'] as const).map((type) => (
-                   <button key={type} type="button" className={contractType === type ? 'is-selected' : ''} onClick={() => {
-                     setContractType(type);
-                     setContractSide(type === 'RISE/FALL' ? direction : type === 'OVER/UNDER' ? 'OVER' : 'EVEN');
-                   }}>{type}</button>
-                 ))}
-               </div>
-               <div className="manual-direction-tabs" aria-label={`${contractType} selection`}>
-                 {(contractType === 'RISE/FALL' ? ['RISE', 'FALL'] : contractType === 'OVER/UNDER' ? ['OVER', 'UNDER'] : ['ODD', 'EVEN']).map((side) => (
-                   <button key={side} type="button" className={contractSide === side ? `is-selected ${side === 'FALL' || side === 'UNDER' || side === 'ODD' ? 'is-fall' : ''}` : ''} onClick={() => {
-                     setContractSide(side as typeof contractSide);
-                     if (side === 'RISE' || side === 'FALL') setDirection(side);
-                   }}>{side} <small>{contractType === 'RISE/FALL' ? (side === 'RISE' ? 'CALL' : 'PUT') : 'SELECT'}</small></button>
-                 ))}
-               </div>
-                {contractType === 'OVER/UNDER' && <label className="field-label" htmlFor="manual-barrier-digit">SET BARRIER DIGIT <span>ⓘ</span></label>}
-                {contractType === 'OVER/UNDER' && <div className="manual-barrier-input"><input id="manual-barrier-digit" inputMode="numeric" min="0" max="9" value={manualBarrier} onChange={(event) => setManualBarrier(event.target.value.replace(/\D/g, '').slice(-1) || '0')} /><span>OVER / UNDER</span></div>}
-                <label className="field-label" htmlFor="manual-number-of-ticks">NUMBER OF TICKS <span>ⓘ</span></label>
-                <div className="manual-number-row">
-                  <button type="button" onClick={() => setNumberOfTicks(String(Math.max(1, Number(numberOfTicks || 0) - 1)))} aria-label="Decrease number of ticks">−</button>
-                  <input id="manual-number-of-ticks" inputMode="numeric" value={numberOfTicks} onChange={(event) => setNumberOfTicks(event.target.value.replace(/\D/g, '').slice(0, 3) || '1')} />
-                  <span>TICKS</span>
-                  <button type="button" onClick={() => setNumberOfTicks(String(Math.min(365, Number(numberOfTicks || 0) + 1)))} aria-label="Increase number of ticks">+</button>
+              <div className={`manual-digit-grid ${contractType === 'OVER/UNDER' ? 'is-barrier-mode' : contractType === 'ODD/EVEN' ? 'is-parity-mode' : ''}`} role="group" aria-label="Digit frequencies and Over/Under barrier">
+                {digitDistribution.percentages.map((percentage, digit) => {
+                  const frequencyTone = digit % 2 === 0 ? 'is-positive' : 'is-negative';
+                  const selectedBarrier = manualBarrier === String(digit);
+                  return (
+                    <button
+                      type="button"
+                      key={digit}
+                      className={`manual-digit-cell ${frequencyTone} ${selectedBarrier ? 'is-barrier' : ''} ${latestDigit === digit ? 'is-latest' : ''}`}
+                      onClick={() => setManualBarrier(String(digit))}
+                      aria-pressed={selectedBarrier}
+                      aria-label={`Digit ${digit}, ${digitDistribution.sampleSize ? `${percentage.toFixed(1)} percent` : 'frequency unavailable'}${selectedBarrier ? ', selected Over/Under barrier' : ''}`}
+                      data-testid={`manual-digit-${digit}`}
+                    >
+                      <strong>{digit}</strong>
+                      <span>{digitDistribution.sampleSize ? `${percentage.toFixed(1)}%` : '—'}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {contractType !== 'RISE/FALL' && (
+                <div className="manual-digit-summary">
+                  {contractType === 'OVER/UNDER' ? (
+                    <>
+                      <span className="manual-summary-label">RECENT BARRIER DISTRIBUTION · {manualBarrier}</span>
+                      <div className="manual-probability-bars">
+                        {(['OVER', 'UNDER'] as const).map((side) => {
+                          const barrier = Number.parseInt(manualBarrier, 10) || 0;
+                          const percentage = digitDistribution.sampleSize
+                            ? digitDistribution.recentDigits.filter((digit) => side === 'OVER' ? digit > barrier : digit < barrier).length / digitDistribution.sampleSize * 100
+                            : null;
+                          return (
+                            <div className={`manual-probability-row ${side === 'OVER' ? 'is-positive' : 'is-negative'}`} key={side}>
+                              <span>{side} {barrier}</span>
+                              <div><i style={{ width: `${percentage ?? 0}%` }} /></div>
+                              <strong>{percentage === null ? '—' : `${percentage.toFixed(1)}%`}</strong>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <span className="manual-summary-label">EVEN / ODD DISTRIBUTION</span>
+                      <div className="manual-probability-bars">
+                        {(['EVEN', 'ODD'] as const).map((side) => {
+                          const percentage = side === 'EVEN' ? digitDistribution.evenPercentage : digitDistribution.oddPercentage;
+                          return (
+                            <div className={`manual-probability-row ${side === 'EVEN' ? 'is-positive' : 'is-negative'}`} key={side}>
+                              <span>{side}</span>
+                              <div><i style={{ width: `${percentage ?? 0}%` }} /></div>
+                              <strong>{percentage === null ? '—' : `${percentage.toFixed(1)}%`}</strong>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
                 </div>
-               <label className="field-label" htmlFor="stake">STAKE</label>
-               <div className="manual-number-row"><button type="button" onClick={() => setStake(String(Math.max(1, Number(stake || 0) - 1)))} aria-label="Decrease stake">−</button><input id="stake" inputMode="decimal" value={stake} onChange={(event) => setStake(event.target.value)} /><span>USD</span><button type="button" onClick={() => setStake(String(Number(stake || 0) + 1))} aria-label="Increase stake">+</button><button type="button" className="manual-direction-button" onClick={() => {
-                 const options = contractType === 'RISE/FALL' ? ['RISE', 'FALL'] : contractType === 'OVER/UNDER' ? ['OVER', 'UNDER'] : ['ODD', 'EVEN'];
-                 const next = options[(options.indexOf(contractSide) + 1) % options.length] as typeof contractSide;
-                 setContractSide(next);
-                 if (next === 'RISE' || next === 'FALL') setDirection(next);
-               }} aria-label="Toggle contract side">‹›</button></div>
-                <div className="manual-contract-stats"><span><strong>Max. payout</strong><b>{stake ? `${(Number(stake) * 600).toFixed(2)} USD` : '—'}</b></span><span><strong>NUMBER OF TICKS</strong><b>{numberOfTicks} ticks</b></span></div>
-                <div className="manual-trade-actions">
-                  <button type="submit" className="review-button manual-buy-button"><span>BUY</span><ChevronRight size={17} /></button>
-                  <button type="button" className="review-button manual-sell-button" onClick={() => executeManualTrade('SELL')}><span>SELL</span><ChevronRight size={17} /></button>
-                </div>
-                <p className="live-execution-warning">Demo mode executes immediately. Select Buy or Sell to place the trade.</p>
-               {reviewState && <p className="review-state" role="status">{reviewState}</p>}
+              )}
+              <footer className="manual-digit-panel-footer">
+                <span>BLUE = EVEN DIGITS</span><span>PURPLE = ODD DIGITS</span>
+                <span>{digitDistribution.sampleSize ? `${digitDistribution.sampleSize} DIGITS TRACKED` : 'WAITING FOR TICKS'}</span>
+              </footer>
+            </section>
             </div>
-          </form>
-        </div>
+
+            <form className="trade-ticket" onSubmit={(event) => event.preventDefault()}>
+              <div className="trade-ticket-header">
+                <div><span className="chart-label">TRADE SETTINGS</span><h2>Stake &amp; duration</h2></div>
+                <span className="ticket-mode">{accountMode} MODE</span>
+              </div>
+              <div className="ticket-body manual-contract-body">
+                <div className="manual-ticket-settings">
+                  <div className="manual-ticket-field">
+                    <label className="field-label" htmlFor="manual-number-of-ticks">NUMBER OF TICKS <span>ⓘ</span></label>
+                    <div className="manual-number-row">
+                      <button type="button" onClick={() => setNumberOfTicks(String(Math.max(1, Number(numberOfTicks || 0) - 1)))} aria-label="Decrease number of ticks" data-testid="manual-ticks-decrease">−</button>
+                      <input id="manual-number-of-ticks" inputMode="numeric" value={numberOfTicks} onChange={(event) => setNumberOfTicks(event.target.value.replace(/\D/g, '').slice(0, 3) || '1')} data-testid="manual-ticks-input" />
+                      <span>TICKS</span>
+                      <button type="button" onClick={() => setNumberOfTicks(String(Math.min(365, Number(numberOfTicks || 0) + 1)))} aria-label="Increase number of ticks" data-testid="manual-ticks-increase">+</button>
+                    </div>
+                  </div>
+                  <div className="manual-ticket-field">
+                    <label className="field-label" htmlFor="stake">STAKE</label>
+                    <div className="manual-number-row">
+                      <button type="button" onClick={() => setStake(String(Math.max(1, Number(stake || 0) - 1)))} aria-label="Decrease stake" data-testid="manual-stake-decrease">−</button>
+                      <input id="stake" inputMode="decimal" value={stake} onChange={(event) => setStake(event.target.value)} data-testid="manual-stake-input" />
+                      <span>{currency}</span>
+                      <button type="button" onClick={() => setStake(String(Number(stake || 0) + 1))} aria-label="Increase stake" data-testid="manual-stake-increase">+</button>
+                    </div>
+                  </div>
+                </div>
+                <div className="manual-ticket-outcome">
+                  <div className="manual-contract-stats">
+                    <span><strong>SELECTED MARKET</strong><b>{activeDefinition.name}</b></span>
+                    <span><strong>{contractType === 'OVER/UNDER' ? 'BARRIER DIGIT' : 'CONTRACT'}</strong><b>{contractType === 'OVER/UNDER' ? manualBarrier : manualContractName}</b></span>
+                    <span><strong>DURATION</strong><b>{numberOfTicks} tick{numberOfTicks === '1' ? '' : 's'}</b></span>
+                  </div>
+                </div>
+                <p className="live-execution-warning">Tap a digit to highlight its Over/Under barrier.</p>
+                {reviewState && <p className="review-state" role="status" data-testid="manual-trade-status">{reviewState}</p>}
+              </div>
+            </form>
+            <section className="manual-result-aside" aria-live="polite" aria-label="Selected market results">
+              <header><span>LIVE RESULTS</span><small>{activeDefinition.name} · {accountMode}</small></header>
+              <div className="manual-result-primary">
+                <div><small>SELECTED MARKET</small><strong>{contractSide}</strong></div>
+                <b>{selectedResultPercentage === null ? '—' : `${selectedResultPercentage.toFixed(1)}%`}</b>
+              </div>
+              <div className="manual-result-stats">
+                <span><small>LAST DIGIT</small><strong>{latestDigit ?? '—'}</strong></span>
+                <span><small>PAYOUT RATE</small><strong>{manualPayoutRate}%</strong></span>
+                <span><small>FEED</small><strong>{activeQuote?.status === 'live' ? 'LIVE' : 'WAITING'}</strong></span>
+              </div>
+            </section>
+         </div>
+         <BotTransactionPanel
+           trades={manualTradeHistory}
+           currency={currency}
+           running={reviewState.startsWith('Executing ')}
+           activeTab={manualTransactionTab}
+           onTabChange={setManualTransactionTab}
+           onViewDetail={openManualHistoryDetail}
+           historyLabel="CURRENT SESSION"
+           sectionLabel="Manual trade history"
+           runningLabel="Manual contract is settling"
+           emptyMessage={reviewState.startsWith('Executing ') ? 'Waiting for the manual contract to settle.' : 'Settled manual trades will appear here.'}
+         />
         </>
         ) : <ToolPlaceholderView title={activeTool} />}
       </main>
+      </DcircleTradeContext.Provider>
 
       <footer className="terminal-footer">
         <span className="footer-brand">PROTRADERS FX · POWERED BY DERIV</span>
+        <div className="support-contact-links" aria-label="ProTraders support contacts">
+          <a href={SUPPORT_PHONE_LINK} aria-label={`Call ProTraders support at ${SUPPORT_PHONE_DISPLAY}`}>Call support · {SUPPORT_PHONE_DISPLAY}</a>
+          <a href={WHATSAPP_SUPPORT_URL} target="_blank" rel="noopener noreferrer">WhatsApp support group <ArrowUpRight size={11} /></a>
+        </div>
       </footer>
       <FloatingMarketAI marketQuotes={marketQuotes} draggable accountMode={accountMode} currency={currency} onTradeSettled={refreshAccount} />
       <TradeResultDialog result={manualTradeResult} onClose={() => setManualTradeResult(null)} />
@@ -1544,20 +1930,6 @@ function CopyTraderView({ activeMarket, marketQuotes }: { activeMarket: string; 
   );
 }
 
-function PremiumBotsExcludedView({ onNavigate }: { onNavigate: (tool: string) => void }) {
-  return (
-    <section className="strategy-workspace premium-excluded-workspace">
-      <div className="strategy-workspace-main">
-        <header className="strategy-workspace-header">
-          <div><span className="terminal-eyebrow">PREMIUM AI BOTS</span><h1>Not included in this build</h1><p>Premium bots are intentionally excluded. The rest of the ProTraders FX terminal remains available through the tabs above.</p></div>
-          <span className="strategy-status-pill">EXCLUDED</span>
-        </header>
-        <div className="premium-excluded-card"><Crown size={28} /><strong>Use the included bot workspaces</strong><p>Free Bots and Bot Builder provide editable review-only strategies with live official Deriv market context.</p><div><button type="button" className="strategy-primary-button" onClick={() => onNavigate('Free Bots')}>Open Free Bots <ChevronRight size={14} /></button><button type="button" className="strategy-secondary-button" onClick={() => onNavigate('Bot Builder')}>Open Bot Builder <Bot size={14} /></button></div></div>
-      </div>
-    </section>
-  );
-}
-
 function PublicLoadingView() {
   return (
     <main className="public-loading-screen">
@@ -1574,23 +1946,69 @@ function PublicLoadingView() {
   );
 }
 
-function PublicLandingView() {
+function PublicLandingView({ marketQuotes }: { marketQuotes: Record<string, MarketQuote> }) {
   const { signInHref, signUpHref } = useAppAuth();
+  const publicMarkets = ['EUR/USD', 'GBP/USD', 'USD/JPY', 'VOL 100 1s', 'VOL 75 1s'];
   return (
     <main className="public-landing">
-      <div className="public-landing-glow public-landing-glow-one" />
-      <div className="public-landing-glow public-landing-glow-two" />
       <header className="public-landing-header">
-        <a href={basePath || '/'} className="public-landing-brand"><span><BarChart3 size={18} /></span><strong>PROTRADERS <b>FX</b><small>POWERED BY DERIV</small></strong></a>
-         <div className="public-landing-actions"><a className="public-login" href={signInHref}>Join workspace</a><a className="public-signup" href={signUpHref}>Create account</a><a className="public-deriv-start" href={DERIV_REFERRAL_URL} target="_blank" rel="noopener noreferrer">Get started with Deriv</a></div>
+        <a href={basePath || '/'} className="public-landing-brand"><span><BarChart3 size={18} /></span><strong>PROTRADERS <b>FX</b><small>DERIV TRADING WORKSPACE</small></strong></a>
+          <div className="public-landing-actions"><a className="public-login" href={signInHref}>Join workspace</a><a className="public-signup" href={signUpHref}>Create account</a></div>
       </header>
       <section className="public-hero public-hero-minimal">
         <div className="public-hero-copy">
-          <h1>Trade like a <span>pro.</span></h1>
-           <div className="public-hero-actions"><a className="public-hero-primary" href={signInHref}>Join workspace <ArrowUpRight size={15} /></a><a className="public-hero-secondary" href={signUpHref}>Create account <Zap size={14} /></a></div>
+          <span className="public-hero-kicker"><i /> MARKET CONTEXT, BEFORE THE CLICK</span>
+          <h1><small>protradersfx.com</small><br /><span>Trade like a pro</span></h1>
+          <p>See live Deriv quotes, choose contract terms, and review settled trade details—all in your ProTraders FX workspace.</p>
+           <div className="public-hero-actions"><a className="public-hero-primary" href={signInHref}>Enter workspace <ArrowUpRight size={15} /></a><a className="public-hero-secondary" href={signUpHref}>Create account <Zap size={14} /></a></div>
+          <small className="public-hero-note">Your account and trade execution stay connected to Deriv.</small>
         </div>
-        <div className="public-market-orbit" aria-hidden="true"><span className="orbit-line orbit-line-a" /><span className="orbit-line orbit-line-b" /><span className="orbit-candle candle-one" /><span className="orbit-candle candle-two" /><span className="orbit-candle candle-three" /><span className="orbit-candle candle-four" /><div className="orbit-core"><BarChart3 size={32} /><b>LIVE</b></div></div>
+        <div className="public-market-orbit" aria-hidden="true">
+          <div className="landing-chart-caption"><span>MARKET TAPE</span><b>DERIV · PUBLIC FEED</b></div>
+          <span className="orbit-line orbit-line-a" /><span className="orbit-line orbit-line-b" />
+          <span className="orbit-candle candle-one" /><span className="orbit-candle candle-two" /><span className="orbit-candle candle-three" /><span className="orbit-candle candle-four" />
+          <div className="orbit-core"><BarChart3 size={28} /><b>MARKET</b></div>
+          <div className="landing-chart-axis"><span>CONTEXT</span><span>DECISION</span><span>RESULT</span></div>
+        </div>
       </section>
+      <section className="public-ticker-section" aria-label="Live Deriv market quotes">
+        <div className="public-ticker-heading"><span><i /> LIVE MARKET SNAPSHOT</span><small>Official Deriv quotes · current connection state</small></div>
+        <div className="public-ticker">
+          {publicMarkets.map((label) => {
+            const market = getMarketDefinition(label);
+            const quote = marketQuotes[market.symbol];
+            const status = quote?.status ?? 'connecting';
+            const hasLivePrice = status === 'live' && typeof quote?.price === 'number' && Number.isFinite(quote.price);
+            return (
+              <div className="public-ticker-item" key={market.symbol}>
+                <span>{label}</span>
+                {hasLivePrice ? (
+                  <strong className={`quote-${quoteTone(quote)}`}>{formatMarketPrice(quote.price, quote.pipSize ?? 2)}</strong>
+                ) : status === 'connecting' ? (
+                  <span className="quote-placeholder" aria-hidden="true" />
+                ) : (
+                  <strong className="quote-unavailable" aria-label={`${label} quote unavailable`}>—</strong>
+                )}
+                <small className={`quote-status-${status}`}>{status === 'live' ? 'LIVE' : status === 'closed' ? 'CLOSED' : status === 'error' ? 'FEED ERROR' : 'CONNECTING'}</small>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+      <section className="public-process" aria-label="Workspace workflow">
+        <div><span>01 / OBSERVE</span><strong>Scan live context</strong><p>Compare market quotes and recent tick behavior from the Deriv feed.</p></div>
+        <div><span>02 / CONFIGURE</span><strong>Set the contract</strong><p>Choose a market, contract type, duration and stake before acting.</p></div>
+        <div><span>03 / REVIEW</span><strong>Read the settlement</strong><p>Inspect returned trade details, entry and exit points, and settled P/L.</p></div>
+      </section>
+      <footer className="public-landing-footer">
+        <span>PROTRADERS FX <b>×</b> DERIV</span>
+        <span>Market decisions remain yours. Trading involves risk.</span>
+        <div className="public-support-links" aria-label="ProTraders support contacts">
+          <a href={SUPPORT_PHONE_LINK} aria-label={`Call ProTraders support at ${SUPPORT_PHONE_DISPLAY}`}>Support · {SUPPORT_PHONE_DISPLAY}</a>
+          <a href={WHATSAPP_SUPPORT_URL} target="_blank" rel="noopener noreferrer">WhatsApp group <ArrowUpRight size={12} /></a>
+        </div>
+        <a href={DERIV_REFERRAL_URL} target="_blank" rel="noopener noreferrer">Open a Deriv account <ArrowUpRight size={13} /></a>
+      </footer>
     </main>
   );
 }
@@ -1599,23 +2017,9 @@ function DashboardView({ accountMode, marketQuotes, onNavigate }: { accountMode:
   const featuredMarkets = MARKET_DEFINITIONS.filter(({ family }) => family === 'volatility').slice(0, 6);
   const liveMarketCount = Object.values(marketQuotes).filter((quote) => quote.status === 'live').length;
   const quotedMarketCount = Object.values(marketQuotes).filter((quote) => quote.price !== null).length;
-  const traderFeedback = [
-    { initials: 'LW', name: 'Leila Wanjiru', role: 'Active trader · ★★★★★', text: '“Live market data is easy to scan, so I spend less time switching between screens.”', tags: ['Live context', 'Fast decisions'] },
-    { initials: 'BO', name: 'Brian Otieno', role: 'Active trader · ★★★★★', text: '“Quotes, strategy controls, and execution history stay together in one focused workspace.”', tags: ['Focused workflow', 'Clear history'] },
-    { initials: 'NK', name: 'Nia Kamau', role: 'Active trader · ★★★★★', text: '“I can compare volatility markets quickly, then move into a trade with the context I need.”', tags: ['Market comparison', 'Quick setup'] },
-    { initials: 'KK', name: 'Kelvin Kiptoo', role: 'Active trader · ★★★★★', text: '“The layout gives me a repeatable process: review the market, set risk, and execute with intent.”', tags: ['Risk aware', 'Repeatable process'] },
-  ];
-  const [feedbackOffset, setFeedbackOffset] = useState(0);
-  useEffect(() => {
-    const rotationTimer = window.setInterval(() => {
-      setFeedbackOffset((current) => (current + 1) % traderFeedback.length);
-    }, 2000);
-    return () => window.clearInterval(rotationTimer);
-  }, [traderFeedback.length]);
-  const visibleFeedback = traderFeedback.map((_, index) => traderFeedback[(feedbackOffset + index) % traderFeedback.length]);
   const actions = [
     { label: 'Load Bot', description: 'Open your trading strategy', icon: Upload, tool: 'Free Bots', accent: 'cyan' },
-    { label: 'Premium Bots', description: 'Exclusive automated strategies', icon: Crown, tool: 'Premium AI Bots', accent: 'gold' },
+    { label: 'Deriv Pro Bots', description: 'Ten free rule-based trading bots', icon: Crown, tool: 'Deriv Pro Bots', accent: 'gold' },
     { label: 'Speed Bot', description: 'One-click automated trading', icon: Gauge, tool: 'Quick Bot', accent: 'teal' },
     { label: 'Manual Trading', description: 'Full control, trade your way', icon: LineChart, tool: 'Manual Trader', accent: 'violet' },
   ];
@@ -1623,8 +2027,14 @@ function DashboardView({ accountMode, marketQuotes, onNavigate }: { accountMode:
   return (
     <section className="dashboard-view">
       <div className="dashboard-section-heading">
-        <div><span className="terminal-eyebrow">YOUR TRADING DESK</span><h2>Choose how you want to trade</h2></div>
+        <div><span className="terminal-eyebrow">YOUR TRADING DESK / DERIV</span><h2>Start with the market. Then choose your method.</h2><p>Quotes first. Contract controls and settled results stay in the same workspace.</p></div>
         <span className="dashboard-session"><i /> {accountMode} SESSION</span>
+      </div>
+      <div className="dashboard-context-band">
+        <div className="dashboard-context-title"><span>PUBLIC FEED STATUS</span><strong>Market context</strong><small>Official Deriv quote stream</small></div>
+        <div><span>LIVE MARKETS</span><strong>{liveMarketCount}</strong></div>
+        <div><span>QUOTED MARKETS</span><strong>{quotedMarketCount}</strong></div>
+        <div className="dashboard-context-note"><span>WORKFLOW</span><strong>Observe <b>→</b> Configure <b>→</b> Review</strong></div>
       </div>
       <div className="dashboard-action-grid">
         {actions.map(({ label, description, icon: Icon, tool, accent }, index) => (
@@ -1638,7 +2048,7 @@ function DashboardView({ accountMode, marketQuotes, onNavigate }: { accountMode:
         ))}
       </div>
 
-      <div className="dashboard-live-heading"><span className="terminal-eyebrow">LIVE MARKET BOARD</span><span>Official Deriv public feed · tick stream</span></div>
+      <div className="dashboard-live-heading"><span className="terminal-eyebrow">VOLATILITY MARKET BOARD</span><span>Tap a quote to open Manual Trader</span></div>
       <div className="dashboard-market-grid">
         {featuredMarkets.map(({ label, name, symbol }) => {
           const quote = marketQuotes[symbol];
@@ -1651,27 +2061,50 @@ function DashboardView({ accountMode, marketQuotes, onNavigate }: { accountMode:
           );
         })}
       </div>
-      <section className="dashboard-feedback">
-        <span className="dashboard-feedback-kicker">TRADER FEEDBACK · ROTATING EVERY 2 SECONDS</span>
-        <div className="dashboard-feedback-grid" aria-live="polite">
-          {visibleFeedback.map((feedback, index) => (
-            <article key={`${feedback.name}-${feedbackOffset}`} className={index === 1 ? 'is-featured' : ''}>
-              <span className="feedback-avatar">{feedback.initials}</span><strong>{feedback.name}</strong>
-              <small>{feedback.role}</small><p>{feedback.text}</p>
-              <div className="feedback-tags">{feedback.tags.map((tag) => <b key={tag}>{tag}</b>)}</div>
-            </article>
-          ))}
-        </div>
+      <section className="dashboard-review-strip">
+        <span>PROTRADERS FX WORKFLOW</span>
+        <div><b>01</b><strong>Read live context</strong></div>
+        <div><b>02</b><strong>Make a deliberate contract choice</strong></div>
+        <div><b>03</b><strong>Understand the settled result</strong></div>
       </section>
     </section>
   );
 }
 
 function AnalysisToolsView({ marketQuotes }: { marketQuotes: Record<string, MarketQuote> }) {
-  const [mode, setMode] = useState('Digit circles');
+  const tradeContext = useContext(DcircleTradeContext);
+  if (!tradeContext) throw new Error('Dcircles trading context is not available.');
+  const { activeMarket, setActiveMarket, accountMode, currency, defaultSetup, tradeStatus, onTradeMarket } = tradeContext;
+  const [mode, setMode] = useState<'Digit circles' | 'Normal tool'>('Digit circles');
   const [sideTab, setSideTab] = useState<'Summary' | 'Transactions' | 'Journal' | 'Results'>('Summary');
   const [ticksWindow, setTicksWindow] = useState('120');
+  const [contractType, setContractType] = useState<ManualContractType>(defaultSetup.contractType);
+  const [side, setSide] = useState<ManualContractSide>(defaultSetup.side);
+  const [tradeStake, setTradeStake] = useState(defaultSetup.stake);
+  const [durationTicks, setDurationTicks] = useState(defaultSetup.durationTicks);
+  const [barrier, setBarrier] = useState(defaultSetup.barrier);
+  const [pendingMarket, setPendingMarket] = useState<string | null>(null);
   const analysisMarkets = VOLATILITY_DEFINITIONS.filter(({ label }) => label.endsWith('1s')).slice(0, 6);
+  const windowSize = Math.max(1, Number.parseInt(ticksWindow, 10) || 1);
+  const availableSides: ManualContractSide[] = contractType === 'RISE/FALL'
+    ? ['RISE', 'FALL']
+    : contractType === 'OVER/UNDER'
+      ? ['OVER', 'UNDER']
+      : ['EVEN', 'ODD'];
+  const setup: DcircleTradeSetup = { contractType, side, stake: tradeStake, durationTicks, barrier };
+  const tradeSummary = `${side}${contractType === 'OVER/UNDER' ? ` ${barrier}` : ''} · ${currency} ${tradeStake || '—'} · ${durationTicks || '1'} tick${durationTicks === '1' ? '' : 's'}`;
+
+  async function handleMarketTrade(definition: MarketDefinition) {
+    const quote = marketQuotes[definition.symbol];
+    if (pendingMarket || quote?.status !== 'live') return;
+    setPendingMarket(definition.symbol);
+    setActiveMarket(definition.label);
+    try {
+      await onTradeMarket(definition, setup);
+    } finally {
+      setPendingMarket(null);
+    }
+  }
 
   return (
     <section className="analysis-tools-view">
@@ -1679,65 +2112,159 @@ function AnalysisToolsView({ marketQuotes }: { marketQuotes: Record<string, Mark
         <div className="analysis-tools-toolbar">
           <button type="button" className={mode === 'Digit circles' ? 'is-selected' : ''} onClick={() => setMode('Digit circles')}>◌ Digit circles</button>
           <button type="button" className={mode === 'Normal tool' ? 'is-selected' : ''} onClick={() => setMode('Normal tool')}>Normal tool</button>
-          <label>Ticks: <input value={ticksWindow} onChange={(event) => setTicksWindow(event.target.value.replace(/\D/g, '').slice(0, 3) || '1')} inputMode="numeric" aria-label="Number of analysis ticks" /></label>
+          <label>Sample window: <input value={ticksWindow} onChange={(event) => setTicksWindow(event.target.value.replace(/\D/g, '').slice(0, 4) || '1')} inputMode="numeric" aria-label="Number of analysis ticks" /></label>
+        </div>
+        <div className="analysis-trade-setup">
+          <div className="analysis-trade-account"><span>ACTIVE ACCOUNT</span><strong>{accountMode} · {currency}</strong></div>
+          <label className="analysis-trade-field">CONTRACT
+            <select value={contractType} onChange={(event) => {
+              const nextType = event.target.value as ManualContractType;
+              setContractType(nextType);
+              setSide(nextType === 'RISE/FALL' ? 'RISE' : nextType === 'OVER/UNDER' ? 'OVER' : 'EVEN');
+            }}>
+              <option value="RISE/FALL">Rise / Fall</option>
+              <option value="OVER/UNDER">Over / Under</option>
+              <option value="ODD/EVEN">Even / Odd</option>
+            </select>
+          </label>
+          <div className="analysis-trade-field analysis-trade-side"><span>CHOOSE SIDE</span><div>
+            {availableSides.map((tradeSide) => <button key={tradeSide} type="button" className={side === tradeSide ? 'is-selected' : ''} onClick={() => setSide(tradeSide)}>{tradeSide}</button>)}
+          </div></div>
+          {contractType === 'OVER/UNDER' && <label className="analysis-trade-field">BARRIER
+            <input type="number" min="0" max="9" value={barrier} onChange={(event) => setBarrier(event.target.value.slice(0, 1))} inputMode="numeric" />
+          </label>}
+          <label className="analysis-trade-field">STAKE
+            <div className="analysis-trade-input-with-unit"><input type="number" min="0.35" step="0.01" value={tradeStake} onChange={(event) => setTradeStake(event.target.value)} /><span>{currency}</span></div>
+          </label>
+          <label className="analysis-trade-field">DURATION
+            <div className="analysis-trade-input-with-unit"><input type="number" min="1" max="365" step="1" value={durationTicks} onChange={(event) => setDurationTicks(event.target.value.slice(0, 3))} /><span>TICKS</span></div>
+          </label>
+          <p className="analysis-trade-instruction">Click a live market’s button below to place one {tradeSummary} trade on that market.</p>
         </div>
         <div className="analysis-tools-grid">
-          {analysisMarkets.map((definition) => <AnalysisMarketCard key={definition.symbol} definition={definition} quote={marketQuotes[definition.symbol]} />)}
+          {analysisMarkets.map((definition) => (
+            <AnalysisMarketCard
+              key={definition.symbol}
+              definition={definition}
+              quote={marketQuotes[definition.symbol]}
+              windowSize={windowSize}
+              tradeSummary={tradeSummary}
+              active={activeMarket === definition.label}
+              busy={Boolean(pendingMarket)}
+              placing={pendingMarket === definition.symbol}
+              onTrade={() => { void handleMarketTrade(definition); }}
+            />
+          ))}
         </div>
       </div>
       <aside className="analysis-side-panel">
         <div className="analysis-side-tabs" role="tablist">{(['Summary', 'Transactions', 'Journal', 'Results'] as const).map((tab) => <button key={tab} type="button" role="tab" aria-selected={sideTab === tab} className={sideTab === tab ? 'is-active' : ''} onClick={() => setSideTab(tab)}>{tab}</button>)}</div>
         <div className="analysis-side-copy">
-          {sideTab === 'Summary' && <><strong>Live market analysis</strong><p>Digit circles use the latest {ticksWindow} tick window. Review the live signal snapshot here.</p></>}
-          {sideTab === 'Transactions' && <><strong>Transactions</strong><p>No bot transactions have been recorded in this analysis view yet.</p></>}
+          {sideTab === 'Summary' && <><strong>Live market analysis</strong><p>Each percentage is calculated from the latest {windowSize} available ticks for that market. Circle totals use the displayed sample.</p></>}
+          {sideTab === 'Transactions' && <><strong>Trade status</strong><p>{tradeStatus || 'Settled orders and their exact result will be shown after you place a trade.'}</p></>}
           {sideTab === 'Journal' && <><strong>Journal</strong><p>Scanner and bot activity notes will appear here as results arrive.</p></>}
-          {sideTab === 'Results' && <><strong>Results</strong><p>Live digit probabilities are shown in the market cards. Select a market to inspect its latest result.</p></>}
+          {sideTab === 'Results' && <><strong>Results</strong><p>After execution, the settled contract and exact profit or loss appear in the trade receipt.</p></>}
         </div>
-        <button type="button" className="analysis-reset" onClick={() => { setMode('Digit circles'); setSideTab('Summary'); setTicksWindow('120'); }}>Reset</button>
+        {tradeStatus && <div className="analysis-trade-status" role="status">{tradeStatus}</div>}
+        <button type="button" className="analysis-reset" onClick={() => {
+          setMode('Digit circles');
+          setSideTab('Summary');
+          setTicksWindow('120');
+          setContractType(defaultSetup.contractType);
+          setSide(defaultSetup.side);
+          setTradeStake(defaultSetup.stake);
+          setDurationTicks(defaultSetup.durationTicks);
+          setBarrier(defaultSetup.barrier);
+        }}>Reset</button>
       </aside>
     </section>
   );
 }
 
-function AnalysisMarketCard({ definition, quote }: { definition: MarketDefinition; quote?: MarketQuote }) {
+function AnalysisMarketCard({ definition, quote, windowSize, tradeSummary, active, busy, placing, onTrade }: {
+  definition: MarketDefinition;
+  quote?: MarketQuote;
+  windowSize: number;
+  tradeSummary: string;
+  active: boolean;
+  busy: boolean;
+  placing: boolean;
+  onTrade: () => void;
+}) {
   const stats = useMemo(() => {
     const counts = Array.from({ length: 10 }, () => 0);
-    const history = (quote?.ticks ?? []).slice(-120).map((value) => {
+    const ticks = (quote?.ticks ?? []).slice(-windowSize).filter(Number.isFinite);
+    const history = ticks.map((value) => {
       const formatted = formatMarketPrice(value, quote?.pipSize ?? 2);
       const digit = Number(formatted.replace(/\D/g, '').slice(-1));
-      if (Number.isFinite(digit)) counts[digit] += 1;
+      if (Number.isInteger(digit) && digit >= 0 && digit <= 9) counts[digit] += 1;
       return digit;
-    });
-    const total = history.length || 1;
-    const probabilities = counts.map((count) => (count / total) * 100);
-    const even = probabilities.filter((_, digit) => digit % 2 === 0).reduce((sum, value) => sum + value, 0);
-    const over = probabilities.filter((_, digit) => digit > 4).reduce((sum, value) => sum + value, 0);
-    const first = quote?.ticks[0] ?? 0;
-    const last = quote?.ticks.at(-1) ?? first;
-    return { history, probabilities, even, over, rise: last >= first ? 55.4 : 44.6 };
-  }, [quote]);
-  const odd = 100 - stats.even;
-  const fall = 100 - stats.rise;
-  const under = 100 - stats.over;
+    }).filter((digit) => Number.isInteger(digit) && digit >= 0 && digit <= 9);
+    const sampleSize = history.length;
+    const probabilities = counts.map((count) => sampleSize ? (count / sampleSize) * 100 : 0);
+    const percentFor = (predicate: (digit: number) => boolean) => sampleSize
+      ? (history.filter(predicate).length / sampleSize) * 100
+      : null;
+    const changes = ticks.slice(1).map((value, index) => value - ticks[index]);
+    const rising = changes.filter((change) => change > 0).length;
+    const falling = changes.filter((change) => change < 0).length;
+    const directionalChanges = rising + falling;
+    return {
+      history,
+      probabilities,
+      sampleSize,
+      latestDigit: history.at(-1) ?? null,
+      even: percentFor((digit) => digit % 2 === 0),
+      odd: percentFor((digit) => digit % 2 === 1),
+      over: percentFor((digit) => digit > 4),
+      under: percentFor((digit) => digit < 4),
+      rise: directionalChanges ? (rising / directionalChanges) * 100 : null,
+      fall: directionalChanges ? (falling / directionalChanges) * 100 : null,
+    };
+  }, [quote, windowSize]);
 
   return (
-    <article className="analysis-market-card">
-      <header><span className="analysis-last-pill">Last 120</span><div><strong>{definition.name}</strong><b>{formatMarketPrice(quote?.price ?? null, quote?.pipSize ?? 2)}</b></div><span className="analysis-last-pill">Last 120</span></header>
-      <div className="analysis-digit-grid">
-        {stats.probabilities.map((probability, digit) => <span key={digit} className={`analysis-digit-circle digit-${digit}`}><strong>{digit}</strong><small>{probability.toFixed(1)}%</small></span>)}
+    <article className={`analysis-market-card ${active ? 'is-active-market' : ''}`}>
+      <header>
+        <span className={`analysis-market-live ${quote?.status === 'live' ? 'is-live' : ''}`}><i />{quote?.status === 'live' ? 'LIVE' : 'WAITING'}</span>
+        <div><strong>{definition.name}</strong><b>{formatMarketPrice(quote?.price ?? null, quote?.pipSize ?? 2)}</b></div>
+        <span className="analysis-last-pill">{stats.sampleSize}/{windowSize} TICKS</span>
+      </header>
+      <div className="analysis-digit-grid" aria-label={`${definition.name} digit distribution`}>
+        {stats.probabilities.map((probability, digit) => {
+          const ringColor = digit % 2 === 0 ? '#4fcea5' : '#9677ec';
+          return (
+            <span
+              key={digit}
+              className={`analysis-digit-circle digit-${digit} ${stats.latestDigit === digit ? 'is-latest' : ''}`}
+              style={{ background: stats.sampleSize ? `conic-gradient(${ringColor} ${probability * 3.6}deg, rgba(133, 155, 176, .24) 0deg)` : 'rgba(133, 155, 176, .24)' }}
+              aria-label={`Digit ${digit}: ${stats.sampleSize ? `${probability.toFixed(1)} percent` : 'no tick data'}`}
+            >
+              <span className="analysis-digit-center"><strong>{digit}</strong><small>{stats.sampleSize ? `${probability.toFixed(1)}%` : '—'}</small></span>
+            </span>
+          );
+        })}
       </div>
+      <button type="button" className="analysis-market-trade" onClick={onTrade} disabled={quote?.status !== 'live' || busy || !stats.sampleSize} aria-label={`Place ${tradeSummary} trade on ${definition.name}`}>
+        <strong>{placing ? 'PLACING ORDER…' : `TRADE ${definition.label}`}</strong>
+        <small>{tradeSummary}</small>
+      </button>
       <div className="analysis-history">{stats.history.slice(-10).map((digit, index) => <b key={`${digit}-${index}`} className={`digit-chip digit-${digit}`}>{digit}</b>)}</div>
-      <AnalysisStatBar label="Even" value={stats.even} compare="Odd" compareValue={odd} leftColor="#2fc8a0" rightColor="#f26770" />
-      <AnalysisStatBar label="Rise" value={stats.rise} compare="Fall" compareValue={fall} leftColor="#30c9a0" rightColor="#f26770" />
-      <AnalysisStatBar label="Over 4" value={stats.over} compare="Under 4" compareValue={under} leftColor="#30c9a0" rightColor="#f26770" />
+      <AnalysisStatBar label="Even" value={stats.even} compare="Odd" compareValue={stats.odd} leftColor="#4fcea5" rightColor="#9677ec" />
+      <AnalysisStatBar label="Rise" value={stats.rise} compare="Fall" compareValue={stats.fall} leftColor="#4fcea5" rightColor="#9677ec" />
+      <AnalysisStatBar label="Over 4" value={stats.over} compare="Under 4" compareValue={stats.under} leftColor="#4fcea5" rightColor="#9677ec" />
     </article>
   );
 }
 
-function AnalysisStatBar({ label, value, compare, compareValue, leftColor, rightColor }: { label: string; value: number; compare: string; compareValue: number; leftColor: string; rightColor: string }) {
+function AnalysisStatBar({ label, value, compare, compareValue, leftColor, rightColor }: { label: string; value: number | null; compare: string; compareValue: number | null; leftColor: string; rightColor: string }) {
+  const leftWidth = value ?? 0;
+  const rightWidth = compareValue ?? 0;
   return (
     <div className="analysis-stat-bar">
-      <span>{label}: {value.toFixed(1)}%</span><div><i style={{ width: `${value}%`, background: leftColor }} /><i style={{ width: `${compareValue}%`, background: rightColor }} /></div><b>{compare}: {compareValue.toFixed(1)}%</b>
+      <span>{label}: {value === null ? '—' : `${value.toFixed(1)}%`}</span>
+      <div><i style={{ width: `${leftWidth}%`, background: leftColor }} /><i style={{ width: `${rightWidth}%`, background: rightColor }} /></div>
+      <b>{compare}: {compareValue === null ? '—' : `${compareValue.toFixed(1)}%`}</b>
     </div>
   );
 }
@@ -1774,7 +2301,7 @@ function QuickBotView({ accountMode, currency, balance, activeMarket, marketQuot
 function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMode, currency, onTradeSettled }: { activeMarket: string; setActiveMarket: (market: string) => void; marketQuotes: Record<string, MarketQuote>; accountMode: 'DEMO' | 'REAL'; currency: string; onTradeSettled: () => Promise<void> }) {
   const activeDefinition = getMarketDefinition(activeMarket);
   const activeQuote = marketQuotes[activeDefinition.symbol];
-  const [tradeType, setTradeType] = useState('Even/Odd');
+  const [tradeType, setTradeType] = useState<'Even/Odd' | 'Rise/Fall' | 'Over/Under'>('Even/Odd');
   const [numberOfTicks, setNumberOfTicks] = useState('120');
   const [ticks, setTicks] = useState('1');
   const [stake, setStake] = useState('0.5');
@@ -1782,7 +2309,6 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
   const [bulkTrades, setBulkTrades] = useState('5');
   const [autoTrader, setAutoTrader] = useState(true);
   const [reviewState, setReviewState] = useState('');
-  const [bulkSide, setBulkSide] = useState<'left' | 'right'>('left');
   const [scannerState, setScannerState] = useState<'idle' | 'scanning' | 'complete'>('idle');
   const [scannerResults, setScannerResults] = useState<BulkScanResult[]>([]);
   const [scannerDigits, setScannerDigits] = useState<Array<{ digit: number; percentage: number }>>([]);
@@ -1792,8 +2318,13 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
   const [bulkTakeProfit, setBulkTakeProfit] = useState('50');
   const [bulkStopLoss, setBulkStopLoss] = useState('500');
   const [bulkTransactions, setBulkTransactions] = useState<ExecutedTrade[]>([]);
+  const [bulkTransactionTab, setBulkTransactionTab] = useState<BotTransactionTab>('Transactions');
   const [batchResult, setBatchResult] = useState<BatchResult | null>(null);
   const stopRequestedRef = useRef(false);
+  const executionLockRef = useRef(false);
+  useEffect(() => () => {
+    if (executionLockRef.current) stopRequestedRef.current = true;
+  }, []);
   useEffect(() => {
     const handleOpenScanner = () => setScannerOpen(true);
     window.addEventListener('bulk-ai-open', handleOpenScanner);
@@ -1817,7 +2348,6 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
     setScannerState('scanning');
     setScannerOpen(true);
     setBatchResult(null);
-    setBulkTransactions([]);
     window.setTimeout(() => {
       const ticks = (preferredQuote?.ticks ?? []).slice(-Math.max(20, Number(numberOfTicks) || 120));
       const counts = Array.from({ length: 10 }, () => 0);
@@ -1870,20 +2400,28 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
   const selectedScannerResult = scannerResults.find((result) => result.definition.symbol === selectedScannerSymbol);
   const handleExecuteAiBatch = async (scanResult?: BulkScanResult) => {
     const executionResult = scanResult ?? selectedScannerResult;
-    if (executionState === 'executing') {
+    if (executionLockRef.current || executionState === 'executing') {
       stopRequestedRef.current = true;
       setReviewState('Stopping after the current trade settles…');
       return;
     }
     if (!executionResult) return;
     const amount = Number(stake);
-    const duration = Math.max(1, Number(ticks) || 1);
-    const count = Math.max(1, Math.floor(Number(bulkTrades) || 1));
+    const duration = Number(ticks);
+    const count = Number(bulkTrades);
     const martingaleMultiplier = configuredMultiplier(martingale);
     const takeProfitLimit = Number(bulkTakeProfit);
     const stopLossLimit = Number(bulkStopLoss);
-    if (!Number.isFinite(amount) || amount < 0.35) {
-      setReviewState(`Enter a stake of at least ${currency} 0.35 before running the AI batch.`);
+    if (!Number.isFinite(amount) || amount < 0.35 || amount > 10_000) {
+      setReviewState(`Enter a stake from ${currency} 0.35 to 10,000.`);
+      return;
+    }
+    if (!Number.isInteger(duration) || duration < 1 || duration > 365) {
+      setReviewState('Enter a whole-number contract duration from 1 to 365 ticks.');
+      return;
+    }
+    if (!Number.isInteger(count) || count < 1) {
+      setReviewState('Enter a whole number of bulk trades, starting at 1.');
       return;
     }
     if (martingaleMultiplier === null) {
@@ -1894,12 +2432,12 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
       setReviewState(`Enter valid ${currency} Take Profit and Stop Loss limits.`);
       return;
     }
+    executionLockRef.current = true;
     stopRequestedRef.current = false;
     setExecutionState('executing');
     setBatchResult(null);
-    setReviewState('');
+    setReviewState(`Executing ${count} ${formatDerivContractType(executionResult.contractType, executionResult.barrier)} trade${count === 1 ? '' : 's'} on ${executionResult.definition.name} (${accountMode})…`);
     let completed = 0;
-    let failed = 0;
     let firstError = '';
     let cumulativeProfit = 0;
     let stopReason = '';
@@ -1913,32 +2451,33 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
       }
       try {
         const tradeAmount = nextMartingaleStake(amount, martingaleMultiplier, consecutiveLosses);
-        const response = await fetch('/api/deriv/execute', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            symbol: executionResult.definition.symbol,
-            contractType: executionResult.contractType,
-            amount: tradeAmount,
-            duration,
-            durationUnit: 't',
-            currency,
-            barrier: executionResult.barrier,
-            mode: accountMode.toLowerCase(),
-            confirm: true,
-          }),
+        if (!Number.isFinite(tradeAmount) || tradeAmount < 0.35 || tradeAmount > 10_000) {
+          throw new Error(`Martingale stake ${tradeAmount.toFixed(2)} is outside the supported ${currency} 0.35–10,000 range.`);
+        }
+        const rawTrade = await executeDerivTrade<ExecutedTrade>({
+          symbol: executionResult.definition.symbol,
+          contractType: executionResult.contractType,
+          amount: tradeAmount,
+          duration,
+          durationUnit: 't',
+          currency,
+          barrier: executionResult.barrier,
+          mode: accountMode === 'REAL' ? 'real' : 'demo',
         });
-        const payload = await response.json() as { error?: string; message?: string; trade?: ExecutedTrade };
-        if (!response.ok || !payload.trade) throw new Error(payload.message ?? payload.error ?? 'Live trade request failed.');
-        const settledTrade = normalizeExecutedTrade(payload.trade);
+        const settledTrade: ExecutedTrade = {
+          ...normalizeExecutedTrade(rawTrade),
+          marketName: executionResult.definition.name,
+          mode: accountMode,
+        };
         const exactProfit = resolvedTradeProfit(settledTrade);
         if (exactProfit === null) throw new Error('Deriv did not return an exact settled P/L.');
         completed += 1;
         cumulativeProfit += exactProfit;
-        totalPlaced += tradeAmount;
+        totalPlaced += settledTrade.buyPrice ?? settledTrade.stake ?? tradeAmount;
         consecutiveLosses = exactProfit < 0 ? consecutiveLosses + 1 : 0;
         settledTrades.push(settledTrade);
         setBulkTransactions((current) => [...current, settledTrade]);
+        setBulkTransactionTab('Transactions');
         await onTradeSettled();
         if (takeProfitLimit > 0 && cumulativeProfit >= takeProfitLimit) {
           stopReason = `Take Profit reached at ${cumulativeProfit.toFixed(2)} ${currency}.`;
@@ -1949,31 +2488,70 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
           break;
         }
       } catch (error) {
-        failed += 1;
         firstError = error instanceof Error ? error.message : 'Live trade request failed.';
         break;
       }
     }
     setExecutionState('idle');
+    executionLockRef.current = false;
     const batchProfit = cumulativeProfit;
     if (completed > 0) setBatchResult({ profit: batchProfit, amount: totalPlaced, trades: completed, currency, tradeResults: settledTrades });
-    setReviewState(firstError ? firstError : formatSignedProfit(batchProfit));
-  };
-  const handleBulkReview = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const leftChoice = tradeType === 'Even/Odd' ? 'Even' : tradeType === 'Rise/Fall' ? 'Rise' : 'Over';
-    const rightChoice = tradeType === 'Even/Odd' ? 'Odd' : tradeType === 'Rise/Fall' ? 'Fall' : 'Under';
-    setReviewState(`${bulkSide === 'left' ? leftChoice : rightChoice} bulk proposal ready for review · ${bulkTrades} trade${bulkTrades === '1' ? '' : 's'} · ${stake} USD`);
+    if (firstError) {
+      setReviewState(`${completed}/${count} trades settled before stopping: ${firstError}`);
+    } else if (stopReason) {
+      setReviewState(`${completed}/${count} trades settled · ${stopReason} · ${formatSignedProfit(batchProfit)} ${currency}`);
+    } else {
+      setReviewState(`${completed}/${count} trades settled · ${formatSignedProfit(batchProfit)} ${currency}`);
+    }
   };
   const leftChoice = tradeType === 'Even/Odd' ? 'Even' : tradeType === 'Rise/Fall' ? 'Rise' : 'Over';
   const rightChoice = tradeType === 'Even/Odd' ? 'Odd' : tradeType === 'Rise/Fall' ? 'Fall' : 'Under';
+  const executeBulkChoice = (choice: 'left' | 'right') => {
+    const side = choice === 'left' ? leftChoice : rightChoice;
+    if (tradeType !== 'Rise/Fall' && activeDefinition.family !== 'volatility') {
+      setReviewState('Even/Odd and Over/Under contracts require a Volatility market. Select one before placing the batch.');
+      return;
+    }
+    if (!activeQuote) {
+      setReviewState('Waiting for the selected market quote before placing the batch.');
+      return;
+    }
+    const contractType: BulkScanResult['contractType'] = tradeType === 'Rise/Fall'
+      ? side === 'Rise' ? 'CALL' : 'PUT'
+      : tradeType === 'Over/Under'
+        ? side === 'Over' ? 'DIGITOVER' : 'DIGITUNDER'
+        : side === 'Even' ? 'DIGITEVEN' : 'DIGITODD';
+    const result: BulkScanResult = {
+      definition: activeDefinition,
+      quote: activeQuote,
+      side,
+      contractType,
+      confidence: 0,
+      sampleSize: digitHistory.length,
+      rationale: `Trader-selected ${side} batch.`,
+      barrier: tradeType === 'Over/Under' ? 4 : undefined,
+    };
+    void handleExecuteAiBatch(result);
+  };
+  function openBulkHistoryDetail() {
+    if (!bulkTransactions.length) return;
+    const profit = totalTradeProfit(bulkTransactions);
+    if (profit === null) return;
+    setBatchResult({
+      profit,
+      amount: bulkTransactions.reduce((total, trade) => total + (trade.buyPrice ?? trade.stake ?? 0), 0),
+      trades: bulkTransactions.length,
+      currency,
+      tradeResults: bulkTransactions,
+    });
+  }
 
   return (
     <section className="bulk-trader-view">
-      <form onSubmit={handleBulkReview}>
+      <form onSubmit={(event) => event.preventDefault()}>
         <div className="bulk-control-grid">
           <label><span>MARKET</span><select value={activeMarket} onChange={(event) => setActiveMarket(event.target.value)}>{MARKET_DEFINITIONS.map(({ label, name }) => <option key={label} value={label}>{name}</option>)}</select></label>
-          <label><span>TRADE TYPE</span><select value={tradeType} onChange={(event) => setTradeType(event.target.value)}><option>Even/Odd</option><option>Rise/Fall</option><option>Over/Under</option></select></label>
+          <label><span>TRADE TYPE</span><select value={tradeType} onChange={(event) => setTradeType(event.target.value as typeof tradeType)}><option>Even/Odd</option><option>Rise/Fall</option><option>Over/Under</option></select></label>
         </div>
          <label className="bulk-ticks-control"><span>SCAN TICK WINDOW</span><input inputMode="numeric" value={numberOfTicks} onChange={(event) => setNumberOfTicks(event.target.value.replace(/\D/g, '').slice(0, 3) || '1')} /></label>
          <div className="bulk-current-tick"><span>CURRENT TICK</span><strong>{formatMarketPrice(activeQuote?.price ?? null, activeQuote?.pipSize ?? 2)}</strong><small>{activeQuote?.status === 'live' ? '● LIVE' : activeQuote?.price !== null ? 'LAST QUOTE' : 'CONNECTING'}</small><button type="button" onClick={openScanner} disabled={scannerState === 'scanning'}><Sparkles size={12} /> {scannerState === 'scanning' ? 'SCANNING…' : 'AI SCANNER'}</button></div>
@@ -1982,20 +2560,32 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
         </div>
         <div className="bulk-history-row"><span>TICKS</span>{digitHistory.length ? digitHistory.map((digit, index) => <b key={`${digit}-${index}`} className={`digit-chip digit-${digit}`}>{digit}</b>) : <small>Waiting for live tick history</small>}</div>
         <div className="bulk-input-grid">
-          <label><span>NUMBER OF TICKS PER TRADE</span><input inputMode="numeric" value={ticks} onChange={(event) => setTicks(event.target.value.replace(/\D/g, '').slice(0, 3) || '1')} /></label>
+          <label><span>CONTRACT DURATION (TICKS)</span><input inputMode="numeric" value={ticks} onChange={(event) => setTicks(event.target.value.replace(/\D/g, '').slice(0, 3) || '1')} /></label>
           <label><span>STAKE</span><input inputMode="decimal" value={stake} onChange={(event) => setStake(event.target.value)} /></label>
-           <label><span>MARTINGALE ×</span><input inputMode="decimal" value={martingale} onChange={(event) => setMartingale(event.target.value)} /></label>
-               <label><span>NUMBER OF TICKS PER TRADE</span><input inputMode="numeric" value={ticks} onChange={(event) => setTicks(event.target.value.replace(/\D/g, '').slice(0, 3) || '1')} /></label>
-               <label><span>NO. OF BULK TRADES</span><input inputMode="numeric" value={bulkTrades} onChange={(event) => setBulkTrades(event.target.value)} /></label>
+          <label><span>MARTINGALE ×</span><input inputMode="decimal" value={martingale} onChange={(event) => setMartingale(event.target.value)} /></label>
+          <label><span>NO. OF BULK TRADES</span><input inputMode="numeric" value={bulkTrades} onChange={(event) => setBulkTrades(event.target.value)} /></label>
           <label><span>TAKE PROFIT</span><input inputMode="decimal" value={bulkTakeProfit} onChange={(event) => setBulkTakeProfit(event.target.value)} /></label>
           <label><span>STOP LOSS</span><input inputMode="decimal" value={bulkStopLoss} onChange={(event) => setBulkStopLoss(event.target.value)} /></label>
         </div>
+        <p className="bulk-execution-notice">Choose a side to place the configured batch immediately on your {accountMode} account.</p>
         <div className="bulk-action-row">
-          <button type="submit" className="bulk-even-button" onClick={() => setBulkSide('left')}><span><CircleDollarSign size={12} /> {leftChoice}</span><b>USD {stake || '0.00'}</b><small>{digitCounts.filter((_, digit) => digit % 2 === 0).reduce((total, item) => total + item.percentage, 0).toFixed(2)}%</small></button>
-          <button type="submit" className="bulk-odd-button" onClick={() => setBulkSide('right')}><span><CircleDollarSign size={12} /> {rightChoice}</span><b>USD {stake || '0.00'}</b><small>{digitCounts.filter((_, digit) => digit % 2 !== 0).reduce((total, item) => total + item.percentage, 0).toFixed(2)}%</small></button>
+          <button type="button" className="bulk-even-button" onClick={() => executeBulkChoice('left')} disabled={executionState === 'executing'}><span><CircleDollarSign size={12} /> {leftChoice}</span><b>{currency} {stake || '0.00'}</b><small>PLACE {bulkTrades || '0'} TRADE{bulkTrades === '1' ? '' : 'S'}</small></button>
+          <button type="button" className="bulk-odd-button" onClick={() => executeBulkChoice('right')} disabled={executionState === 'executing'}><span><CircleDollarSign size={12} /> {rightChoice}</span><b>{currency} {stake || '0.00'}</b><small>PLACE {bulkTrades || '0'} TRADE{bulkTrades === '1' ? '' : 'S'}</small></button>
         </div>
-        <div className="bulk-bottom-row"><button type="button" className={`bulk-auto-button ${autoTrader ? 'is-on' : ''}`} onClick={() => setAutoTrader(!autoTrader)}><Settings2 size={12} /> {autoTrader ? 'Live auto mode on' : 'Live auto mode'}</button>{reviewState && <span role="status">{reviewState}</span>}</div>
+        <div className="bulk-bottom-row"><button type="button" className={`bulk-auto-button ${autoTrader ? 'is-on' : ''}`} onClick={() => setAutoTrader(!autoTrader)}><Settings2 size={12} /> {autoTrader ? 'Live auto mode on' : 'Live auto mode'}</button>{executionState === 'executing' && <button type="button" className="bulk-stop-button" onClick={() => void handleExecuteAiBatch()}>■ STOP AFTER CURRENT TRADE</button>}{reviewState && <span role="status">{reviewState}</span>}</div>
       </form>
+      <BotTransactionPanel
+        trades={bulkTransactions}
+        currency={currency}
+        running={executionState === 'executing'}
+        activeTab={bulkTransactionTab}
+        onTabChange={setBulkTransactionTab}
+        onViewDetail={openBulkHistoryDetail}
+        historyLabel="CURRENT SESSION"
+        sectionLabel="Bulk trade history"
+        runningLabel="Batch is executing sequentially"
+        emptyMessage="Settled Bulk Trader trades will appear here."
+      />
       {scannerOpen && (
         <div className="ai-scanner-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setScannerOpen(false); }}>
           <section className="ai-scanner-modal" role="dialog" aria-modal="true" aria-labelledby="ai-scanner-title" onMouseDown={(event) => event.stopPropagation()}>
@@ -2022,7 +2612,7 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
              <TradeFigureStrip trades={bulkTransactions} currency={currency} />
             {bulkTransactions.length > 0 && <div className="ai-scanner-history" aria-label="Bulk bot transaction history">
               <div><span>TRANSACTIONS</span><b>{bulkTransactions.length}</b><span>P/L</span><b className={totalTradeProfit(bulkTransactions) !== null && totalTradeProfit(bulkTransactions)! < 0 ? 'is-loss' : 'is-win'}>{formatSignedProfit(totalTradeProfit(bulkTransactions))}</b></div>
-              {bulkTransactions.slice().reverse().map((trade, index) => <div className="ai-scanner-history-row" key={`${trade.contractId ?? 'bulk-run'}-${index}`}><strong>{bulkTransactions.length - index}</strong><span>{(trade.stake ?? trade.buyPrice ?? 0).toFixed(2)} {trade.currency ?? currency}<small className="trade-row-points">E {formatTradePoint(trade.entrySpot)} · X {formatTradePoint(trade.exitSpot)}</small></span><b className={resolvedTradeProfit(trade) !== null && resolvedTradeProfit(trade)! < 0 ? 'is-loss' : 'is-win'}>{formatSignedProfit(resolvedTradeProfit(trade))}</b></div>)}
+              {bulkTransactions.slice().reverse().map((trade, index) => <div className="ai-scanner-history-row" key={`${trade.contractId ?? 'bulk-run'}-${index}`}><strong>{bulkTransactions.length - index}</strong><span>{(trade.buyPrice ?? trade.stake ?? 0).toFixed(2)} {trade.currency ?? currency}<small className="trade-row-points">E {formatTradePoint(trade.entrySpot)} · X {formatTradePoint(trade.exitSpot)}</small></span><b className={resolvedTradeProfit(trade) !== null && resolvedTradeProfit(trade)! < 0 ? 'is-loss' : 'is-win'}>{formatSignedProfit(resolvedTradeProfit(trade))}</b></div>)}
             </div>}
             {reviewState && <div className="ai-scanner-execution-state" role="status">{reviewState}</div>}
               <button type="button" className={`ai-scanner-scan-button ${executionState === 'executing' ? 'is-stop' : ''}`} onClick={(event) => { event.preventDefault(); if (executionState === 'executing') void handleExecuteAiBatch(); else if (scannerState === 'complete' && !autoTrader) void handleExecuteAiBatch(); else scanMarkets(); }}>{scannerState === 'scanning' ? 'SCANNING…' : executionState === 'executing' ? '■ STOP BOT' : scannerState === 'complete' && !autoTrader ? 'RUN BOT' : scannerState === 'complete' ? 'SCAN AGAIN' : 'SCAN MARKET'}</button>
@@ -2098,7 +2688,7 @@ function RecoveryBotView({ accountMode, currency, balance, activeMarket, marketQ
     setRunning(true);
     setBatchResult(null);
     setProposalState('requesting');
-    setProposalMessage(`Running ${requestedRuns} ${requestedRuns === 1 ? 'trade' : 'trades'} on ${selectedDefinition.name}…`);
+    setProposalMessage(`Running ${requestedRuns} OVER 7 trade${requestedRuns === 1 ? '' : 's'} on ${selectedDefinition.name}…`);
     let completed = 0;
     let failed = 0;
     let cumulativeProfit = 0;
@@ -2113,29 +2703,26 @@ function RecoveryBotView({ accountMode, currency, balance, activeMarket, marketQ
       }
       try {
         const tradeAmount = nextMartingaleStake(amount, martingaleMultiplier, lossStreak);
-        const response = await fetch('/api/deriv/execute', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            symbol: selectedDefinition.symbol,
-            contractType: 'DIGITOVER',
-            amount: tradeAmount,
-             duration: durationTicks,
-            durationUnit: 't',
-            currency,
-            barrier: 7,
-            mode: accountMode.toLowerCase(),
-            confirm: true,
-          }),
+        const rawTrade = await executeDerivTrade<ExecutedTrade>({
+          symbol: selectedDefinition.symbol,
+          contractType: 'DIGITOVER',
+          amount: tradeAmount,
+          duration: durationTicks,
+          durationUnit: 't',
+          currency,
+          barrier: 7,
+          mode: accountMode === 'REAL' ? 'real' : 'demo',
         });
-        const payload = await response.json() as { error?: string; message?: string; trade?: ExecutedTrade };
-        if (!response.ok || !payload.trade) throw new Error(payload.message ?? payload.error ?? 'Deriv did not execute the contract.');
-        const settledTrade = normalizeExecutedTrade(payload.trade);
+        const settledTrade: ExecutedTrade = {
+          ...normalizeExecutedTrade(rawTrade),
+          marketName: selectedDefinition.name,
+          mode: accountMode,
+        };
         const exactProfit = resolvedTradeProfit(settledTrade);
         if (exactProfit === null) throw new Error('Deriv did not return an exact settled P/L.');
         completed += 1;
         cumulativeProfit += exactProfit;
-        totalPlaced += tradeAmount;
+        totalPlaced += settledTrade.buyPrice ?? settledTrade.stake ?? tradeAmount;
         lossStreak = exactProfit < 0 ? lossStreak + 1 : 0;
         settledTrades.push(settledTrade);
         setLastTrade(settledTrade);
@@ -2171,9 +2758,9 @@ function RecoveryBotView({ accountMode, currency, balance, activeMarket, marketQ
     setProposalMessage(failed ? `${completed}/${requestedRuns} runs completed before execution stopped.` : completed > 0 ? `${completed}/${requestedRuns} settled · ${formatSignedProfit(batchProfit)}` : stopReason || `${completed}/${requestedRuns} runs completed.`);
   };
   const resultCurrency = transactions.at(-1)?.currency ?? currency;
-  const resultStake = transactions.reduce((total, trade) => total + (trade.stake ?? 0), 0);
+   const resultStake = transactions.reduce((total, trade) => total + (trade.buyPrice ?? trade.stake ?? 0), 0);
   const resultProfit = totalTradeProfit(transactions);
-  const resultPayout = transactions.reduce((total, trade) => total + (trade.payout ?? Math.max(0, (trade.stake ?? 0) + (resolvedTradeProfit(trade) ?? 0))), 0);
+   const resultPayout = transactions.reduce((total, trade) => total + (trade.payout ?? Math.max(0, (trade.buyPrice ?? trade.stake ?? 0) + (resolvedTradeProfit(trade) ?? 0))), 0);
   const resultRuns = transactions.length;
   const resultLost = transactions.filter((trade) => trade.result === 'lost').length;
   const resultWon = transactions.filter((trade) => trade.result === 'won').length;
@@ -2185,7 +2772,7 @@ function RecoveryBotView({ accountMode, currency, balance, activeMarket, marketQ
         <button type="button">Risk Disclaimer</button>
         <button type="button" className="cashier-button">Cashier</button>
         <button type="button" className="telegram-button">Join Telegram</button>
-        <button type="button" className="whatsapp-button">WhatsApp Support</button>
+         <a className="whatsapp-button" href={WHATSAPP_SUPPORT_URL} target="_blank" rel="noopener noreferrer" aria-label="Join the ProTraders WhatsApp support group">WhatsApp Group</a>
         <span className="recovery-spacer" />
         <span className="recovery-live-quote"><i /> {selectedDefinition.name} {formatMarketPrice(selectedQuote?.price ?? null, selectedQuote?.pipSize ?? 2)}</span>
         <span className="recovery-currency">USD⌄</span>
@@ -2252,7 +2839,7 @@ function RecoveryBotView({ accountMode, currency, balance, activeMarket, marketQ
                <span className="recovery-transaction-type"><i className={resolvedTradeProfit(trade) !== null && resolvedTradeProfit(trade)! < 0 ? 'is-loss' : 'is-win'} /><strong>#{transactions.length - index} · {tradeContractLabel(trade)}</strong></span>
                <span className="recovery-spots"><span><i className="spot-entry" />{formatTradePoint(trade.entrySpot)}</span></span>
                <span className="recovery-spots"><span><i className="spot-exit" />{formatTradePoint(trade.exitSpot)}</span></span>
-               <span className="recovery-buy-pnl"><span>{formatTradePoint(trade.stake ?? trade.buyPrice)} {trade.currency ?? resultCurrency}</span><em className={resolvedTradeProfit(trade) !== null && resolvedTradeProfit(trade)! < 0 ? 'is-loss' : 'is-win'}>{formatSignedProfit(resolvedTradeProfit(trade))}</em></span>
+              <span className="recovery-buy-pnl"><span>{formatTradePoint(trade.buyPrice ?? trade.stake)} {trade.currency ?? resultCurrency}</span><em className={resolvedTradeProfit(trade) !== null && resolvedTradeProfit(trade)! < 0 ? 'is-loss' : 'is-win'}>{formatSignedProfit(resolvedTradeProfit(trade))}</em></span>
             </div>) : <div className="recovery-transaction-empty">No bot transactions yet.</div>}
             <a className="recovery-whats-this" href="#recovery-transactions-help">What's this?</a>
           </div>}
@@ -2279,11 +2866,11 @@ function RecoveryBotView({ accountMode, currency, balance, activeMarket, marketQ
 }
 
 type FreeBotDefinition = {
-  id: 'diagnosis' | 'recovery' | 'margic';
+  id: 'diagnosis' | 'recovery' | 'scanner1' | 'scanner2' | 'scanner3' | 'scanner4' | 'scanner5' | 'margic';
   name: string;
   eyebrow: string;
   description: string;
-  contractType: 'DIGITOVER' | 'DIGITEVEN' | 'DIGITODD' | 'CALL';
+  contractType: DerivContractType;
   barrier?: number;
   accent: string;
 };
@@ -2291,11 +2878,16 @@ type FreeBotDefinition = {
 const FREE_BOT_DEFINITIONS: FreeBotDefinition[] = [
   { id: 'recovery', name: 'Recovery Bot', eyebrow: 'RECOVERY STRATEGY', description: 'Runs sequential recovery trades with editable stake, runs, Take Profit, and Stop Loss.', contractType: 'DIGITOVER', barrier: 7, accent: 'violet' },
   { id: 'diagnosis', name: 'Diagnosis Bot', eyebrow: 'DIGIT PRESSURE', description: 'Reads recent volatility digits and trades an over-7 signal with controlled runs.', contractType: 'DIGITOVER', barrier: 7, accent: 'cyan' },
-  { id: 'margic', name: 'margic bot', eyebrow: 'SIGNAL WORKSPACE', description: 'Builds an even/odd entry from the live digit board, then runs settled trades with visible risk controls.', contractType: 'DIGITEVEN', accent: 'navy' },
+  { id: 'scanner1', name: 'Scanner 1', eyebrow: 'OVER 2 · BULK PATTERN', description: 'Waits for two digits at or below 2 followed by a digit above 2, then places Over 2 trades.', contractType: 'DIGITOVER', barrier: 2, accent: 'amber' },
+  { id: 'scanner2', name: 'Scanner 2', eyebrow: 'OVER 2 · MARKET SCANNER', description: 'Scans volatility markets for 0, 1, and 2 staying below the 10.3% threshold before an Over 2 entry.', contractType: 'DIGITOVER', barrier: 2, accent: 'navy' },
+  { id: 'scanner3', name: 'Scanner 3', eyebrow: 'OVER 1 · RECOVERY', description: 'Trades Over 1 with a 2× recovery sequence on Volatility 25 (1s).', contractType: 'DIGITOVER', barrier: 1, accent: 'violet' },
+  { id: 'scanner4', name: 'Scanner 4', eyebrow: 'OVER 1 · ENTRY SIGNAL', description: 'Waits for last digit 4, then trades Over 1 on Volatility 100 R.', contractType: 'DIGITOVER', barrier: 1, accent: 'cyan' },
+  { id: 'scanner5', name: 'Scanner 5', eyebrow: 'UNDER RECOVERY · SEQUENCE', description: 'Starts Under 9, then Under 8, recovering through Under 6 and Under 5 after losses.', contractType: 'DIGITUNDER', barrier: 9, accent: 'amber' },
+  { id: 'margic', name: 'Margic Bot', eyebrow: 'EVEN / ODD · SIGNAL', description: 'Reads the live digit balance and opens an Even or Odd strategy with configurable signal and risk controls.', contractType: 'DIGITEVEN', accent: 'cyan' },
 ];
 
-function FreeBotsView({ accountMode, currency, balance, activeMarket, marketQuotes, onTradeSettled, initialBotId }: { accountMode: 'DEMO' | 'REAL'; currency: string; balance: number | null; activeMarket: string; marketQuotes: Record<string, MarketQuote>; onTradeSettled: () => Promise<void>; initialBotId?: 'diagnosis' | 'recovery' | 'margic' | null }) {
-  const [selectedBotId, setSelectedBotId] = useState<'diagnosis' | 'recovery' | 'margic' | null>(initialBotId ?? null);
+function FreeBotsView({ accountMode, currency, balance, activeMarket, marketQuotes, onTradeSettled, initialBotId }: { accountMode: 'DEMO' | 'REAL'; currency: string; balance: number | null; activeMarket: string; marketQuotes: Record<string, MarketQuote>; onTradeSettled: () => Promise<void>; initialBotId?: 'diagnosis' | 'recovery' | 'scanner1' | 'scanner2' | 'scanner3' | 'scanner4' | 'scanner5' | null }) {
+  const [selectedBotId, setSelectedBotId] = useState<'diagnosis' | 'recovery' | 'scanner1' | 'scanner2' | 'scanner3' | 'scanner4' | 'scanner5' | 'margic' | null>(initialBotId ?? null);
   const [botRunning, setBotRunning] = useState(false);
   const [recoveryMode, setRecoveryMode] = useState(true);
   const [initialAnalysis, setInitialAnalysis] = useState(true);
@@ -2311,13 +2903,40 @@ function FreeBotsView({ accountMode, currency, balance, activeMarket, marketQuot
   const [runCount, setRunCount] = useState('5');
   const [numberOfTicks, setNumberOfTicks] = useState('1');
   const [martingale, setMartingale] = useState('2');
+  const [maxLosses, setMaxLosses] = useState('4');
   const [botTransactions, setBotTransactions] = useState<ExecutedTrade[]>([]);
   const [batchResult, setBatchResult] = useState<BatchResult | null>(null);
   const [botStatus, setBotStatus] = useState('');
+  const [transactionTab, setTransactionTab] = useState<BotTransactionTab>('Transactions');
   const stopRequestedRef = useRef(false);
   const selectedBot = FREE_BOT_DEFINITIONS.find((bot) => bot.id === selectedBotId) ?? FREE_BOT_DEFINITIONS[0];
   const selectedDefinition = getVolatilityDefinition(botMarket);
-  const selectedQuote = marketQuotes[selectedDefinition.symbol];
+  const scannerOneDefinition = getVolatilityDefinition('Volatility 25 (1s) Index');
+  const scannerFourDefinition = getVolatilityDefinition('Volatility 100 R Index');
+  const strategyDefinition = selectedBotId === 'scanner1' || selectedBotId === 'scanner3' || selectedBotId === 'scanner5'
+    ? scannerOneDefinition
+    : selectedBotId === 'scanner4'
+      ? scannerFourDefinition
+      : selectedDefinition;
+  const selectedQuote = marketQuotes[strategyDefinition.symbol];
+  const scannerLookback = 1000;
+  const scannerMaxPercentage = 10.3;
+  const scannerOneDigits = useMemo(() => getQuoteDigits(selectedQuote, 3), [selectedQuote]);
+  const scannerOneQualifies = scannerOneDigits.length === 3
+    && scannerOneDigits[0] <= 2
+    && scannerOneDigits[1] <= 2
+    && scannerOneDigits[2] > 2;
+  const scannerTwoResults = useMemo(
+    () => VOLATILITY_DEFINITIONS
+      .map((definition) => getOverTwoScannerResult(definition, marketQuotes[definition.symbol], scannerLookback, scannerMaxPercentage))
+      .sort((left, right) => left.score - right.score),
+    [marketQuotes],
+  );
+  const scannerTwoCandidate = scannerTwoResults.find((result) => result.qualifies);
+  const scannerFourEntryDigit = 4;
+  const scannerFourEntryReady = getQuoteDigits(selectedQuote, 1).at(-1) === scannerFourEntryDigit;
+  const scannerFiveDigits = useMemo(() => getQuoteDigits(selectedQuote, 3), [selectedQuote]);
+  const scannerFiveQualifies = scannerFiveDigits.length === 3 && scannerFiveDigits.every((digit) => digit > 0);
   const { evenShare, signalContractType } = useMemo(() => {
     const windowSize = Math.max(1, Math.floor(Number(margicSignalWindow) || 25));
     const threshold = Math.min(100, Math.max(0, Number(margicSignalThreshold) || 55));
@@ -2334,8 +2953,54 @@ function FreeBotsView({ accountMode, currency, balance, activeMarket, marketQuot
   }, [margicSignalMode, margicSignalThreshold, margicSignalWindow, selectedQuote]);
 
   useEffect(() => {
-    setBotMarket(getVolatilityDefinition(getMarketDefinition(activeMarket).name).name);
-  }, [activeMarket]);
+    if (selectedBotId === 'scanner1') {
+      setBotMarket(getVolatilityDefinition('Volatility 25 (1s) Index').name);
+      setBotStake('18');
+      setMartingale('2');
+      setNumberOfTicks('1');
+      setRunCount('4');
+      setTakeProfit('40');
+      setStopLoss('0');
+      setMaxLosses('4');
+    } else if (selectedBotId === 'scanner2') {
+      setBotStake('18');
+      setMartingale('2');
+      setNumberOfTicks('1');
+      setRunCount('1');
+      setTakeProfit('40');
+      setStopLoss('0');
+      setMaxLosses('4');
+    } else if (selectedBotId === 'scanner3') {
+      setBotMarket(getVolatilityDefinition('Volatility 25 (1s) Index').name);
+      setBotStake('10');
+      setMartingale('2');
+      setNumberOfTicks('1');
+      setRunCount('5');
+      setTakeProfit('100');
+      setStopLoss('0');
+      setMaxLosses('5');
+    } else if (selectedBotId === 'scanner4') {
+      setBotMarket(getVolatilityDefinition('Volatility 100 R Index').name);
+      setBotStake('10');
+      setMartingale('2');
+      setNumberOfTicks('1');
+      setRunCount('5');
+      setTakeProfit('50');
+      setStopLoss('0');
+      setMaxLosses('5');
+    } else if (selectedBotId === 'scanner5') {
+      setBotMarket(getVolatilityDefinition('Volatility 25 (1s) Index').name);
+      setBotStake('10');
+      setMartingale('2');
+      setNumberOfTicks('1');
+      setRunCount('5');
+      setTakeProfit('100');
+      setStopLoss('0');
+      setMaxLosses('5');
+    } else {
+      setBotMarket(getVolatilityDefinition(getMarketDefinition(activeMarket).name).name);
+    }
+  }, [activeMarket, selectedBotId]);
 
   const resetBot = () => {
     stopRequestedRef.current = true;
@@ -2347,21 +3012,36 @@ function FreeBotsView({ accountMode, currency, balance, activeMarket, marketQuot
     setMargicSignalMode('auto');
     setMargicSignalWindow('25');
     setMargicSignalThreshold('55');
-    setBotMarket(getVolatilityDefinition(DEFAULT_MARKET_LABEL).name);
+    setBotMarket(
+      selectedBotId === 'scanner1' || selectedBotId === 'scanner3' || selectedBotId === 'scanner5'
+        ? getVolatilityDefinition('Volatility 25 (1s) Index').name
+        : selectedBotId === 'scanner4'
+          ? getVolatilityDefinition('Volatility 100 R Index').name
+          : getVolatilityDefinition(DEFAULT_MARKET_LABEL).name,
+    );
     setBotStake('1');
     setTakeProfit('10');
     setStopLoss('30');
-    setRunCount('5');
+    setRunCount(selectedBotId === 'scanner1' ? '4' : selectedBotId === 'scanner2' ? '1' : '5');
     setNumberOfTicks('1');
     setMartingale('2');
+    setMaxLosses('4');
     setBotTransactions([]);
     setBotStatus('');
+  };
+
+  const revealTransactions = () => {
+    setTransactionTab('Transactions');
+    window.requestAnimationFrame(() => {
+      document.getElementById('free-bot-transactions')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   };
 
   const runDiagnosisBot = async () => {
     if (botRunning) {
       stopRequestedRef.current = true;
       setBotStatus('Stopping after the current trade settles…');
+      revealTransactions();
       return;
     }
     const amount = Number(botStake);
@@ -2370,8 +3050,39 @@ function FreeBotsView({ accountMode, currency, balance, activeMarket, marketQuot
     const martingaleMultiplier = recoveryMode ? configuredMultiplier(martingale) : 1;
     const takeProfitLimit = Number(takeProfit);
     const stopLossLimit = Number(stopLoss);
-    const executionContractType = selectedBotId === 'margic' ? (margicSignalMode === 'auto' ? signalContractType : margicContractType) : selectedBot.contractType;
-    const executionBarrier = selectedBotId === 'margic' ? undefined : selectedBot.barrier;
+    const maxLossesLimit = Math.max(1, Math.floor(Number(maxLosses) || 1));
+    const proposedContractType: unknown = selectedBotId === 'margic'
+      ? (margicSignalMode === 'auto' ? signalContractType : margicContractType)
+      : selectedBot.contractType;
+    if (!isDerivContractType(proposedContractType)) {
+      setBotStatus(`Unsupported contract type ${formatDerivContractType(proposedContractType)}. No trades were sent.`);
+      return;
+    }
+    const executionContractType = proposedContractType;
+    const baseExecutionBarrier = selectedBotId === 'margic' ? undefined : selectedBot.barrier;
+    const executionDefinition = selectedBotId === 'scanner2'
+      ? scannerTwoCandidate?.definition
+      : selectedBotId === 'scanner1' || selectedBotId === 'scanner3' || selectedBotId === 'scanner5'
+        ? scannerOneDefinition
+        : selectedBotId === 'scanner4'
+          ? scannerFourDefinition
+          : selectedDefinition;
+    if (selectedBotId === 'scanner1' && !scannerOneQualifies) {
+      setBotStatus(scannerOneDigits.length < 3 ? 'Waiting for three live digits…' : `Waiting for the Over 2 pattern · ${scannerOneDigits.join(' · ')}`);
+      return;
+    }
+    if (selectedBotId === 'scanner2' && !executionDefinition) {
+      setBotStatus(`No market currently has digits 0, 1, and 2 below ${scannerMaxPercentage.toFixed(1)}% over ${scannerLookback} ticks.`);
+      return;
+    }
+    if (selectedBotId === 'scanner4' && !scannerFourEntryReady) {
+      setBotStatus(`Waiting for entry point · last digit ${scannerFourEntryDigit}.`);
+      return;
+    }
+    if (selectedBotId === 'scanner5' && !scannerFiveQualifies) {
+      setBotStatus(scannerFiveDigits.length < 3 ? 'Waiting for three live digits…' : `Waiting for three digits above 0 · ${scannerFiveDigits.join(' · ')}`);
+      return;
+    }
     if (!Number.isFinite(amount) || amount < 0.35) {
       setBotStatus(`Enter a stake of at least ${currency} 0.35.`);
       return;
@@ -2387,14 +3098,17 @@ function FreeBotsView({ accountMode, currency, balance, activeMarket, marketQuot
     stopRequestedRef.current = false;
     setBotRunning(true);
     setBatchResult(null);
+    revealTransactions();
     const signalLabel = selectedBotId === 'margic' ? ` · entry ${executionContractType === 'DIGITEVEN' ? 'EVEN' : 'ODD'}${evenShare === null ? '' : ` ${evenShare.toFixed(1)}% even`}` : '';
-    setBotStatus(`Executing ${requestedRuns} ${selectedBot.name} trade${requestedRuns === 1 ? '' : 's'}${signalLabel}…`);
+    const executionMarketName = executionDefinition?.label ?? selectedDefinition.label;
+    setBotStatus(`Executing ${requestedRuns} ${selectedBot.name} · ${formatDerivContractType(executionContractType, selectedBotId === 'scanner5' ? 9 : baseExecutionBarrier)} on ${executionMarketName}${signalLabel}…`);
     let cumulativeProfit = 0;
     let completed = 0;
     let failed = 0;
     let stopReason = '';
     let lossStreak = 0;
     let totalPlaced = 0;
+    let scannerFiveBarrier = 9;
     const settledTrades: ExecutedTrade[] = [];
     for (let runIndex = 0; runIndex < requestedRuns; runIndex += 1) {
       if (stopRequestedRef.current) {
@@ -2403,30 +3117,31 @@ function FreeBotsView({ accountMode, currency, balance, activeMarket, marketQuot
       }
       try {
         const tradeAmount = nextMartingaleStake(amount, martingaleMultiplier, lossStreak);
-        const response = await fetch('/api/deriv/execute', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            symbol: selectedDefinition.symbol,
-            contractType: executionContractType,
-            amount: tradeAmount,
-            duration: durationTicks,
-            durationUnit: 't',
-            currency,
-            barrier: executionBarrier,
-            mode: accountMode.toLowerCase(),
-            confirm: true,
-          }),
+        const executionBarrier = selectedBotId === 'scanner5' ? scannerFiveBarrier : baseExecutionBarrier;
+        const rawTrade = await executeDerivTrade<ExecutedTrade>({
+          symbol: executionDefinition?.symbol ?? selectedDefinition.symbol,
+          contractType: executionContractType,
+          amount: tradeAmount,
+          duration: durationTicks,
+          durationUnit: 't',
+          currency,
+          barrier: executionBarrier,
+          mode: accountMode === 'REAL' ? 'real' : 'demo',
         });
-        const payload = await response.json() as { error?: string; message?: string; trade?: ExecutedTrade };
-        if (!response.ok || !payload.trade) throw new Error(payload.message ?? payload.error ?? `${selectedBot.name} trade failed.`);
-        const settledTrade = normalizeExecutedTrade(payload.trade);
+        const settledTrade: ExecutedTrade = {
+          ...normalizeExecutedTrade(rawTrade),
+          marketName: executionDefinition?.name ?? selectedDefinition.name,
+          mode: accountMode,
+        };
         const exactProfit = resolvedTradeProfit(settledTrade);
         if (exactProfit === null) throw new Error('Deriv did not return an exact settled P/L.');
         completed += 1;
         cumulativeProfit += exactProfit;
-        totalPlaced += tradeAmount;
+        totalPlaced += settledTrade.buyPrice ?? settledTrade.stake ?? tradeAmount;
         lossStreak = exactProfit < 0 ? lossStreak + 1 : 0;
+        if (selectedBotId === 'scanner5') {
+          scannerFiveBarrier = exactProfit >= 0 ? 8 : scannerFiveBarrier === 9 || scannerFiveBarrier === 8 ? 6 : 5;
+        }
         settledTrades.push(settledTrade);
         setBotTransactions((current) => [...current, settledTrade]);
         await onTradeSettled();
@@ -2437,6 +3152,10 @@ function FreeBotsView({ accountMode, currency, balance, activeMarket, marketQuot
         }
         if (stopLossLimit > 0 && cumulativeProfit <= -stopLossLimit) {
           stopReason = `Stop Loss reached at ${cumulativeProfit.toFixed(2)} ${currency}.`;
+          break;
+        }
+        if (lossStreak >= maxLossesLimit) {
+          stopReason = `Maximum consecutive losses reached (${maxLossesLimit}).`;
           break;
         }
       } catch (error) {
@@ -2538,7 +3257,23 @@ function FreeBotsView({ accountMode, currency, balance, activeMarket, marketQuot
               <label className="margic-toggle-field"><span>RECOVERY MODE</span><VertexToggle checked={recoveryMode} onChange={() => setRecoveryMode(!recoveryMode)} /><small>{recoveryMode ? 'NEXT STAKE AFTER LOSS' : 'FLAT STAKE'}</small></label>
             </div>
           </section>
-           {botTransactions.length > 0 && <section className="margic-transactions"><header><strong>SETTLED TRANSACTIONS</strong><span>{formatSignedProfit(totalTradeProfit(botTransactions))} {currency}</span></header>{botTransactions.slice().reverse().map((trade, index) => <div className="margic-transaction-row" key={`${trade.contractId ?? 'margic-run'}-${index}`}><b>#{botTransactions.length - index}</b><span>{tradeContractLabel(trade)} · {(trade.stake ?? trade.buyPrice ?? 0).toFixed(2)} {trade.currency ?? currency}<small className="trade-row-points">ENTRY {formatTradePoint(trade.entrySpot)} · EXIT {formatTradePoint(trade.exitSpot)}</small></span><strong className={resolvedTradeProfit(trade) !== null && resolvedTradeProfit(trade)! < 0 ? 'is-loss' : 'is-win'}>{formatSignedProfit(resolvedTradeProfit(trade))}</strong></div>)}</section>}
+           <BotTransactionPanel
+             trades={botTransactions}
+             currency={currency}
+             running={botRunning}
+             activeTab={transactionTab}
+             onTabChange={setTransactionTab}
+             onViewDetail={() => {
+               if (!botTransactions.length) return;
+               setBatchResult({
+                 profit: totalTradeProfit(botTransactions) ?? 0,
+                 amount: botTransactions.reduce((total, trade) => total + (trade.buyPrice ?? trade.stake ?? 0), 0),
+                 trades: botTransactions.length,
+                 currency,
+                 tradeResults: botTransactions,
+               });
+             }}
+           />
         </main>
       </div>
       <div className="margic-bottom-bar"><span><i /> {selectedBot.name.toUpperCase()} · {accountMode}</span><strong>{botStatus || (botRunning ? 'Settling current contract…' : 'Ready for review')}</strong><button type="button" className={botRunning ? 'is-stop' : ''} onClick={runDiagnosisBot}>{botRunning ? '■ Stop Bot' : '▶ Run Bot'}</button></div>
@@ -2547,7 +3282,7 @@ function FreeBotsView({ accountMode, currency, balance, activeMarket, marketQuot
     </section>
   );
 
-  if (selectedBotId === 'diagnosis') return (
+   if (selectedBotId === 'diagnosis' || selectedBotId === 'scanner1' || selectedBotId === 'scanner2' || selectedBotId === 'scanner3' || selectedBotId === 'scanner4' || selectedBotId === 'scanner5') return (
     <section className="vertex-builder">
       <div className="vertex-toolbar">
         <div className="vertex-actions">
@@ -2558,7 +3293,7 @@ function FreeBotsView({ accountMode, currency, balance, activeMarket, marketQuot
           <button type="button" onClick={resetBot}>⌗ <span>Reset layout</span></button>
         </div>
         <strong className="diagnosis-bot-name">{selectedBot.name.toUpperCase()}</strong>
-        <div className="vertex-market-chip">{selectedDefinition.name}<strong>{formatMarketPrice(selectedQuote?.price ?? null, selectedQuote?.pipSize ?? 2)}</strong></div>
+          <div className="vertex-market-chip">{selectedBotId === 'scanner2' ? scannerTwoCandidate?.definition.name ?? 'Scanning all markets' : strategyDefinition.name}<strong>{selectedBotId === 'scanner2' ? formatMarketPrice(scannerTwoCandidate?.quote?.price ?? null, scannerTwoCandidate?.quote?.pipSize ?? 2) : formatMarketPrice(selectedQuote?.price ?? null, selectedQuote?.pipSize ?? 2)}</strong></div>
       </div>
 
       <div className="vertex-builder-grid">
@@ -2566,22 +3301,76 @@ function FreeBotsView({ accountMode, currency, balance, activeMarket, marketQuot
           <VertexPanel title="TRADE PARAMETERS">
             <div className="vertex-form-row"><span>Market:</span><VertexSelect value="synthetic_index" /><b>›</b><VertexSelect value="random_index" /><b>›</b><VertexSelect value={botMarket} options={VOLATILITY_DEFINITIONS.map(({ name }) => name)} onChange={setBotMarket} /></div>
             <div className="vertex-form-row"><span>Trade type:</span><VertexSelect value="Digits" /><b>›</b><VertexSelect value="Over/Under" /></div>
-            <div className="vertex-form-row"><span>Contract type:</span><VertexSelect value={selectedBot.contractType === 'CALL' ? 'Rise' : selectedBot.contractType === 'DIGITEVEN' ? 'Even' : 'Over'} /></div>
+            <div className="vertex-form-row"><span>Contract type:</span><VertexSelect value={selectedBot.contractType === 'CALL' ? 'Rise' : selectedBot.contractType === 'DIGITEVEN' ? 'Even' : selectedBot.contractType === 'DIGITUNDER' ? 'Under' : 'Over'} /></div>
             <div className="vertex-form-row"><span>Recovery Mode:</span><VertexToggle checked={recoveryMode} onChange={() => setRecoveryMode(!recoveryMode)} /></div>
           </VertexPanel>
 
-          <VertexPanel title="INITIAL PURCHASE" accent>
-            <div className="vertex-panel-toolbar"><span>Signal Check</span><VertexSelect value="After Every" /><VertexInput value="3" /> <span>trades</span></div>
-            <VertexRule>
-              <div><b>IF</b><span>the last <VertexInput value="1" /> digits are <VertexSelect value="less or equal to" /> digit <VertexInput value="2" /> then</span><span className="vertex-trash">▥</span></div>
-              <div><span>Purchase <VertexSelect value="Over" /> Prediction: <VertexInput value="2" /></span></div>
-              <div className="vertex-rule-result">Last 1 pattern <em>1</em></div>
-            </VertexRule>
-            <VertexRule muted>
-              <div><b>ELSE IF</b><span>the last <VertexInput value="1" /> digits are <VertexSelect value="greater or equal to" /> digit <VertexInput value="7" /> then</span><span className="vertex-trash">▥</span></div>
-              <div><span>Purchase <VertexSelect value="Under" /> Prediction: <VertexInput value="7" /></span></div>
-            </VertexRule>
-          </VertexPanel>
+           <VertexPanel title={selectedBotId === 'diagnosis' ? 'INITIAL PURCHASE' : 'SCANNER RULE'} accent>
+             {selectedBotId === 'scanner1' ? (
+               <>
+                 <div className="vertex-panel-toolbar"><span>Scanner 1 · Over 2 pattern</span><span className="scanner-signal-pill">{scannerOneQualifies ? 'READY' : 'WAITING'}</span></div>
+                 <VertexRule>
+                   <div><b>IF</b><span>the last <VertexInput value="3" /> digits are at or below 2, at or below 2, then above 2</span></div>
+                   <div><span>Purchase <VertexSelect value="Over" /> Prediction: <VertexInput value="2" /></span></div>
+                   <div className="vertex-rule-result">LIVE DIGITS <em>{scannerOneDigits.length ? scannerOneDigits.join(' · ') : '—'}</em></div>
+                 </VertexRule>
+                 <p className="scanner-rule-note">Uses 4 trades per signal, 2× recovery, and resets after a win.</p>
+               </>
+              ) : selectedBotId === 'scanner2' ? (
+               <>
+                 <div className="vertex-panel-toolbar"><span>Bot 42 · 13-market scan</span><span className="scanner-signal-pill">{scannerTwoCandidate ? 'MARKET READY' : 'SCANNING'}</span></div>
+                 <VertexRule>
+                   <div><b>IF</b><span>digits 0, 1, and 2 are each below <VertexInput value={scannerMaxPercentage.toFixed(1)} />% across <VertexInput value={String(scannerLookback)} /> ticks</span></div>
+                   <div><span>Purchase <VertexSelect value="Over" /> Prediction: <VertexInput value="2" /></span></div>
+                   <div className="vertex-rule-result">BEST MARKET <em>{scannerTwoCandidate?.definition.label ?? 'Waiting for 1,000 ticks'}</em></div>
+                 </VertexRule>
+                 <p className="scanner-rule-note">The scanner chooses the qualifying market with the lowest highest share among digits 0, 1, and 2.</p>
+                </>
+              ) : selectedBotId === 'scanner3' ? (
+                <>
+                  <div className="vertex-panel-toolbar"><span>Scanner 3 · Over 1 recovery</span><span className="scanner-signal-pill">READY</span></div>
+                  <VertexRule>
+                    <div><b>IF</b><span>start the recovery sequence on Volatility 25 (1s)</span></div>
+                    <div><span>Purchase <VertexSelect value="Over" /> Prediction: <VertexInput value="1" /></span></div>
+                    <div className="vertex-rule-result">ENTRY <em>OVER 1</em></div>
+                  </VertexRule>
+                  <p className="scanner-rule-note">Uses a 10 stake, 2× recovery, 100 Take Profit, and 5 maximum consecutive losses.</p>
+                </>
+              ) : selectedBotId === 'scanner4' ? (
+                <>
+                  <div className="vertex-panel-toolbar"><span>Scanner 4 · Over 1 entry signal</span><span className="scanner-signal-pill">{scannerFourEntryReady ? 'READY' : 'WAITING'}</span></div>
+                  <VertexRule>
+                    <div><b>IF</b><span>the last digit equals <VertexInput value={String(scannerFourEntryDigit)} /></span></div>
+                    <div><span>Purchase <VertexSelect value="Over" /> Prediction: <VertexInput value="1" /></span></div>
+                    <div className="vertex-rule-result">LIVE LAST DIGIT <em>{getQuoteDigits(selectedQuote, 1).at(-1) ?? '—'}</em></div>
+                  </VertexRule>
+                  <p className="scanner-rule-note">The entry gate runs on Volatility 100 R.</p>
+                </>
+              ) : selectedBotId === 'scanner5' ? (
+                <>
+                  <div className="vertex-panel-toolbar"><span>Scanner 5 · Under recovery</span><span className="scanner-signal-pill">{scannerFiveQualifies ? 'READY' : 'WAITING'}</span></div>
+                  <VertexRule>
+                    <div><b>IF</b><span>the last three digits are all above 0</span></div>
+                    <div><span>Purchase <VertexSelect value="Under" /> Prediction: <VertexInput value="9 → 8 → 6 → 5" /></span></div>
+                    <div className="vertex-rule-result">LIVE DIGITS <em>{scannerFiveDigits.length ? scannerFiveDigits.join(' · ') : '—'}</em></div>
+                  </VertexRule>
+                  <p className="scanner-rule-note">Starts Under 9, advances to Under 8 after a win, and recovers through Under 6 then Under 5 after losses.</p>
+               </>
+             ) : (
+               <>
+                 <div className="vertex-panel-toolbar"><span>Signal Check</span><VertexSelect value="After Every" /><VertexInput value="3" /> <span>trades</span></div>
+                 <VertexRule>
+                   <div><b>IF</b><span>the last <VertexInput value="1" /> digits are <VertexSelect value="less or equal to" /> digit <VertexInput value="2" /> then</span><span className="vertex-trash">▥</span></div>
+                   <div><span>Purchase <VertexSelect value="Over" /> Prediction: <VertexInput value="2" /></span></div>
+                   <div className="vertex-rule-result">Last 1 pattern <em>1</em></div>
+                 </VertexRule>
+                 <VertexRule muted>
+                   <div><b>ELSE IF</b><span>the last <VertexInput value="1" /> digits are <VertexSelect value="greater or equal to" /> digit <VertexInput value="7" /> then</span><span className="vertex-trash">▥</span></div>
+                   <div><span>Purchase <VertexSelect value="Under" /> Prediction: <VertexInput value="7" /></span></div>
+                 </VertexRule>
+               </>
+             )}
+           </VertexPanel>
         </div>
 
         <div className="vertex-column">
@@ -2591,6 +3380,7 @@ function FreeBotsView({ accountMode, currency, balance, activeMarket, marketQuot
             <div className="vertex-form-row"><span>Stop loss:</span><VertexInput value={stopLoss} onChange={setStopLoss} /><small>USD</small></div>
             <div className="vertex-form-row"><span>Runs:</span><VertexInput value={runCount} onChange={setRunCount} /></div>
             <div className="vertex-form-row"><span>Martingale:</span><VertexToggle checked={recoveryMode} onChange={() => setRecoveryMode(!recoveryMode)} /><VertexInput value={martingale} onChange={setMartingale} /><small>×</small></div>
+             <div className="vertex-form-row"><span>Max consecutive losses:</span><VertexInput value={maxLosses} onChange={setMaxLosses} /></div>
             <div className="vertex-form-row"><span>Number of ticks:</span><VertexSelect value="Ticks" /><VertexInput value={numberOfTicks} onChange={(value) => setNumberOfTicks(value.replace(/\D/g, '').slice(0, 3) || '1')} /></div>
           </VertexPanel>
 
@@ -2608,14 +3398,23 @@ function FreeBotsView({ accountMode, currency, balance, activeMarket, marketQuot
         </div>
       </div>
 
-      {botTransactions.length > 0 && <section className="diagnosis-history" aria-label="Diagnosis Bot transaction history">
-        <header><strong>TRANSACTIONS</strong><span>{formatSignedProfit(totalTradeProfit(botTransactions))}</span></header>
-        {botTransactions.slice().reverse().map((trade, index) => <div className="diagnosis-history-row" key={`${trade.contractId ?? 'diagnosis-run'}-${index}`}>
-          <strong>#{botTransactions.length - index}</strong>
-          <span>{tradeContractLabel(trade)} · {(trade.stake ?? trade.buyPrice ?? 0).toFixed(2)} {trade.currency ?? currency}<small className="trade-row-points">ENTRY {formatTradePoint(trade.entrySpot)} · EXIT {formatTradePoint(trade.exitSpot)}</small></span>
-          <b className={resolvedTradeProfit(trade) !== null && resolvedTradeProfit(trade)! < 0 ? 'is-loss' : 'is-win'}>{formatSignedProfit(resolvedTradeProfit(trade))}</b>
-        </div>)}
-      </section>}
+       <BotTransactionPanel
+         trades={botTransactions}
+         currency={currency}
+         running={botRunning}
+         activeTab={transactionTab}
+         onTabChange={setTransactionTab}
+         onViewDetail={() => {
+           if (!botTransactions.length) return;
+           setBatchResult({
+             profit: totalTradeProfit(botTransactions) ?? 0,
+             amount: botTransactions.reduce((total, trade) => total + (trade.buyPrice ?? trade.stake ?? 0), 0),
+             trades: botTransactions.length,
+             currency,
+             tradeResults: botTransactions,
+           });
+         }}
+       />
       <TradeFigureStrip trades={botTransactions} currency={currency} />
 
       <div className="vertex-bottom-bar">
