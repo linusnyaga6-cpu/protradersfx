@@ -398,7 +398,62 @@ app.post('/api/logout', (req, res) => { res.clearCookie('protraders_session', { 
 app.get('/api/accounts', async (req, res) => { const session = await requireSession(req, res, { authenticated: false }); if (!session) return; try { const accounts = await refreshAccounts(session); const views = await accountViews(session, accounts); saveSession(res, session); res.json({ authenticated: true, accounts: views, activeMode: session.activeMode || 'demo' }); } catch (error) { res.status(502).json({ error: error.code || 'Account list unavailable', message: error.message }); } });
 app.post('/api/account/switch', async (req, res) => { const session = await requireSession(req, res, { authenticated: false }); if (!session) return; const mode = req.body?.mode === 'real' ? 'real' : 'demo'; try { const accounts = await refreshAccounts(session); const account = selectedAccount(session, mode); if (!account) return res.status(409).json({ error: 'ACCOUNT_MODE_UNAVAILABLE', message: 'No ' + mode + ' account is linked to this Deriv login.' }); session.activeMode = mode; const views = await accountViews(session, accounts); const current = views.find((item) => item.account_id === account.account_id) || accountSummary(account, account.balance); saveSession(res, session); res.json({ authenticated: true, mode, loginid: current.loginid, currency: current.currency, balance: current.balance, accounts: views }); } catch (error) { res.status(502).json({ error: error.code || 'Account switch failed', message: error.message }); } });
 app.get('/api/account', async (req, res) => { const session = await requireSession(req, res, { authenticated: false }); if (!session) return; const mode = req.query.mode === 'real' ? 'real' : req.query.mode === 'demo' ? 'demo' : session.activeMode || 'demo'; try { const accounts = await refreshAccounts(session); const account = selectedAccount(session, mode); if (!account) { const error = new Error('No ' + mode + ' account is linked to this Deriv login'); error.code = 'ACCOUNT_MODE_UNAVAILABLE'; throw error; } const current = accountSummary(account, account.balance); session.activeMode = mode; saveSession(res, session); res.json({ authenticated: true, mode, balance: current.balance, currency: current.currency, loginid: current.loginid, account: current, openPnl: 0, accounts: await accountViews(session, accounts) }); } catch (error) { res.status(error.code === 'ACCOUNT_MODE_UNAVAILABLE' ? 409 : 502).json({ error: error.code || 'Account data unavailable', message: error.message }); } });
-app.post('/api/deriv/execute', async (req, res) => {
+
+    app.post('/api/deriv/proposal', async (req, res) => {
+      const session = await requireSession(req, res);
+      if (!session) return;
+      const mode = session.activeMode === 'real' ? 'real' : 'demo';
+      const symbol = String(req.body?.symbol || '');
+      const contractType = String(req.body?.contractType || '');
+      const amount = Number(req.body?.amount);
+      const duration = Number(req.body?.duration);
+      const durationUnit = ['t', 's', 'm'].includes(req.body?.durationUnit) ? req.body.durationUnit : 't';
+      const barrier = req.body?.barrier === undefined || req.body?.barrier === '' ? undefined : Number(req.body.barrier);
+      const validSymbol = /^(1HZ\d+V|R_\d+|frx[A-Z]{6})$/.test(symbol);
+      const validContract = ['CALL', 'PUT', 'DIGITOVER', 'DIGITUNDER', 'DIGITEVEN', 'DIGITODD'].includes(contractType);
+      if (!validSymbol) return res.status(400).json({ error: 'Choose a valid Deriv market symbol.' });
+      if (!validContract) return res.status(400).json({ error: 'Unsupported Deriv contract type.' });
+      if (!Number.isFinite(amount) || amount < 0.35 || amount > 10000) return res.status(400).json({ error: 'Stake must be between 0.35 and 10,000.' });
+      if (!Number.isInteger(duration) || duration < 1 || duration > 365) return res.status(400).json({ error: 'Duration must be a whole number from 1 to 365.' });
+      const needsBarrier = contractType === 'DIGITOVER' || contractType === 'DIGITUNDER';
+      if (needsBarrier && (!Number.isInteger(barrier) || barrier < 0 || barrier > 9)) return res.status(400).json({ error: 'Digit Over/Under requires a barrier from 0 to 9.' });
+      try {
+        await accountsFor(session);
+        const account = selectedAccount(session, mode);
+        if (!account) { const error = new Error('No ' + mode + ' account is linked to this Deriv login'); error.code = 'ACCOUNT_MODE_UNAVAILABLE'; throw error; }
+        const response = await openOptions(session.accessToken, account, {
+          proposal: 1,
+          amount,
+          basis: 'stake',
+          contract_type: contractType,
+          currency: account.currency || 'USD',
+          duration,
+          duration_unit: durationUnit,
+          underlying_symbol: symbol,
+          ...(needsBarrier ? { barrier: String(barrier) } : {})
+        });
+        const proposal = response?.proposal;
+        const finite = (value) => value === null || value === undefined || value === '' || !Number.isFinite(Number(value)) ? null : Number(value);
+        const askPrice = finite(proposal?.ask_price);
+        const payout = finite(proposal?.payout);
+        if (!proposal || askPrice === null || payout === null) return res.status(502).json({ error: 'Deriv did not return a valid proposal quote.' });
+        return res.json({
+          proposal: {
+            id: proposal.id || null,
+            askPrice,
+            payout,
+            spot: finite(proposal.spot),
+            displayValue: finite(proposal.display_value),
+            longcode: proposal.longcode || null,
+            currency: proposal.currency || account.currency || 'USD'
+          },
+          execution: 'proposal-only'
+        });
+      } catch (error) {
+        return res.status(error.code === 'ACCOUNT_MODE_UNAVAILABLE' ? 409 : 502).json({ error: error.message || 'Unable to request a Deriv proposal.' });
+      }
+    });
+    app.post('/api/deriv/execute', async (req, res) => {
     const session = await requireSession(req, res);
     if (!session) return;
     if (req.body?.confirm !== true) return res.status(400).json({ error: 'Explicit execution confirmation is required.' });
