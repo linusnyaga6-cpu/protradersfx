@@ -283,7 +283,7 @@ function executeOptions(accessToken, account, input) {
           duration: input.duration,
           duration_unit: input.durationUnit,
           underlying_symbol: input.symbol,
-          ...(input.barrier === undefined ? {} : { barrier: input.barrier })
+          ...(input.barrier === undefined ? {} : { barrier: String(input.barrier) })
         })));
         ws.on('message', (raw) => {
           let data;
