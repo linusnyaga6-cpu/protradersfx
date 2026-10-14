@@ -160,7 +160,7 @@ function saveSession(res, session) {
 const OPTIONS_API_BASE = 'https://api.derivws.com/trading/v1/options';
 async function optionsRequest(pathname, accessToken, init = {}) {
   const headers = { Authorization: 'Bearer ' + accessToken, Accept: 'application/json', ...(init.headers || {}) };
-  const response = await fetch(OPTIONS_API_BASE + pathname, { ...init, headers });
+  const response = await fetch(OPTIONS_API_BASE + pathname, { ...init, headers, signal: init.signal || AbortSignal.timeout(8000) });
   let body = null; try { body = await response.json(); } catch {}
   if (!response.ok) { const detail = body?.errors?.[0]?.message || body?.message || ('Options API request failed (' + response.status + ')'); const error = new Error(detail); error.code = 'OPTIONS_API_' + response.status; throw error; }
   return body?.data ?? body;
@@ -442,7 +442,7 @@ app.get('/oauth/callback', async (req, res) => {
     if (!state?.verifier || !['login', 'signup'].includes(state.mode) || Date.now() - state.iat > 600_000) throw new Error('Invalid or expired OAuth state');
     if (!req.query.code) throw new Error('Missing OAuth authorization code');
     const body = new URLSearchParams({ grant_type: 'authorization_code', client_id: DERIV_CLIENT_ID, code: String(req.query.code), code_verifier: state.verifier, redirect_uri: BASE_URL + '/oauth/callback' });
-    const tokenResponse = await fetch('https://auth.deriv.com/oauth2/token', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body });
+    const tokenResponse = await fetch('https://auth.deriv.com/oauth2/token', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body, signal: AbortSignal.timeout(12_000) });
     if (!tokenResponse.ok) throw new Error('Token exchange failed (' + tokenResponse.status + ')');
     const token = await tokenResponse.json();
     if (!token.access_token) throw new Error('No access token returned');
