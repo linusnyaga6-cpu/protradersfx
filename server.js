@@ -187,9 +187,9 @@ function normalizeAccounts(auth, fallbackToken) {
   if (accounts.length) return accounts;
   return [{ loginid: auth?.loginid || '', currency: auth?.currency || 'USD', is_virtual: /^VRT/i.test(String(auth?.loginid || '')), token: fallbackToken }];
 }
-function safeReturnTo(value) { const target = String(value || '/workspace.html'); return target.startsWith('/') && !target.startsWith('//') ? target : '/workspace.html'; }
+function safeReturnTo(value) { const target = String(value || '/?view=dashboard'); if (!target.startsWith('/') || target.startsWith('//')) return '/?view=dashboard'; if (/^\/workspace(?:\.html)?(?:[?#]|$)/.test(target)) return '/?view=dashboard'; return target; }
 function withQuery(pathname, key, value) { const joiner = pathname.includes('?') ? '&' : '?'; return pathname + joiner + encodeURIComponent(key) + '=' + encodeURIComponent(value); }
-function oauthUrl(mode, returnTo = '/workspace.html') {
+function oauthUrl(mode, returnTo = '/?view=dashboard') {
   if (!DERIV_CLIENT_ID) throw new Error('DERIV_CLIENT_ID is not configured');
   const codeVerifier = verifier();
   const state = seal({ verifier: codeVerifier, mode, returnTo: safeReturnTo(returnTo), iat: Date.now() });
@@ -659,8 +659,8 @@ app.get('/usd-kes-converter.js', (req, res) => res.type('application/javascript'
 app.get('/style.css', (req, res) => res.type('text/css').send(FRONTEND.style));
 app.get('/app.js', (req, res) => res.type('application/javascript').send(FRONTEND.app));
 app.get('/logo.svg', (req, res) => res.type('image/svg+xml').send(FRONTEND.logo));
-app.get('/workspace', (req, res) => res.type('html').send(FRONTEND.workspace));
-app.get('/workspace.html', (req, res) => res.type('html').send(FRONTEND.workspace));
+app.get('/workspace', (req, res) => res.redirect(302, '/?view=dashboard'));
+app.get('/workspace.html', (req, res) => res.redirect(302, '/?view=dashboard'));
 for (const page of ['marketplace', 'course', 'signals', 'manual', 'builder']) app.get(`/${page}`, (req, res) => res.type('html').send(CANONICAL_INDEX));
 app.get('/', (req, res) => res.type('html').send(CANONICAL_INDEX));
 app.use(express.static(PUBLIC_DIR, { extensions: ['html'] }));
