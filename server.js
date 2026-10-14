@@ -262,6 +262,7 @@ function executeOptions(accessToken, account, input) {
       let finished = false;
       let proposal = null;
       let buy = null;
+      let buyRequestSent = false;
       const finish = (callback) => {
         if (finished) return;
         finished = true;
@@ -270,18 +271,37 @@ function executeOptions(accessToken, account, input) {
         callback();
       };
       const fail = (message) => {
-        if (input.awaitSettlement !== false && proposal && buy) {
+        const contractId = buy ? Number(buy.contract_id) : NaN;
+        const confirmedBuy = Boolean(buy && Number.isSafeInteger(contractId) && contractId > 0);
+        if (input.awaitSettlement !== false && proposal && confirmedBuy) {
           finish(() => resolve({
             proposal,
             buy,
             contract: {
-              contract_id: buy.contract_id,
+              contract_id: contractId,
               is_sold: 0,
               status: 'open',
               buy_price: buy.buy_price ?? proposal.ask_price,
               currency: proposal.currency || input.currency
             },
             settlementPending: true,
+            settlementError: message,
+            orderStatusUnknown: false
+          }));
+          return;
+        }
+        if (proposal && buyRequestSent) {
+          finish(() => resolve({
+            proposal,
+            buy: buy || { buy_price: proposal.ask_price },
+            contract: input.awaitSettlement === false ? null : {
+              is_sold: 0,
+              status: 'unknown',
+              buy_price: buy?.buy_price ?? proposal.ask_price,
+              currency: proposal.currency || input.currency
+            },
+            settlementPending: false,
+            orderStatusUnknown: true,
             settlementError: message
           }));
           return;
@@ -310,7 +330,12 @@ function executeOptions(accessToken, account, input) {
           if (data.msg_type === 'proposal' && data.proposal) {
             proposal = data.proposal;
             if (!proposal.id || !Number.isFinite(Number(proposal.ask_price))) { fail('Deriv did not return a purchasable proposal.'); return; }
-            ws.send(JSON.stringify({ buy: proposal.id, price: Number(proposal.ask_price) }));
+            try {
+              ws.send(JSON.stringify({ buy: proposal.id, price: Number(proposal.ask_price) }));
+              buyRequestSent = true;
+            } catch (error) {
+              fail(error instanceof Error ? error.message : 'Deriv buy request could not be sent.');
+            }
             return;
           }
           if (data.msg_type === 'buy' && data.buy) {
@@ -518,6 +543,7 @@ app.get('/api/account', async (req, res) => { const session = await requireSessi
         result: contract.status === 'won' ? 'won' : contract.status === 'lost' ? 'lost' : 'pending',
         status: contract.status || null,
          settlementPending: execution.settlementPending === true,
+        orderStatusUnknown: execution.orderStatusUnknown === true,
         profit: contract.profit !== null && contract.profit !== undefined && Number.isFinite(Number(contract.profit)) ? Number(contract.profit) : (contract.payout !== null && contract.payout !== undefined && Number.isFinite(Number(contract.payout)) && Number.isFinite(Number(contract.buy_price ?? execution.buy.buy_price ?? execution.proposal.ask_price ?? amount)) ? Number(contract.payout) - Number(contract.buy_price ?? execution.buy.buy_price ?? execution.proposal.ask_price ?? amount) : contract.status === 'lost' && Number.isFinite(Number(contract.buy_price ?? execution.buy.buy_price ?? execution.proposal.ask_price ?? amount)) ? -Math.abs(Number(contract.buy_price ?? execution.buy.buy_price ?? execution.proposal.ask_price ?? amount)) : null),
         payout: contract.payout !== null && contract.payout !== undefined && Number.isFinite(Number(contract.payout)) ? Number(contract.payout) : null,
         entrySpot: contract.entry_spot ?? contract.entry_tick ?? null,
@@ -580,7 +606,8 @@ app.post('/api/premium-bots/execute', async (req, res) => {
     session.activeMode = mode;
     saveSession(res, session);
     return res.json({ execution: 'live', trade: { botId, contractId: buy.contract_id || null, transactionId: buy.transaction_id || null, type: contractType, contractType, barrier: needsBarrier ? barrier : undefined, stake: amount, buyPrice, currency: proposal.currency || account.currency || 'USD', mode, result, status: contract.status || null,
-         settlementPending: execution.settlementPending === true, profit, payout, entrySpot: contract.entry_spot ?? contract.entry_tick ?? null, exitSpot: contract.exit_spot ?? contract.exit_tick ?? null } });
+         settlementPending: execution.settlementPending === true,
+        orderStatusUnknown: execution.orderStatusUnknown === true, profit, payout, entrySpot: contract.entry_spot ?? contract.entry_tick ?? null, exitSpot: contract.exit_spot ?? contract.exit_tick ?? null } });
   } catch (error) {
     return res.status(error.code === 'ACCOUNT_MODE_UNAVAILABLE' ? 409 : 502).json({ error: error.message || 'Unable to execute this Deriv Pro Bot trade.' });
   }
@@ -598,13 +625,14 @@ app.post('/api/trades', async (req, res) => {
         await accountsFor(session);
         const selected = selectedAccount(session, mode);
         if (!selected) { const error = new Error('No ' + mode + ' account is linked to this Deriv login'); error.code = 'ACCOUNT_MODE_UNAVAILABLE'; throw error; }
-        const { buy } = await executeOptions(session.accessToken, selected, {
+        const execution = await executeOptions(session.accessToken, selected, {
           symbol, contractType: type, amount: stake, duration, durationUnit: 't',
           currency: selected.currency || 'USD', awaitSettlement: false,
         });
+        const { buy } = execution;
         session.activeMode = mode;
         saveSession(res, session);
-        res.json({ ok: true, mode, contractType: type, message: mode.toUpperCase() + ' ' + (type === 'CALL' ? 'RISE' : 'FALL') + ' opened on ' + symbol + '. Contract ' + (buy.contract_id || 'created') + '.', contractId: buy.contract_id || null });
+        res.json({ ok: true, mode, contractType: type, orderStatusUnknown: execution.orderStatusUnknown === true, message: execution.orderStatusUnknown ? 'Deriv did not confirm whether this order was placed. Check Deriv transaction history before retrying.' : mode.toUpperCase() + ' ' + (type === 'CALL' ? 'RISE' : 'FALL') + ' opened on ' + symbol + '. Contract ' + (buy.contract_id || 'created') + '.', contractId: buy.contract_id || null });
       } catch (error) {
         res.status(error.code === 'ACCOUNT_MODE_UNAVAILABLE' ? 409 : 502).json({ error: error.code || 'Trade request failed', message: error.message });
       }
