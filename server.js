@@ -269,7 +269,25 @@ function executeOptions(accessToken, account, input) {
         try { ws?.close(); } catch {}
         callback();
       };
-      const fail = (message) => finish(() => reject(new Error(message)));
+      const fail = (message) => {
+        if (input.awaitSettlement !== false && proposal && buy) {
+          finish(() => resolve({
+            proposal,
+            buy,
+            contract: {
+              contract_id: buy.contract_id,
+              is_sold: 0,
+              status: 'open',
+              buy_price: buy.buy_price ?? proposal.ask_price,
+              currency: proposal.currency || input.currency
+            },
+            settlementPending: true,
+            settlementError: message
+          }));
+          return;
+        }
+        finish(() => reject(new Error(message)));
+      };
       try {
         const otp = await optionsRequest('/accounts/' + encodeURIComponent(account.account_id) + '/otp', accessToken, { method: 'POST' });
         ws = new WebSocket(otp?.url || '');
@@ -299,7 +317,9 @@ function executeOptions(accessToken, account, input) {
             buy = data.buy;
             if (!buy.contract_id) { fail('Deriv did not return a contract ID.'); return; }
             if (input.awaitSettlement === false) { finish(() => resolve({ proposal, buy, contract: null })); return; }
-            ws.send(JSON.stringify({ proposal_open_contract: 1, contract_id: buy.contract_id, subscribe: 1 }));
+            const contractId = Number(buy.contract_id);
+            if (!Number.isSafeInteger(contractId) || contractId < 1) { fail('Deriv confirmed the buy but returned an invalid contract ID.'); return; }
+            ws.send(JSON.stringify({ proposal_open_contract: 1, contract_id: contractId, subscribe: 1 }));
             return;
           }
           if (data.msg_type === 'proposal_open_contract' && data.proposal_open_contract) {
@@ -497,6 +517,7 @@ app.get('/api/account', async (req, res) => { const session = await requireSessi
         currency: contract.currency || execution.proposal.currency || account.currency || 'USD',
         result: contract.status === 'won' ? 'won' : contract.status === 'lost' ? 'lost' : 'pending',
         status: contract.status || null,
+         settlementPending: execution.settlementPending === true,
         profit: contract.profit !== null && contract.profit !== undefined && Number.isFinite(Number(contract.profit)) ? Number(contract.profit) : (contract.payout !== null && contract.payout !== undefined && Number.isFinite(Number(contract.payout)) && Number.isFinite(Number(contract.buy_price ?? execution.buy.buy_price ?? execution.proposal.ask_price ?? amount)) ? Number(contract.payout) - Number(contract.buy_price ?? execution.buy.buy_price ?? execution.proposal.ask_price ?? amount) : contract.status === 'lost' && Number.isFinite(Number(contract.buy_price ?? execution.buy.buy_price ?? execution.proposal.ask_price ?? amount)) ? -Math.abs(Number(contract.buy_price ?? execution.buy.buy_price ?? execution.proposal.ask_price ?? amount)) : null),
         payout: contract.payout !== null && contract.payout !== undefined && Number.isFinite(Number(contract.payout)) ? Number(contract.payout) : null,
         entrySpot: contract.entry_spot ?? contract.entry_tick ?? null,
@@ -558,7 +579,8 @@ app.post('/api/premium-bots/execute', async (req, res) => {
     const result = contract.status === 'won' || (profit !== null && profit > 0) ? 'won' : contract.status === 'lost' || (profit !== null && profit < 0) ? 'lost' : 'pending';
     session.activeMode = mode;
     saveSession(res, session);
-    return res.json({ execution: 'live', trade: { botId, contractId: buy.contract_id || null, transactionId: buy.transaction_id || null, type: contractType, contractType, barrier: needsBarrier ? barrier : undefined, stake: amount, buyPrice, currency: proposal.currency || account.currency || 'USD', mode, result, status: contract.status || null, profit, payout, entrySpot: contract.entry_spot ?? contract.entry_tick ?? null, exitSpot: contract.exit_spot ?? contract.exit_tick ?? null } });
+    return res.json({ execution: 'live', trade: { botId, contractId: buy.contract_id || null, transactionId: buy.transaction_id || null, type: contractType, contractType, barrier: needsBarrier ? barrier : undefined, stake: amount, buyPrice, currency: proposal.currency || account.currency || 'USD', mode, result, status: contract.status || null,
+         settlementPending: execution.settlementPending === true, profit, payout, entrySpot: contract.entry_spot ?? contract.entry_tick ?? null, exitSpot: contract.exit_spot ?? contract.exit_tick ?? null } });
   } catch (error) {
     return res.status(error.code === 'ACCOUNT_MODE_UNAVAILABLE' ? 409 : 502).json({ error: error.message || 'Unable to execute this Deriv Pro Bot trade.' });
   }
