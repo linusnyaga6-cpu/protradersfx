@@ -44,9 +44,14 @@ const FRONTEND = {
   app: fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8'),
   logo: fs.readFileSync(path.join(__dirname, 'logo.svg'), 'utf8')
 };
-const CANONICAL_INDEX = FRONTEND.index
-  .replace('</head>', '    <link rel="canonical" href="https://protradersfx.com/" />\n    <meta property="og:url" content="https://protradersfx.com/" />\n  </head>');
-
+const CANONICAL_INDEX = (() => {
+    const additions = [];
+    if (!FRONTEND.index.includes('rel="canonical"')) additions.push('    <link rel="canonical" href="https://protradersfx.com/" />');
+    if (!FRONTEND.index.includes('property="og:url"')) additions.push('    <meta property="og:url" content="https://protradersfx.com/" />');
+    if (!additions.length || !FRONTEND.index.includes('</head>')) return FRONTEND.index;
+    return FRONTEND.index.replace('</head>', additions.join('\n') + '\n  </head>');
+    })();
+    
 if (!process.env.VERCEL) {
   fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
   if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, JSON.stringify({ visitors: 0, registrations: 0, events: [] }, null, 2));
