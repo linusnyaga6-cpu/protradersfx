@@ -36,6 +36,7 @@ const DERIV_SCOPE = process.env.DERIV_SCOPE || 'trade account_manage';
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const DATA_FILE = process.env.VERCEL ? path.join('/tmp', 'protraders-fx-analytics.json') : path.join(__dirname, 'data', 'analytics.json');
 const DERIV_COMMISSION_RATE = Number.isFinite(Number(process.env.DERIV_COMMISSION_RATE)) ? Number(process.env.DERIV_COMMISSION_RATE) : null;
+const OWNER_DERIV_LOGIN_IDS = new Set(String(process.env.PROTRADERS_OWNER_DERIV_LOGIN_IDS || '').split(/[\s,]+/).map((id) => id.trim().toUpperCase()).filter(Boolean));
 // Read frontend assets explicitly so @vercel/node includes them in the function bundle.
 const FRONTEND = {
   index: fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8'),
@@ -247,6 +248,7 @@ async function authorizeAccounts(session) {
   const auth = await openDeriv(session.accessToken, null, true); session.accounts = normalizeAccounts(auth, session.accessToken); return session.accounts;
 }
 async function accountsFor(session) { if (Array.isArray(session.accounts) && session.accounts.length) return session.accounts; return authorizeAccounts(session); }
+async function isConfiguredOwnerSession(session, ownerLoginIds = OWNER_DERIV_LOGIN_IDS) { if (!ownerLoginIds.size) return false; const accounts = await accountsFor(session); return accounts.some((account) => ownerLoginIds.has(String(account.loginid || account.account_id || '').trim().toUpperCase())); }
 async function refreshAccounts(session) {
   try { const accounts = await optionsAccounts(session.accessToken); if (accounts.length) { session.accounts = accounts; return accounts; } } catch (error) { console.warn('[deriv options refresh]', error.message); }
   return accountsFor(session);
@@ -420,25 +422,63 @@ app.get('/api/market/tick', async (req, res) => {
   }
 });
 app.post('/api/track', (req, res) => { const type = String(req.body?.type || 'page_view').slice(0, 40); const data = readData(); if (type === 'page_view') data.visitors++; data.events.push({ type, at: new Date().toISOString(), path: String(req.body?.path || '/').slice(0, 200) }); if (data.events.length > 5000) data.events = data.events.slice(-5000); writeData(data); res.status(204).end(); });
-app.get('/api/analytics', async (req, res) => {
+app.get('/api/owner/access', async (req, res) => {
+    res.set('Cache-Control', 'no-store');
     const session = await requireSession(req, res, { error: 'Authenticated Deriv session required' });
     if (!session) return;
-    const data = readData();
-    const events = Array.isArray(data.events) ? data.events : [];
-    const trades = events.filter((event) => event.type === 'trade_settled');
-    const activeUsers = new Set(trades.map((event) => event.loginid).filter(Boolean)).size;
-    const tradingAmount = trades.reduce((total, event) => total + (Number(event.amount) || 0), 0);
-    const currency = trades.find((event) => event.currency)?.currency || 'USD';
-    res.json({
-      loginid: activeLoginIdForSession(session),
-      activeUsers,
-      settledTrades: trades.length,
-      tradingAmount,
-      expectedCommission: DERIV_COMMISSION_RATE === null ? null : tradingAmount * DERIV_COMMISSION_RATE,
-      commissionRate: DERIV_COMMISSION_RATE,
-      currency,
-      recentTrades: trades.slice(-25).reverse().map((event) => ({ loginid: event.loginid || 'authenticated trader', mode: event.mode || 'demo', symbol: event.symbol || '—', amount: Number(event.amount) || 0, profit: typeof event.profit === 'number' ? event.profit : null, at: event.at }))
+    if (!OWNER_DERIV_LOGIN_IDS.size) return res.json({ isOwner: false });
+    try {
+      const isOwner = await isConfiguredOwnerSession(session);
+      saveSession(res, session);
+      res.json({ isOwner });
+    } catch (error) {
+      res.status(502).json({ error: 'Owner account verification is temporarily unavailable.', message: error.message });
+    }
     });
+    app.get('/api/analytics', async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    const session = await requireSession(req, res, { error: 'Authenticated Deriv session required' });
+    if (!session) return;
+    if (!OWNER_DERIV_LOGIN_IDS.size) return res.status(503).json({ error: 'Owner access is not configured.' });
+    try {
+      if (!(await isConfiguredOwnerSession(session))) return res.status(403).json({ error: 'Owner access is required.' });
+      saveSession(res, session);
+      const since = Date.now() - 30 * 24 * 60 * 60 * 1000;
+      const events = Array.isArray(readData().events) ? readData().events : [];
+      const trades = events.filter((event) => event.type === 'trade_settled' && Number.isFinite(Date.parse(event.at)) && Date.parse(event.at) >= since);
+      const resultFor = (event) => ['won', 'lost', 'pending'].includes(event.result) ? event.result : typeof event.profit === 'number' ? (event.profit > 0 ? 'won' : event.profit < 0 ? 'lost' : 'pending') : 'pending';
+      const currencies = new Map();
+      for (const event of trades) {
+        const currency = String(event.currency || 'USD').toUpperCase();
+        const total = currencies.get(currency) || 0;
+        currencies.set(currency, total + (Number(event.amount) || 0));
+      }
+      const result = {
+        periodDays: 30,
+        activeUsers: new Set(trades.map((event) => String(event.loginid || '').toUpperCase()).filter(Boolean)).size,
+        settledTrades: trades.filter((event) => ['won', 'lost'].includes(resultFor(event))).length,
+        commissionRate: DERIV_COMMISSION_RATE,
+        currencyTotals: Array.from(currencies, ([currency, tradingAmount]) => ({
+          currency,
+          tradingAmount: Math.round(tradingAmount * 100) / 100,
+          expectedCommission: DERIV_COMMISSION_RATE === null ? null : Math.round(tradingAmount * DERIV_COMMISSION_RATE * 100) / 100
+        })).sort((a, b) => a.currency.localeCompare(b.currency)),
+        recentTrades: trades.slice(-50).reverse().map((event) => ({
+          accountRef: event.loginid ? '••••' + String(event.loginid).slice(-4) : 'Deriv account',
+          mode: event.mode === 'real' ? 'real' : 'demo',
+          symbol: event.symbol || '—',
+          contractType: event.contractType || 'Contract',
+          amount: Number(event.amount) || 0,
+          currency: String(event.currency || 'USD').toUpperCase(),
+          profit: typeof event.profit === 'number' && Number.isFinite(event.profit) ? event.profit : null,
+          result: resultFor(event),
+          at: new Date(event.at).toISOString()
+        }))
+      };
+      res.json(result);
+    } catch (error) {
+      res.status(502).json({ error: 'Owner activity is temporarily unavailable.', message: error.message });
+    }
     });
     app.get('/api/deriv/login', (req, res) => { try { res.redirect(oauthUrl('login', req.query.returnTo)); } catch (error) { res.status(503).json({ error: error.message }); } });
 app.get('/api/deriv/signup', (req, res) => { try { const data = readData(); data.events.push({ type: 'referral_signup_started', at: new Date().toISOString() }); writeData(data); res.redirect(oauthUrl('signup', req.query.returnTo)); } catch (error) { res.status(503).json({ error: error.message }); } });
