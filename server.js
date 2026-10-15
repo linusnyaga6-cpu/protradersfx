@@ -204,19 +204,28 @@ function oauthUrl(mode, returnTo = '/?view=dashboard') {
 function openDeriv(accessToken, payload, authorizeOnly = false) {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(`wss://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(DERIV_PUBLIC_APP_ID || '1089')}`);
-    const timer = setTimeout(() => { try { ws.close(); } catch {} reject(new Error('Deriv request timeout')); }, 12_000);
+    let settled = false;
+    let timer;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { ws.close(); } catch {}
+      callback(value);
+    };
+    timer = setTimeout(() => finish(reject, new Error('Deriv request timeout')), 12_000);
     ws.on('open', () => ws.send(JSON.stringify({ authorize: accessToken })));
     ws.on('message', (raw) => {
       let data; try { data = JSON.parse(raw.toString()); } catch { return; }
-      if (data.error) { clearTimeout(timer); try { ws.close(); } catch {}; reject(new Error(data.error.message || 'Deriv API error')); return; }
+      if (data.error) { finish(reject, new Error(data.error.message || 'Deriv API error')); return; }
       if (data.msg_type === 'authorize') {
-        if (authorizeOnly) { clearTimeout(timer); try { ws.close(); } catch {}; resolve(data); return; }
+        if (authorizeOnly) { finish(resolve, data); return; }
         ws.send(JSON.stringify(payload)); return;
       }
-      if (data.msg_type) { clearTimeout(timer); try { ws.close(); } catch {}; resolve(data); }
+      if (data.msg_type) finish(resolve, data);
     });
-    ws.on('error', (error) => { clearTimeout(timer); reject(error); });
-    ws.on('close', () => clearTimeout(timer));
+    ws.on('error', (error) => finish(reject, error));
+    ws.on('close', () => finish(reject, new Error('Deriv connection closed before responding')));
   });
 }
 function openDerivPublic(payload) {
