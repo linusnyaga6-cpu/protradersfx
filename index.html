@@ -18,64 +18,13 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <script type="module" crossorigin src="/assets/index-owner-access-timeout.js?v=splash-gated-1"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-Cu5S4abW.css?v=splash-gated-1">
-      <script id="pt-usd-kes-converter-loader" defer src="/usd-kes-converter.js?v=live-20261018-1"></script>
-  </head>
+    <script type="module" crossorigin src="/assets/index-owner-access-timeout.js?v=dashboard-20261018-1"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-Cu5S4abW.css?v=dashboard-20261018-1">
+
+</head>
   <body>
     <div id="root"></div>
-  <style id="pt-risk-disclaimer-style">
-.pt-risk-disclaimer{display:flex;flex:1 1 360px;align-items:flex-start;gap:7px;min-width:min(100%,220px);color:#adbac2;font:9px/1.5 Inter,Arial,sans-serif;letter-spacing:0;text-align:left;white-space:normal}
-.pt-risk-disclaimer>svg{flex:0 0 auto;margin-top:1px;color:#e2b84c}
-.pt-risk-disclaimer-copy{display:grid;gap:2px}
-.pt-risk-disclaimer-copy>strong{color:#e4c469;font:900 9px/1.3 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.06em;text-transform:uppercase}
-.pt-risk-disclaimer-copy>span{line-height:1.45}
-.pt-risk-global-footer{display:flex;width:100%;box-sizing:border-box;justify-content:center;padding:12px 16px;border-top:1px solid rgba(147,170,157,.18);background:#0d1617}
-.pt-risk-global-footer .pt-risk-disclaimer{width:min(900px,100%);flex:initial}
-@media(max-width:700px){.pt-risk-disclaimer{flex-basis:100%}.pt-risk-global-footer{padding:12px 10px}}
-</style>
-<script id="pt-risk-disclaimer-script">
-(()=>{
-if(window.__ptRiskDisclaimerInstalled)return;
-window.__ptRiskDisclaimerInstalled=true;
-const body=document.body,root=document.getElementById("root"),selector="footer.terminal-footer,footer.public-landing-footer";
-const text="Deriv is the broker for trades placed through your connected Deriv account. ProTraders FX is a trading interface, not a broker or financial adviser. Trading is risky and you can lose money; you are responsible for your trading decisions. No profits are guaranteed.";
-const originalOverflowY=body.style.overflowY;
-let fallback=null;
-const makeNote=()=>{
-const note=document.createElement("div");
-note.className="pt-risk-disclaimer";
-note.setAttribute("role","note");
-note.setAttribute("aria-label","Trading risk disclaimer");
-note.setAttribute("data-pt-risk-disclaimer","true");
-const svg=document.createElementNS("http://www.w3.org/2000/svg","svg");
-svg.setAttribute("viewBox","0 0 24 24");svg.setAttribute("width","16");svg.setAttribute("height","16");svg.setAttribute("fill","none");svg.setAttribute("stroke","currentColor");svg.setAttribute("stroke-width","2");svg.setAttribute("stroke-linecap","round");svg.setAttribute("stroke-linejoin","round");svg.setAttribute("aria-hidden","true");
-const triangle=document.createElementNS("http://www.w3.org/2000/svg","path");triangle.setAttribute("d","m10.29 3.86-8.2 14.2A2 2 0 0 0 3.8 21h16.4a2 2 0 0 0 1.7-2.94l-8.2-14.2a2 2 0 0 0-3.4 0Z");svg.append(triangle);
-const mark=document.createElementNS("http://www.w3.org/2000/svg","path");mark.setAttribute("d","M12 9v4m0 4h.01");svg.append(mark);
-const copy=document.createElement("div");copy.className="pt-risk-disclaimer-copy";
-const title=document.createElement("strong");title.textContent="Trading risk disclaimer";
-const message=document.createElement("span");message.textContent=text;
-copy.append(title,message);note.append(svg,copy);return note;
-};
-const sync=()=>{
-const footers=document.querySelectorAll(selector);
-if(footers.length){
-footers.forEach((footer)=>{if(!footer.querySelector("[data-pt-risk-disclaimer]"))footer.append(makeNote());});
-if(fallback){fallback.remove();fallback=null;body.style.overflowY=originalOverflowY;}
-return;
-}
-if(root&&root.childElementCount>0&&!fallback){fallback=document.createElement("footer");fallback.className="pt-risk-global-footer";fallback.append(makeNote());body.append(fallback);body.style.overflowY="auto";}
-};
-let syncFrame=0;
-const hasRiskFooter=(node)=>node.nodeType===1&&(node.matches(selector)||node.matches(".pt-risk-global-footer")||Boolean(node.querySelector(selector)));
-const watchRiskFooter=(records)=>{
-if(!records.some((record)=>record.target===root||[...record.addedNodes,...record.removedNodes].some(hasRiskFooter)))return;
-if(syncFrame)return;
-syncFrame=requestAnimationFrame(()=>{syncFrame=0;sync();});
-};
-new MutationObserver(watchRiskFooter).observe(body,{childList:true,subtree:true});
-window.addEventListener("popstate",sync);sync();
-})();
-</script>
-  </body>
+
+
+</body>
 </html>
