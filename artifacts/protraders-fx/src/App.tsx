@@ -1,21 +1,49 @@
-import { createContext, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode, memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  getGetOwnerAccessQueryKey,
+  getGetOwnerActivityQueryKey,
+  getGetLiveTradingEligibilityQueryKey,
+  useGetOwnerAccess,
+  useGetOwnerActivity,
+  useGetLiveTradingEligibility,
+  type OwnerActivityResponse,
+} from '@workspace/api-client-react';
 import { ErrorBoundary } from '@/components/error-boundary';
 import DerivProBotsView from './components/DerivProBotsView';
+import UsdKesConverter from './components/UsdKesConverter';
+import RiskDisclaimerNote from './components/RiskDisclaimerNote';
+import { useUsdKesRate } from './hooks/useUsdKesRate';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import { LegacyAuthProvider, useAppAuth } from '@/auth';
+import { useWorkspaceNavigation } from './hooks/useWorkspaceNavigation';
 import {
   executeDerivTrade,
   formatDerivContractType,
+  getDerivBarrierError,
   isDerivContractType,
   mapManualContractToDeriv,
+  requestDerivProposal,
   type DerivContractType,
+  type DerivExecutionInput,
+  type DerivProposalQuote,
   type ManualContractSide,
   type ManualContractType,
 } from './lib/deriv-contracts';
+import { manualEntryBatchDecision } from './lib/manual-entry-batch';
+import { startPublicIntro } from './lib/public-intro';
+import { settledTradeNetProfit, sumSettledTradeNetProfit } from './lib/trade-financials';
 import {
+  CurrencyDisplayContext,
+  formatMoneyForDisplay,
+  formatSignedMoneyForDisplay,
+  type DisplayCurrency,
+  useCurrencyDisplay,
+} from './lib/display-currency';
+import {
+  ArrowDownRight,
   ArrowUpRight,
   BarChart3,
   Bot,
@@ -50,7 +78,10 @@ const queryClient = new QueryClient();
 const DERIV_REFERRAL_URL = 'https://t.deriv.link?t=SSJBZ9FQTVP8';
 const SUPPORT_PHONE_DISPLAY = '0793614024';
 const SUPPORT_PHONE_LINK = 'tel:+254793614024';
-const WHATSAPP_SUPPORT_URL = 'https://chat.whatsapp.com/CSjckmOKEZgBGgAoKacPNt';
+const SUPPORT_PHONE_INTERNATIONAL = SUPPORT_PHONE_DISPLAY.replace(/\D/g, '').replace(/^0/, '254');
+const LIVE_TRADING_WHATSAPP_URL = `https://wa.me/${SUPPORT_PHONE_INTERNATIONAL}?text=${encodeURIComponent('Hi, I would like to book a live trading session. My real USD Deriv account balance is above $100.')}`;
+const WHATSAPP_SUPPORT_URL = `https://wa.me/${SUPPORT_PHONE_INTERNATIONAL}?text=${encodeURIComponent('Hi, I need support with ProTraders FX.')}`;
+const WHATSAPP_GROUP_URL = 'https://chat.whatsapp.com/CSjckmOKEZgBGgAoKacPNt';
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
 const PUBLIC_MARKET_WS = 'wss://api.derivws.com/trading/v1/options/ws/public';
 const PUBLIC_TICK_BUFFER = 1000;
@@ -75,6 +106,8 @@ type ExecutedTrade = {
   transactionId?: string | number;
   type?: string;
   contractType?: string;
+  contract_type?: string;
+  longcode?: string;
   barrier?: number;
   marketName?: string;
   mode?: string;
@@ -82,6 +115,9 @@ type ExecutedTrade = {
   currency?: string;
   result?: 'won' | 'lost' | 'pending';
   status?: string | null;
+  settlementPending?: boolean;
+  settlementError?: string | null;
+  orderStatusUnknown?: boolean;
   profit?: number | null;
   payout?: number | null;
   stake?: number;
@@ -93,6 +129,8 @@ type BatchResult = {
   amount: number;
   trades: number;
   currency: string;
+  settlementPending?: boolean;
+  orderStatusUnknown?: boolean;
   tradeResults?: ExecutedTrade[];
 };
 
@@ -109,19 +147,7 @@ function formatSignedProfit(profit: number | string | null | undefined) {
 }
 
 function resolvedTradeProfit(trade: ExecutedTrade) {
-  const directProfit = finiteNumber(trade.profit);
-  if (directProfit !== null) return directProfit;
-  const payout = finiteNumber(trade.payout);
-  const buyPrice = finiteNumber(trade.buyPrice);
-  if (payout !== null && buyPrice !== null) {
-    return payout - buyPrice;
-  }
-  const settledStatus = trade.result ?? trade.status;
-  if (settledStatus === 'lost') {
-    const lostAmount = buyPrice ?? finiteNumber(trade.stake);
-    return lostAmount === null ? null : -Math.abs(lostAmount);
-  }
-  return null;
+  return settledTradeNetProfit(trade);
 }
 
 function configuredMultiplier(value: string) {
@@ -134,13 +160,59 @@ function nextMartingaleStake(baseStake: number, multiplier: number, consecutiveL
 }
 
 function normalizeExecutedTrade(trade: ExecutedTrade): ExecutedTrade {
-  return { ...trade, profit: resolvedTradeProfit(trade) };
+  const normalized: ExecutedTrade = {
+    ...trade,
+    buyPrice: finiteNumber(trade.buyPrice) ?? undefined,
+    stake: finiteNumber(trade.stake) ?? undefined,
+    payout: finiteNumber(trade.payout),
+    profit: finiteNumber(trade.profit),
+  };
+  return { ...normalized, profit: resolvedTradeProfit(normalized) };
+}
+
+function unresolvedTradeMessage(trade: ExecutedTrade) {
+  if (trade.orderStatusUnknown) {
+    return "Deriv did not confirm whether the order was placed. Check your Deriv transaction history before retrying.";
+  }
+  return `Trade ${trade.contractId ?? ""} was placed; settlement is pending. Do not submit it again.`;
 }
 
 function totalTradeProfit(trades: ExecutedTrade[]) {
-  const profits = trades.map(resolvedTradeProfit);
-  if (profits.some((profit) => profit === null)) return null;
-  return profits.reduce<number>((total, profit) => total + (profit === null ? 0 : profit), 0);
+  return sumSettledTradeNetProfit(trades);
+}
+
+function settledTradeOutcome(trade: ExecutedTrade): 'won' | 'lost' | null {
+  if (trade.settlementPending || trade.orderStatusUnknown) return null;
+  const status = String(trade.status ?? '').toLowerCase();
+  if (status === 'won' || status === 'lost') return status;
+  const result = String(trade.result ?? '').toLowerCase();
+  if (result === 'won' || result === 'lost') return result;
+  const profit = resolvedTradeProfit(trade);
+  return profit === null ? null : profit > 0 ? 'won' : profit < 0 ? 'lost' : null;
+}
+
+function summarizeTrades(trades: ExecutedTrade[]) {
+  const totalStake = trades.reduce((total, trade) => (
+    total + (trade.orderStatusUnknown ? 0 : finiteNumber(trade.stake) ?? finiteNumber(trade.buyPrice) ?? 0)
+  ), 0);
+  const payoutIsComplete = trades.length > 0 && trades.every((trade) => (
+    !trade.settlementPending && !trade.orderStatusUnknown && finiteNumber(trade.payout) !== null
+  ));
+  const totalPayout = payoutIsComplete
+    ? trades.reduce((total, trade) => total + (finiteNumber(trade.payout) ?? 0), 0)
+    : null;
+  const totalProfit = trades.some((trade) => trade.settlementPending || trade.orderStatusUnknown)
+    ? null
+    : totalTradeProfit(trades);
+  const outcomes = trades.map(settledTradeOutcome);
+  return {
+    totalStake,
+    totalPayout,
+    totalProfit,
+    contractsWon: outcomes.filter((outcome) => outcome === 'won').length,
+    contractsLost: outcomes.filter((outcome) => outcome === 'lost').length,
+    settledCount: outcomes.filter((outcome) => outcome !== null).length,
+  };
 }
 
 function formatTradePoint(value: number | string | null | undefined) {
@@ -150,12 +222,70 @@ function formatTradePoint(value: number | string | null | undefined) {
 }
 
 function tradeContractLabel(trade: ExecutedTrade) {
-  const contractType = trade.contractType ?? trade.type;
-  return formatDerivContractType(contractType, trade.barrier);
+  const candidates = [trade.contractType, trade.contract_type, trade.type].filter((value) => typeof value === 'string' && value.trim());
+  for (const candidate of candidates) {
+    const label = formatDerivContractType(candidate, trade.barrier);
+    if (label !== 'TRADE') return label;
+  }
+  return 'TRADE';
+}
+
+function tradeContractSummary(trades: ExecutedTrade[]) {
+  const labels = [...new Set(trades.map(tradeContractLabel).filter((label) => label !== 'TRADE'))];
+  return labels.length ? labels.join(' · ') : trades.length ? 'Contract details unavailable' : '—';
+}
+
+function tradeDirection(trade: ExecutedTrade): 'up' | 'down' | null {
+  const contractType = String(trade.contractType ?? trade.type ?? '').toUpperCase();
+  if (['CALL', 'RISE', 'DIGITOVER', 'OVER'].includes(contractType)) return 'up';
+  if (['PUT', 'FALL', 'DIGITUNDER', 'UNDER'].includes(contractType)) return 'down';
+  return null;
+}
+
+function TradeTypeCell({ trade, meta }: { trade: ExecutedTrade; meta: string }) {
+  const direction = tradeDirection(trade);
+  return (
+    <span className="trade-type-cell">
+      <span className={`trade-type-symbol ${direction ? `is-${direction}` : 'is-neutral'}`} aria-hidden="true">
+        <BarChart3 size={13} />
+        {direction === 'up' && <span className="trade-type-direction is-up"><ArrowUpRight size={14} /></span>}
+        {direction === 'down' && <span className="trade-type-direction is-down"><ArrowDownRight size={14} /></span>}
+      </span>
+      <span className="trade-type-copy">
+        <strong>{tradeContractLabel(trade)}</strong>
+        <small>{meta}</small>
+      </span>
+    </span>
+  );
+}
+
+function TradeSpotPair({ trade, className }: { trade: ExecutedTrade; className: string }) {
+  return (
+    <span className={`trade-spot-pair ${className}`}>
+      <b><i className="is-entry" aria-hidden="true" />{formatTradePoint(trade.entrySpot)}</b>
+      <b><i className="is-exit" aria-hidden="true" />{formatTradePoint(trade.exitSpot)}</b>
+    </span>
+  );
+}
+
+function TradeMoneyDetails({ trade, fallbackCurrency }: { trade: ExecutedTrade; fallbackCurrency: string }) {
+  const { displayCurrency, rate } = useCurrencyDisplay();
+  const currency = trade.currency ?? fallbackCurrency;
+  const stake = finiteNumber(trade.stake) ?? finiteNumber(trade.buyPrice);
+  const profit = resolvedTradeProfit(trade);
+  return (
+    <span className="trade-money-details">
+      <b>{stake === null ? 'Stake —' : `Stake ${formatMoneyForDisplay(stake, currency, displayCurrency, rate)}`}</b>
+      <strong className={profit === null ? 'is-flat' : profit < 0 ? 'is-loss' : 'is-win'}>
+        {profit === null ? 'Net P/L pending' : `Net P/L ${formatSignedMoneyForDisplay(profit, currency, displayCurrency, rate)}`}
+      </strong>
+    </span>
+  );
 }
 
 function TradeResultDialog({ result, onClose }: { result: BatchResult | null; onClose: () => void }) {
   const [activeTab, setActiveTab] = useState<'summary' | 'transactions' | 'journal'>('summary');
+  const { displayCurrency, rate } = useCurrencyDisplay();
   useEffect(() => {
     if (result) setActiveTab('summary');
   }, [result]);
@@ -163,15 +293,16 @@ function TradeResultDialog({ result, onClose }: { result: BatchResult | null; on
   const resultTone = result.profit < 0 ? 'is-loss' : result.profit > 0 ? 'is-win' : 'is-flat';
   const tradeResults = result.tradeResults ?? [];
   const latestTrade = tradeResults.at(-1);
-  const totalPayout = tradeResults.length && tradeResults.every((trade) => finiteNumber(trade.payout) !== null)
-    ? tradeResults.reduce((total, trade) => total + (finiteNumber(trade.payout) ?? 0), 0)
-    : null;
+  const tradeSummary = summarizeTrades(tradeResults);
+  const totalStake = tradeResults.length ? tradeSummary.totalStake : result.amount;
+  const contractSummary = tradeContractSummary(tradeResults);
   return (
     <div className="bot-result-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section className={`bot-result-dialog ai-batch-result ${resultTone}`} role="dialog" aria-modal="true" aria-label="Trade result">
         <button type="button" className="bot-result-close" onClick={onClose} aria-label="Close result">×</button>
-        <span className="ai-batch-result-kicker">{result.profit < 0 ? 'LOSS' : result.profit > 0 ? 'PROFIT' : 'FLAT'}</span>
-        <strong className="ai-batch-result-value">{formatSignedProfit(result.profit)}</strong>
+        <span className="ai-batch-result-kicker">{result.orderStatusUnknown ? 'ORDER STATUS UNKNOWN' : result.settlementPending ? 'SETTLEMENT PENDING' : result.profit < 0 ? 'LOSS' : result.profit > 0 ? 'PROFIT' : 'FLAT'}</span>
+        <strong className="ai-batch-result-value">{result.settlementPending || result.orderStatusUnknown ? 'PENDING' : formatSignedMoneyForDisplay(result.profit, result.currency, displayCurrency, rate)}</strong>
+        {(result.settlementPending || result.orderStatusUnknown) && <p role="status">{result.orderStatusUnknown ? "Deriv did not confirm whether the order was placed. Check your Deriv transaction history before retrying." : "The order was placed. Deriv has not returned its final result yet; do not submit it again."}</p>}
         <div className="ai-batch-result-tabs" role="tablist" aria-label="Trade result details">
           {([
             ['summary', 'SUMMARY'],
@@ -184,9 +315,12 @@ function TradeResultDialog({ result, onClose }: { result: BatchResult | null; on
         {activeTab === 'summary' && (
           <div className="ai-batch-result-summary">
             <div className="ai-batch-result-stats">
-              <span><small>TOTAL STAKE</small><b>{result.amount.toFixed(2)} {result.currency}</b></span>
-              <span><small>TOTAL PAYOUT</small><b>{totalPayout === null ? '—' : `${totalPayout.toFixed(2)} ${result.currency}`}</b></span>
-              <span><small>TRANSACTIONS</small><b>{result.trades}</b></span>
+              <span><small>TOTAL STAKE</small><b>{formatMoneyForDisplay(totalStake, result.currency, displayCurrency, rate)}</b></span>
+              <span><small>CONTRACT</small><b>{contractSummary}</b></span>
+              <span><small>NO. OF RUNS</small><b>{result.trades}</b></span>
+              <span><small>CONTRACTS LOST</small><b>{tradeSummary.contractsLost}</b></span>
+              <span><small>CONTRACTS WON</small><b>{tradeSummary.contractsWon}</b></span>
+              <span><small>TOTAL NET PROFIT/LOSS</small><b className={tradeSummary.totalProfit !== null && tradeSummary.totalProfit < 0 ? 'is-loss' : 'is-win'}>{formatSignedMoneyForDisplay(tradeSummary.totalProfit, result.currency, displayCurrency, rate)}</b></span>
             </div>
             <div className="ai-batch-result-points">
               <span><small>LAST ENTRY POINT</small><b>{formatTradePoint(latestTrade?.entrySpot)}</b></span>
@@ -196,15 +330,13 @@ function TradeResultDialog({ result, onClose }: { result: BatchResult | null; on
         )}
         {activeTab === 'transactions' && (
           <div className="ai-batch-result-table" role="table" aria-label="Settled transactions">
-            <div className="ai-batch-result-table-row is-head" role="row"><span>TYPE</span><span>ENTRY / EXIT SPOT</span><span>BUY PRICE AND P/L</span></div>
+            <div className="ai-batch-result-table-row is-head" role="row"><span>CONTRACT</span><span>ENTRY / EXIT SPOT</span><span>STAKE / NET P/L</span></div>
             {tradeResults.length ? tradeResults.slice().reverse().map((trade, index) => {
-              const tradeProfit = resolvedTradeProfit(trade);
-              const tradeTone = tradeProfit === null ? 'is-flat' : tradeProfit < 0 ? 'is-loss' : 'is-win';
               return (
-                <div className={`ai-batch-result-table-row ${tradeTone}`} role="row" key={`${trade.contractId ?? 'trade'}-${index}`}>
-                  <span><b>#{tradeResults.length - index}</b><small>{tradeContractLabel(trade)}{trade.marketName ? ` · ${trade.marketName}` : ''}{trade.mode ? ` · ${trade.mode}` : ''}{trade.transactionId ? ` · TX ${trade.transactionId}` : ''}</small></span>
-                  <span className="ai-batch-result-row-points"><b><i>ENTRY</i>{formatTradePoint(trade.entrySpot)}</b><b><i>EXIT</i>{formatTradePoint(trade.exitSpot)}</b></span>
-                  <span className="ai-batch-result-row-price"><b>{formatTradePoint(trade.buyPrice ?? trade.stake)} {trade.currency ?? result.currency}</b><strong className={tradeTone}>{formatSignedProfit(tradeProfit)}</strong></span>
+                <div className="ai-batch-result-table-row" role="row" key={`${trade.contractId ?? 'trade'}-${index}`}>
+                  <TradeTypeCell trade={trade} meta={[trade.orderStatusUnknown ? 'ORDER STATUS UNKNOWN' : trade.settlementPending ? 'SETTLEMENT PENDING' : `Trade ${tradeResults.length - index}`, trade.marketName, trade.mode, trade.transactionId ? `TX ${trade.transactionId}` : ''].filter(Boolean).join(' · ')} />
+                  <TradeSpotPair trade={trade} className="ai-batch-result-row-points" />
+                  <TradeMoneyDetails trade={trade} fallbackCurrency={result.currency} />
                 </div>
               );
             }) : <p className="ai-batch-result-empty">Settled transactions will appear here.</p>}
@@ -212,12 +344,12 @@ function TradeResultDialog({ result, onClose }: { result: BatchResult | null; on
         )}
         {activeTab === 'journal' && (
           <div className="ai-batch-result-table ai-batch-result-journal-table" role="table" aria-label="Trade journal">
-            <div className="ai-batch-result-table-row is-head" role="row"><span>TRADE</span><span>ENTRY / EXIT SPOT</span><span>BUY PRICE AND P/L</span></div>
+            <div className="ai-batch-result-table-row is-head" role="row"><span>TRADE / CONTRACT</span><span>ENTRY / EXIT SPOT</span><span>STAKE / NET P/L</span></div>
             {tradeResults.length ? tradeResults.slice().reverse().map((trade, index) => (
               <div className="ai-batch-result-table-row" role="row" key={`${trade.contractId ?? 'points'}-${index}`}>
                 <span><b>#{tradeResults.length - index}</b><small>{tradeContractLabel(trade)}{trade.marketName ? ` · ${trade.marketName}` : ''} · {trade.status ?? trade.result ?? 'pending'}</small></span>
                 <span className="ai-batch-result-row-points"><b><i>ENTRY</i>{formatTradePoint(trade.entrySpot)}</b><b><i>EXIT</i>{formatTradePoint(trade.exitSpot)}</b></span>
-                <span className="ai-batch-result-row-price"><b>{formatTradePoint(trade.buyPrice ?? trade.stake)} {trade.currency ?? result.currency}</b><strong className={resolvedTradeProfit(trade) !== null && resolvedTradeProfit(trade)! < 0 ? 'is-loss' : resolvedTradeProfit(trade) !== null && resolvedTradeProfit(trade)! > 0 ? 'is-win' : 'is-flat'}>{formatSignedProfit(resolvedTradeProfit(trade))}</strong></span>
+                <TradeMoneyDetails trade={trade} fallbackCurrency={result.currency} />
               </div>
             )) : <p className="ai-batch-result-empty">Settled trades will appear in the journal.</p>}
           </div>
@@ -228,15 +360,16 @@ function TradeResultDialog({ result, onClose }: { result: BatchResult | null; on
 }
 
 function TradeFigureStrip({ trades, currency }: { trades: ExecutedTrade[]; currency: string }) {
+  const { displayCurrency, rate } = useCurrencyDisplay();
   if (!trades.length) return null;
-  const placed = trades.reduce((total, trade) => total + (trade.buyPrice ?? trade.stake ?? 0), 0);
+  const placed = trades.reduce((total, trade) => total + (trade.stake ?? trade.buyPrice ?? 0), 0);
   const profit = totalTradeProfit(trades);
   const tone = profit === null ? 'is-flat' : profit < 0 ? 'is-loss' : profit > 0 ? 'is-win' : 'is-flat';
   return (
     <div className={`trade-figure-strip ${tone}`} aria-label="Trade figures">
       <span><small>TRADES</small><b>{trades.length}</b></span>
-      <span><small>PLACED</small><b>{placed.toFixed(2)} {currency}</b></span>
-      <span><small>P/L</small><b>{formatSignedProfit(profit)}</b></span>
+      <span><small>PLACED</small><b>{formatMoneyForDisplay(placed, currency, displayCurrency, rate)}</b></span>
+      <span><small>NET P/L</small><b>{formatSignedMoneyForDisplay(profit, currency, displayCurrency, rate)}</b></span>
     </div>
   );
 }
@@ -266,25 +399,25 @@ function BotTransactionPanel({
   runningLabel?: string;
   emptyMessage?: string;
 }) {
-  const placed = trades.reduce((total, trade) => total + (trade.buyPrice ?? trade.stake ?? 0), 0);
-  const profit = totalTradeProfit(trades);
-  const totalPayout = trades.length && trades.every((trade) => finiteNumber(trade.payout) !== null)
-    ? trades.reduce((total, trade) => total + (finiteNumber(trade.payout) ?? 0), 0)
-    : null;
+  const { displayCurrency, rate } = useCurrencyDisplay();
+  const tradeSummary = summarizeTrades(trades);
+  const placed = tradeSummary.totalStake;
+  const profit = tradeSummary.totalProfit;
+  const contracts = tradeContractSummary(trades);
   const latestTrade = trades.at(-1);
 
   const downloadTransactions = () => {
     if (!trades.length) return;
     const escapeCsv = (value: string | number | null | undefined) => `"${String(value ?? '').replaceAll('"', '""')}"`;
     const rows = [
-      ['Type', 'Market', 'Mode', 'Entry spot', 'Exit spot', 'Buy price', 'P/L', 'Currency'],
+      ['Contract', 'Market', 'Mode', 'Entry spot', 'Exit spot', 'Stake', 'Net P/L', 'Currency'],
       ...trades.map((trade) => [
         tradeContractLabel(trade),
         trade.marketName,
         trade.mode,
         formatTradePoint(trade.entrySpot),
         formatTradePoint(trade.exitSpot),
-        formatTradePoint(trade.buyPrice ?? trade.stake),
+        formatTradePoint(trade.stake ?? trade.buyPrice),
         formatSignedProfit(resolvedTradeProfit(trade)),
         trade.currency ?? currency,
       ]),
@@ -314,32 +447,47 @@ function BotTransactionPanel({
       </nav>
       {activeTab === 'Summary' && (
         <div className="bot-transaction-summary">
-          <article><span>SETTLED TRADES</span><strong>{trades.length}</strong><small>{running ? runningLabel : 'Completed contracts'}</small></article>
-          <article><span>PLACED AMOUNT</span><strong>{placed.toFixed(2)} {currency}</strong><small>Total buy price</small></article>
-            <article><span>TOTAL PAYOUT</span><strong>{totalPayout === null ? '—' : `${totalPayout.toFixed(2)} ${currency}`}</strong><small>Reported payout values</small></article>
-          <article><span>P/L</span><strong className={profit !== null && profit < 0 ? 'is-loss' : 'is-win'}>{formatSignedProfit(profit)}</strong><small>Settled result</small></article>
+            <article><span>SETTLED TRADES</span><strong>{tradeSummary.settledCount}</strong><small>{running ? runningLabel : 'Completed contracts'}</small></article>
+          <article><span>TOTAL STAKE</span><strong>{formatMoneyForDisplay(placed, currency, displayCurrency, rate)}</strong><small>Stake placed only</small></article>
+          <article><span>CONTRACT</span><strong>{contracts}</strong><small>Selected contract type</small></article>
+          <article><span>NET P/L</span><strong className={profit !== null && profit < 0 ? 'is-loss' : 'is-win'}>{formatSignedMoneyForDisplay(profit, currency, displayCurrency, rate)}</strong><small>Settled result, stake excluded</small></article>
           <article><span>LAST ENTRY / EXIT</span><strong>{formatTradePoint(latestTrade?.entrySpot)} / {formatTradePoint(latestTrade?.exitSpot)}</strong><small>Latest settled contract</small></article>
         </div>
       )}
       {activeTab === 'Transactions' && (
         <div className="bot-transaction-table" role="table" aria-label="Bot settled transactions">
-          <div className="bot-transaction-row is-head" role="row"><span>TYPE</span><span>ENTRY / EXIT SPOT</span><span>BUY PRICE AND P/L</span></div>
+          <div className="bot-transaction-row is-head" role="row"><span>CONTRACT</span><span>ENTRY / EXIT SPOT</span><span>STAKE / NET P/L</span></div>
           {trades.length ? trades.slice().reverse().map((trade, index) => {
-            const tradeProfit = resolvedTradeProfit(trade);
             return (
               <div className="bot-transaction-row" role="row" key={`${trade.contractId ?? 'bot-trade'}-${index}`}>
-                <span><strong>{tradeContractLabel(trade)}</strong><small>{[`Trade ${trades.length - index}`, trade.marketName, trade.mode, trade.transactionId ? `TX ${trade.transactionId}` : ''].filter(Boolean).join(' · ')}</small></span>
-                <span className="bot-transaction-points"><b><i>ENTRY</i> {formatTradePoint(trade.entrySpot)}</b><b><i>EXIT</i> {formatTradePoint(trade.exitSpot)}</b></span>
-                <span className="bot-transaction-profit"><b>{formatTradePoint(trade.buyPrice ?? trade.stake)} {trade.currency ?? currency}</b><strong className={tradeProfit !== null && tradeProfit < 0 ? 'is-loss' : 'is-win'}>{formatSignedProfit(tradeProfit)}</strong></span>
+                <TradeTypeCell trade={trade} meta={[trade.orderStatusUnknown ? 'ORDER STATUS UNKNOWN' : trade.settlementPending ? 'SETTLEMENT PENDING' : `Trade ${trades.length - index}`, trade.marketName, trade.mode, trade.transactionId ? `TX ${trade.transactionId}` : ''].filter(Boolean).join(' · ')} />
+                <TradeSpotPair trade={trade} className="bot-transaction-points" />
+                <TradeMoneyDetails trade={trade} fallbackCurrency={currency} />
               </div>
             );
           }) : <p className="bot-transactions-empty">{emptyMessage ?? (running ? 'The current contract will appear here after it settles.' : 'Press Run Bot to create a transaction.')}</p>}
+          {trades.length > 0 && (
+            <div className="bot-transaction-totals" aria-label="Transaction totals">
+              <span><small>TOTAL STAKE</small><strong>{formatMoneyForDisplay(placed, currency, displayCurrency, rate)}</strong></span>
+              <span><small>CONTRACT</small><strong>{contracts}</strong></span>
+              <span><small>NO. OF RUNS</small><strong>{trades.length}</strong></span>
+              <span><small>CONTRACTS LOST</small><strong>{tradeSummary.contractsLost}</strong></span>
+              <span><small>CONTRACTS WON</small><strong>{tradeSummary.contractsWon}</strong></span>
+              <span><small>TOTAL NET PROFIT/LOSS</small><strong className={profit !== null && profit < 0 ? 'is-loss' : 'is-win'}>{formatSignedMoneyForDisplay(profit, currency, displayCurrency, rate)}</strong></span>
+            </div>
+          )}
         </div>
       )}
       {activeTab === 'Journal' && (
         <div className="bot-transaction-journal">
           {trades.length ? trades.slice().reverse().map((trade, index) => (
-            <div key={`${trade.contractId ?? 'journal-trade'}-${index}`}><strong>Trade {trades.length - index}</strong><span>{tradeContractLabel(trade)}{trade.marketName ? ` on ${trade.marketName}` : ''}{trade.mode ? ` (${trade.mode})` : ''} settled {trade.status ?? trade.result ?? 'pending'} at {formatTradePoint(trade.exitSpot)}.</span></div>
+            <div key={`${trade.contractId ?? 'journal-trade'}-${index}`}>
+              <strong>Trade {trades.length - index} · {tradeContractLabel(trade)}</strong>
+              <span>
+                {trade.marketName ?? 'Market'}{trade.mode ? ` · ${trade.mode}` : ''} · {trade.status ?? trade.result ?? 'pending'} · Entry {formatTradePoint(trade.entrySpot)} → Exit {formatTradePoint(trade.exitSpot)}
+                <TradeMoneyDetails trade={trade} fallbackCurrency={currency} />
+              </span>
+            </div>
           )) : <p className="bot-transactions-empty">No journal entries yet.</p>}
         </div>
       )}
@@ -347,79 +495,85 @@ function BotTransactionPanel({
   );
 }
 
-type OwnerActivityData = {
-  loginid: string;
-  activeUsers: number;
-  settledTrades: number;
-  tradingAmount: number;
-  expectedCommission: number | null;
-  commissionRate: number | null;
-  currency: string;
-  recentTrades: Array<{
-    loginid: string;
-    mode: string;
-    symbol: string;
-    amount: number;
-    profit: number | null;
-    at: string;
-  }>;
-};
-
 function OwnerActivityView() {
-  const [data, setData] = useState<OwnerActivityData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    let cancelled = false;
-    const loadActivity = async () => {
-      try {
-        const response = await fetch('/api/analytics', { credentials: 'include', headers: { Accept: 'application/json' } });
-        const payload = await response.json() as OwnerActivityData & { error?: string; message?: string };
-        if (!response.ok) throw new Error(payload.message ?? payload.error ?? 'Owner activity is unavailable.');
-        if (!cancelled) {
-          setData(payload);
-          setError('');
-        }
-      } catch (activityError) {
-        if (!cancelled) setError(activityError instanceof Error ? activityError.message : 'Owner activity is unavailable.');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-    void loadActivity();
-    const refreshTimer = window.setInterval(() => void loadActivity(), 10_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(refreshTimer);
-    };
-  }, []);
+  const activityQuery = useGetOwnerActivity({
+    query: {
+      queryKey: getGetOwnerActivityQueryKey(),
+      refetchInterval: 10_000,
+      refetchOnWindowFocus: true,
+      retry: false,
+    },
+  });
+  const data: OwnerActivityResponse | undefined = activityQuery.data;
+  const formatCurrencyTotals = (pick: 'tradingAmount' | 'expectedCommission') => {
+    if (!data?.currencyTotals.length) return '—';
+    return data.currencyTotals
+      .map((total) => {
+        const amount = total[pick];
+        return amount === null ? `${total.currency} —` : `${total.currency} ${amount.toFixed(2)}`;
+      })
+      .join(' · ');
+  };
 
   return (
     <section className="owner-activity-view">
       <div className="owner-activity-heading">
-        <div><span className="terminal-eyebrow">ADMIN ACTIVITY</span><h1>Trading activity</h1><p>Private view for the active authenticated Deriv session.</p></div>
-        {data && <span className="owner-session-badge"><ShieldCheck size={14} /> {data.loginid}</span>}
+        <div>
+          <span className="terminal-eyebrow">OWNER MONITORING / LAST {data?.periodDays ?? 30} DAYS</span>
+          <h1>Platform trading activity</h1>
+          <p>Verified trades placed through ProTraders. Updates every 10 seconds.</p>
+        </div>
+        <div className="owner-activity-actions">
+          <span className="owner-session-badge"><ShieldCheck size={14} /> OWNER VERIFIED</span>
+          <button
+            type="button"
+            onClick={() => void activityQuery.refetch()}
+            disabled={activityQuery.isFetching}
+            data-testid="button-refresh-owner-activity"
+          >
+            {activityQuery.isFetching ? 'Refreshing…' : 'Refresh now'}
+          </button>
+        </div>
       </div>
-      {loading && <div className="owner-activity-state">Loading authenticated activity…</div>}
-      {!loading && error && <div className="owner-activity-state is-error">{error}</div>}
-      {!loading && !error && data && (
+      {activityQuery.isPending && <div className="owner-activity-state">Loading platform activity…</div>}
+      {activityQuery.isError && (
+        <div className="owner-activity-state is-error" role="alert">
+          <span>{activityQuery.error instanceof Error ? activityQuery.error.message : 'Owner activity is unavailable.'}</span>
+          <button type="button" onClick={() => void activityQuery.refetch()} data-testid="button-retry-owner-activity">Retry</button>
+        </div>
+      )}
+      {!activityQuery.isPending && !activityQuery.isError && data && (
         <>
           <div className="owner-activity-grid">
-            <article><span>TRADERS</span><strong>{data.activeUsers}</strong><small>Unique authenticated Deriv IDs</small></article>
-            <article><span>SETTLED TRADES</span><strong>{data.settledTrades}</strong><small>Completed contracts</small></article>
-            <article><span>TRADING AMOUNT</span><strong>{data.currency} {data.tradingAmount.toFixed(2)}</strong><small>Total placed stake</small></article>
-            <article className="is-commission"><span>EXPECTED COMMISSION</span><strong>{data.expectedCommission === null ? '—' : `${data.currency} ${data.expectedCommission.toFixed(2)}`}</strong><small>{data.commissionRate === null ? 'Deriv rate not configured' : `${(data.commissionRate * 100).toFixed(2)}% configured rate`}</small></article>
+            <article data-testid="metric-active-accounts">
+              <span>ACTIVE DERIV ACCOUNTS</span><strong>{data.activeUsers}</strong><small>Unique linked accounts with trades</small>
+            </article>
+            <article data-testid="metric-settled-trades">
+              <span>SETTLED TRADES</span><strong>{data.settledTrades}</strong><small>Completed contracts in this period</small>
+            </article>
+            <article className="is-compact-value" data-testid="metric-trading-amount">
+              <span>TRADING AMOUNT</span><strong>{formatCurrencyTotals('tradingAmount')}</strong><small>Total placed stake by currency</small>
+            </article>
+            <article className="is-commission is-compact-value" data-testid="metric-expected-commission">
+              <span>EXPECTED COMMISSION</span>
+              <strong>{formatCurrencyTotals('expectedCommission')}</strong>
+              <small>{data.commissionRate === null ? 'Rate not configured; estimate unavailable' : `${(data.commissionRate * 100).toFixed(2)}% configured rate`}</small>
+            </article>
           </div>
           <div className="owner-activity-table-wrap">
-            <div className="owner-activity-table-heading"><strong>RECENT TRADING ACTIVITY</strong><span>Refreshes every 10 seconds</span></div>
-            {data.recentTrades.length === 0 ? <p className="owner-activity-empty">No settled trading activity has been recorded yet.</p> : (
+            <div className="owner-activity-table-heading"><strong>RECENT PLATFORM TRADES</strong><span>Most recent 50 · last {data.periodDays} days</span></div>
+            {data.recentTrades.length === 0 ? <p className="owner-activity-empty">No trade executions have been recorded through the platform in this period.</p> : (
               <div className="owner-activity-table">
                 {data.recentTrades.map((trade, index) => (
-                  <div className="owner-activity-row" key={`${trade.at}-${index}`}>
-                    <span><strong>{trade.loginid}</strong><small>{trade.symbol} · {trade.mode.toUpperCase()} · {new Date(trade.at).toLocaleString()}</small></span>
-                    <b>{data.currency} {trade.amount.toFixed(2)}</b>
-                    <em className={resolvedTradeProfit(trade) !== null && resolvedTradeProfit(trade)! < 0 ? 'is-loss' : 'is-win'}>{formatSignedProfit(resolvedTradeProfit(trade))}</em>
+                  <div className="owner-activity-row" key={`${trade.accountRef}-${trade.at}-${index}`} data-testid={`row-platform-trade-${index}`}>
+                    <span>
+                      <strong>{trade.accountRef}</strong>
+                      <small>{trade.symbol} · {trade.contractType} · {trade.mode.toUpperCase()} · {new Date(trade.at).toLocaleString()}</small>
+                    </span>
+                    <b>{trade.currency} {trade.amount.toFixed(2)}</b>
+                    <em className={trade.profit !== null && trade.profit < 0 ? 'is-loss' : 'is-win'}>
+                      {formatSignedProfit(trade.profit)}<small>{trade.result.toUpperCase()}</small>
+                    </em>
                   </div>
                 ))}
               </div>
@@ -448,8 +602,10 @@ const MARKET_DEFINITIONS: MarketDefinition[] = [
   { label: 'USD/CAD', name: 'USD/CAD', symbol: 'frxUSDCAD', family: 'fx' },
   ...VOLATILITY_DEFINITIONS,
 ];
+const PUBLIC_MARKET_SYMBOLS = MARKET_DEFINITIONS.map(({ symbol }) => symbol);
 const DEFAULT_MARKET_LABEL = 'VOL 100 1s';
-const MARKET_CACHE_KEY = 'protraders-fx:last-deriv-quotes';
+const MARKET_CACHE_KEY = 'protraders-fx:last-deriv-quotes-v2';
+const PERSISTED_TICK_BUFFER = PUBLIC_TICK_BUFFER;
 
 function getMarketDefinition(label: string) {
   return MARKET_DEFINITIONS.find((market) => market.label === label) ?? VOLATILITY_DEFINITIONS.find((market) => market.label === DEFAULT_MARKET_LABEL)!;
@@ -463,35 +619,88 @@ function usePublicMarketBoard() {
   const [quotes, setQuotes] = useState<Record<string, MarketQuote>>(() => {
     let cached: Partial<Record<string, MarketQuote>> = {};
     try {
-      cached = JSON.parse(window.localStorage.getItem(MARKET_CACHE_KEY) ?? '{}') as Partial<Record<string, MarketQuote>>;
+      const serialized = window.localStorage.getItem(MARKET_CACHE_KEY) ?? '{}';
+      if (serialized.length <= 512_000) {
+        const parsed: unknown = JSON.parse(serialized);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          cached = parsed as Partial<Record<string, MarketQuote>>;
+        }
+      }
     } catch {
       cached = {};
     }
-    return Object.fromEntries(MARKET_DEFINITIONS.map(({ symbol }) => [
-      symbol,
-      cached[symbol] ?? { status: 'connecting', price: null, previousPrice: null, pipSize: 2, ticks: [], lastTickAt: null },
-    ]));
+    return Object.fromEntries(PUBLIC_MARKET_SYMBOLS.map((symbol) => {
+      const saved = cached[symbol];
+      const ticks = Array.isArray(saved?.ticks)
+        ? saved.ticks.filter((tick): tick is number => typeof tick === 'number' && Number.isFinite(tick)).slice(-PERSISTED_TICK_BUFFER)
+        : [];
+      return [symbol, {
+        status: saved?.status ?? 'connecting',
+        price: typeof saved?.price === 'number' && Number.isFinite(saved.price) ? saved.price : null,
+        previousPrice: typeof saved?.previousPrice === 'number' && Number.isFinite(saved.previousPrice) ? saved.previousPrice : null,
+        pipSize: typeof saved?.pipSize === 'number' && Number.isFinite(saved.pipSize) ? saved.pipSize : 2,
+        ticks,
+        lastTickAt: typeof saved?.lastTickAt === 'number' && Number.isFinite(saved.lastTickAt) ? saved.lastTickAt : null,
+      } satisfies MarketQuote];
+    }));
   });
+  const queuedQuotesRef = useRef(quotes);
+  const publishTimerRef = useRef<number | null>(null);
+  const cacheTimerRef = useRef<number | null>(null);
+  const queueQuoteUpdate = (update: (previous: Record<string, MarketQuote>) => Record<string, MarketQuote>) => {
+    queuedQuotesRef.current = update(queuedQuotesRef.current);
+    if (publishTimerRef.current !== null) return;
+    publishTimerRef.current = window.setTimeout(() => {
+      publishTimerRef.current = null;
+      setQuotes(queuedQuotesRef.current);
+    }, 250);
+  };
   useEffect(() => {
-    try {
-       const compact = Object.fromEntries(Object.entries(quotes).map(([symbol, quote]) => [symbol, { ...quote, ticks: quote.ticks.slice(-PUBLIC_TICK_BUFFER) }]));
-      window.localStorage.setItem(MARKET_CACHE_KEY, JSON.stringify(compact));
-    } catch {
-      // Storage is a convenience cache; the live stream remains the source of truth.
-    }
+    if (cacheTimerRef.current !== null) return;
+    cacheTimerRef.current = window.setTimeout(() => {
+      cacheTimerRef.current = null;
+      try {
+        const compact = Object.fromEntries(Object.entries(queuedQuotesRef.current).map(([symbol, quote]) => [
+          symbol,
+          { ...quote, ticks: quote.ticks.slice(-PERSISTED_TICK_BUFFER) },
+        ]));
+        window.localStorage.setItem(MARKET_CACHE_KEY, JSON.stringify(compact));
+      } catch {
+        // Storage is a convenience cache; the live stream remains the source of truth.
+      }
+    }, 2500);
   }, [quotes]);
+  useEffect(() => () => {
+    if (publishTimerRef.current !== null) window.clearTimeout(publishTimerRef.current);
+    if (cacheTimerRef.current !== null) window.clearTimeout(cacheTimerRef.current);
+  }, []);
   useEffect(() => {
     let socket: WebSocket | null = null;
     let reconnectTimer: number | undefined;
     let disposed = false;
-    const liveSymbols = MARKET_DEFINITIONS.map(({ symbol }) => symbol);
+    let suspended = false;
+    const liveSymbols = PUBLIC_MARKET_SYMBOLS;
+
+    const closeSocket = () => {
+      if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
+      reconnectTimer = undefined;
+      if (socket) {
+        socket.onopen = null;
+        socket.onmessage = null;
+        socket.onerror = null;
+        socket.onclose = null;
+        socket.close();
+        socket = null;
+      }
+    };
 
     const updateQuote = (symbol: string, update: Partial<MarketQuote>) => {
-      setQuotes((previous) => ({ ...previous, [symbol]: { ...previous[symbol], ...update } }));
+      queueQuoteUpdate((previous) => ({ ...previous, [symbol]: { ...previous[symbol], ...update } }));
     };
 
     const connect = () => {
-      if (disposed) return;
+      if (disposed || suspended) return;
+      closeSocket();
       liveSymbols.forEach((symbol) => updateQuote(symbol, { status: 'connecting' }));
       socket = new WebSocket(PUBLIC_MARKET_WS);
       socket.onopen = () => {
@@ -510,22 +719,36 @@ function usePublicMarketBoard() {
             echo_req?: { ticks?: string; ticks_history?: string };
           };
           const historySymbol = message.echo_req?.ticks_history;
-          if (message.history && historySymbol) {
-            const prices = (message.history.prices ?? []).filter((price): price is number => typeof price === 'number' && Number.isFinite(price));
+          const history = message.history;
+          if (history && historySymbol) {
+            const prices = (history.prices ?? []).filter((price): price is number => typeof price === 'number' && Number.isFinite(price));
             if (prices.length) {
-              updateQuote(historySymbol, {
-                status: 'live',
-                price: prices.at(-1) ?? null,
-                previousPrice: prices.at(-2) ?? prices.at(-1) ?? null,
-                pipSize: message.tick?.pip_size ?? (historySymbol.startsWith('frx') ? 5 : 2),
-                 ticks: prices.slice(-PUBLIC_TICK_BUFFER),
-                lastTickAt: message.history.times?.at(-1) ?? null,
+              queueQuoteUpdate((previous) => {
+                const current = previous[historySymbol];
+                return {
+                  ...previous,
+                  [historySymbol]: {
+                    ...current,
+                    status: current?.status === 'live' || current?.status === 'closed' || current?.status === 'error'
+                      ? current.status
+                      : 'connecting',
+                    price: prices.at(-1) ?? null,
+                    previousPrice: prices.at(-2) ?? prices.at(-1) ?? null,
+                    pipSize: message.tick?.pip_size ?? (historySymbol.startsWith('frx') ? 5 : 2),
+                    ticks: prices.slice(-PUBLIC_TICK_BUFFER),
+                    lastTickAt: history.times?.at(-1) ?? null,
+                  },
+                };
               });
             }
             return;
           }
           if (message.error) {
-            const symbol = typeof message.echo_req?.ticks === 'string' ? message.echo_req.ticks : undefined;
+            const symbol = typeof message.echo_req?.ticks === 'string'
+              ? message.echo_req.ticks
+              : typeof message.echo_req?.ticks_history === 'string'
+                ? message.echo_req.ticks_history
+                : undefined;
             if (symbol) {
               updateQuote(symbol, {
                 status: message.error.code === 'MarketIsClosed' ? 'closed' : 'error',
@@ -537,7 +760,7 @@ function usePublicMarketBoard() {
           if (typeof quote !== 'number' || !Number.isFinite(quote)) return;
           const symbol = message.tick?.symbol;
           if (!symbol) return;
-          setQuotes((previous) => {
+          queueQuoteUpdate((previous) => {
             if (!previous[symbol]) return previous;
             return {
               ...previous,
@@ -558,18 +781,31 @@ function usePublicMarketBoard() {
       };
       socket.onerror = () => liveSymbols.forEach((symbol) => updateQuote(symbol, { status: 'error' }));
       socket.onclose = () => {
-        if (!disposed) {
+        if (!disposed && !suspended) {
           liveSymbols.forEach((symbol) => updateQuote(symbol, { status: 'error' }));
           reconnectTimer = window.setTimeout(connect, 3000);
         }
       };
     };
 
+    const pauseForNavigation = () => {
+      suspended = true;
+      closeSocket();
+    };
+    const resumeAfterNavigation = (event: PageTransitionEvent) => {
+      if (suspended || event.persisted || socket?.readyState === WebSocket.CLOSED) {
+        suspended = false;
+        connect();
+      }
+    };
+    window.addEventListener('pagehide', pauseForNavigation);
+    window.addEventListener('pageshow', resumeAfterNavigation);
     connect();
     return () => {
       disposed = true;
-      if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
-      socket?.close();
+      window.removeEventListener('pagehide', pauseForNavigation);
+      window.removeEventListener('pageshow', resumeAfterNavigation);
+      closeSocket();
     };
   }, []);
 
@@ -684,11 +920,146 @@ type BulkScanResult = {
   quote: MarketQuote;
   side: 'Even' | 'Odd' | 'Rise' | 'Fall' | 'Over' | 'Under';
   contractType: DerivContractType;
-  confidence: number;
+  observedShare: number;
+  recentObservedShare: number;
+  windowAgreement: boolean;
+  hasSignal: boolean;
   sampleSize: number;
   rationale: string;
   barrier?: number;
 };
+
+type BulkScanAnalysis = {
+  result: BulkScanResult | null;
+  digitDistribution: Array<{ digit: number; percentage: number }>;
+  sampleSize: number;
+  message: string;
+};
+
+const MIN_BULK_SCAN_TICKS = 20;
+const MAX_BULK_TICK_AGE_MS = 15_000;
+
+type BulkWindowSummary = {
+  side: BulkScanResult['side'];
+  observedShare: number;
+  hasActivity: boolean;
+  rationale: string;
+};
+
+function summarizeBulkWindow(
+  ticks: number[],
+  digits: number[],
+  tradeType: 'Even/Odd' | 'Rise/Fall' | 'Over/Under',
+): BulkWindowSummary {
+  if (tradeType === 'Rise/Fall') {
+    const changes = ticks.slice(1).map((tick, index) => tick - ticks[index]);
+    const rising = changes.filter((change) => change > 0).length;
+    const falling = changes.filter((change) => change < 0).length;
+    const directional = rising + falling;
+    const side = rising >= falling ? 'Rise' : 'Fall';
+    return {
+      side,
+      observedShare: directional ? (Math.max(rising, falling) / directional) * 100 : 0,
+      hasActivity: directional > 0 && rising !== falling,
+      rationale: `Up ${rising}/${directional} and down ${falling}/${directional} non-flat moves`,
+    };
+  }
+
+  if (tradeType === 'Over/Under') {
+    const over = digits.filter((digit) => digit > 4).length;
+    const under = digits.filter((digit) => digit < 4).length;
+    const comparableDigits = over + under;
+    const side = over > under ? 'Over' : 'Under';
+    return {
+      side,
+      observedShare: comparableDigits ? (Math.max(over, under) / comparableDigits) * 100 : 0,
+      hasActivity: comparableDigits > 0 && over !== under,
+      rationale: `${over} digits above 4 and ${under} below 4; digit 4 is neutral`,
+    };
+  }
+
+  const even = digits.filter((digit) => digit % 2 === 0).length;
+  const odd = digits.length - even;
+  return {
+    side: even >= odd ? 'Even' : 'Odd',
+    observedShare: digits.length ? (Math.max(even, odd) / digits.length) * 100 : 0,
+    hasActivity: even !== odd,
+    rationale: `${even} even and ${odd} odd digits`,
+  };
+}
+
+function analyzeBulkMarket(
+  definition: MarketDefinition,
+  quote: MarketQuote | undefined,
+  tradeType: 'Even/Odd' | 'Rise/Fall' | 'Over/Under',
+  requestedWindow: number,
+): BulkScanAnalysis {
+  const windowSize = Math.max(MIN_BULK_SCAN_TICKS, Math.min(999, Math.floor(requestedWindow) || 120));
+  const ticks = (quote?.ticks ?? []).filter(Number.isFinite).slice(-windowSize);
+  const digits = ticks.map((tick) => Number(formatMarketPrice(tick, quote?.pipSize ?? 2).replace(/\D/g, '').slice(-1)))
+    .filter((digit) => Number.isInteger(digit) && digit >= 0 && digit <= 9);
+  const counts = Array.from({ length: 10 }, () => 0);
+  digits.forEach((digit) => { counts[digit] += 1; });
+  const digitDistribution = counts.map((count, digit) => ({
+    digit,
+    percentage: digits.length ? (count / digits.length) * 100 : 0,
+  }));
+  const sampleSize = ticks.length;
+  const tickAge = quote?.lastTickAt === null || quote?.lastTickAt === undefined
+    ? Number.POSITIVE_INFINITY
+    : Date.now() - quote.lastTickAt;
+  if (quote?.status !== 'live' || tickAge > MAX_BULK_TICK_AGE_MS) {
+    return { result: null, digitDistribution, sampleSize, message: `Waiting for a fresh live Deriv tick on ${definition.name}.` };
+  }
+  if (sampleSize < windowSize || sampleSize < MIN_BULK_SCAN_TICKS) {
+    return {
+      result: null,
+      digitDistribution,
+      sampleSize,
+      message: `Need ${windowSize} live ticks for this scan window; received ${sampleSize}.`,
+    };
+  }
+
+  const overall = summarizeBulkWindow(ticks, digits, tradeType);
+  const splitIndex = Math.floor(ticks.length / 2);
+  const firstHalf = summarizeBulkWindow(ticks.slice(0, splitIndex), digits.slice(0, splitIndex), tradeType);
+  const recentHalf = summarizeBulkWindow(ticks.slice(splitIndex), digits.slice(splitIndex), tradeType);
+  const windowAgreement = firstHalf.hasActivity && recentHalf.hasActivity &&
+    firstHalf.side === recentHalf.side && overall.side === recentHalf.side;
+  const side = overall.side;
+  let contractType: DerivContractType;
+  let barrier: number | undefined;
+  if (tradeType === 'Rise/Fall') {
+    contractType = side === 'Rise' ? 'CALL' : 'PUT';
+  } else if (tradeType === 'Over/Under') {
+    contractType = side === 'Over' ? 'DIGITOVER' : 'DIGITUNDER';
+    barrier = 4;
+  } else {
+    contractType = side === 'Even' ? 'DIGITEVEN' : 'DIGITODD';
+  }
+  const hasSignal = windowAgreement;
+  const rationale = `${overall.rationale}. First half: ${firstHalf.side} ${firstHalf.observedShare.toFixed(1)}%; recent half: ${recentHalf.side} ${recentHalf.observedShare.toFixed(1)}%.`;
+  return {
+    result: {
+      definition,
+      quote: quote!,
+      side,
+      contractType,
+      observedShare: overall.observedShare,
+      recentObservedShare: recentHalf.observedShare,
+      windowAgreement,
+      hasSignal,
+      sampleSize,
+      rationale,
+      barrier,
+    },
+    digitDistribution,
+    sampleSize,
+    message: hasSignal
+      ? `${definition.name}: both halves show ${side} in ${sampleSize} live ticks. This describes the sample; it is not a forecast.`
+      : `${definition.name}: the two halves do not agree in ${sampleSize} live ticks. No automatic entry is available.`,
+  };
+}
 
 type FloatingDigitRecommendation = {
   side: 'Over' | 'Under';
@@ -829,6 +1200,7 @@ function getFloatingScanResult(definition: MarketDefinition, quote?: MarketQuote
     let consecutiveLosses = 0;
     let totalPlaced = 0;
     const settledTrades: ExecutedTrade[] = [];
+    let pendingSettlementTrade: ExecutedTrade | null = null;
     for (let index = 0; index < requestedRuns; index += 1) {
       if (stopRequestedRef.current) {
         stopReason = 'Bot stopped by user.';
@@ -851,11 +1223,19 @@ function getFloatingScanResult(definition: MarketDefinition, quote?: MarketQuote
           marketName: result.signal.definition.name,
           mode: accountMode,
         };
+        if (trade.settlementPending || trade.orderStatusUnknown) {
+          pendingSettlementTrade = trade;
+          totalPlaced += trade.stake ?? trade.buyPrice ?? tradeAmount;
+          settledTrades.push(trade);
+          setTrades((current) => [...current, trade]);
+          await onTradeSettled();
+          break;
+        }
         const exactProfit = resolvedTradeProfit(trade);
-        if (exactProfit === null) throw new Error('Deriv did not return an exact settled P/L.');
+        if (exactProfit === null) throw new Error('Deriv did not return an exact settled net profit/loss.');
         completed += 1;
         cumulativeProfit += exactProfit;
-        totalPlaced += trade.buyPrice ?? trade.stake ?? tradeAmount;
+        totalPlaced += trade.stake ?? trade.buyPrice ?? tradeAmount;
         consecutiveLosses = exactProfit < 0 ? consecutiveLosses + 1 : 0;
         settledTrades.push(trade);
         setTrades((current) => [...current, trade]);
@@ -874,8 +1254,18 @@ function getFloatingScanResult(definition: MarketDefinition, quote?: MarketQuote
       }
     }
     setExecutionState('idle');
-    setExecutionStatus(firstError || stopReason || (completed ? `Completed ${completed} trade${completed === 1 ? '' : 's'}.` : 'No trade settled.'));
-    if (completed > 0) setBatchResult({ profit: cumulativeProfit, amount: totalPlaced, trades: completed, currency, tradeResults: settledTrades });
+    setExecutionStatus(pendingSettlementTrade
+      ? `${unresolvedTradeMessage(pendingSettlementTrade)} The bot stopped to prevent another order.`
+      : firstError || stopReason || (completed ? `Completed ${completed} trade${completed === 1 ? '' : 's'}.` : 'No trade settled.'));
+    if (completed > 0 || pendingSettlementTrade) setBatchResult({
+      profit: cumulativeProfit,
+      amount: totalPlaced,
+      trades: completed + (pendingSettlementTrade ? 1 : 0),
+      currency,
+      settlementPending: Boolean(pendingSettlementTrade),
+      orderStatusUnknown: Boolean(pendingSettlementTrade?.orderStatusUnknown),
+      tradeResults: settledTrades,
+    });
   };
 
   const scanMarkets = () => {
@@ -1018,14 +1408,66 @@ function ManualTraderLaunchScreen() {
 }
 
 function Home() {
+  const { isLoaded, isSignedIn, startupError, retrySession } = useAppAuth();
+  const [startupRecoveryVisible, setStartupRecoveryVisible] = useState(false);
+  useEffect(() => {
+    const robots = document.querySelector('meta[name="robots"]');
+    if (!robots) return;
+    const path = window.location.pathname.replace(/\/+$/, '') || '/';
+    robots.setAttribute('content', isSignedIn || path !== '/' ? 'noindex, nofollow, noarchive' : 'index, follow');
+  }, [isSignedIn]);
+  useEffect(() => {
+    if (isLoaded) {
+      setStartupRecoveryVisible(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setStartupRecoveryVisible(true), 12_000);
+    return () => window.clearTimeout(timer);
+  }, [isLoaded]);
+  if (isLoaded && isSignedIn) return <AuthenticatedHome />;
+  const recoveryMessage = !isLoaded && !startupRecoveryVisible
+    ? null
+    : startupError ?? (startupRecoveryVisible
+      ? 'Workspace startup did not finish. Retry the account check or reconnect your Deriv account.'
+      : null);
+  return (
+    <PublicLandingShell
+      startupError={recoveryMessage}
+      onRetry={startupRecoveryVisible ? () => window.location.reload() : retrySession}
+    />
+  );
+}
+
+function AuthenticatedHome() {
   const { isLoaded, isSignedIn, user, activeMode, balance, currency, refreshAccount, switchMode } = useAppAuth();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const ownerAccessQuery = useGetOwnerAccess({
+    query: {
+      queryKey: getGetOwnerAccessQueryKey(),
+      enabled: isLoaded && isSignedIn,
+      staleTime: 5 * 60 * 1000,
+      retry: false,
+    },
+  });
   const [activeMarket, setActiveMarket] = useState(DEFAULT_MARKET_LABEL);
   const [accountMode, setAccountMode] = useState<'DEMO' | 'REAL'>(activeMode === 'real' ? 'REAL' : 'DEMO');
+  const [displayCurrency, setDisplayCurrency] = useState<DisplayCurrency>(() => {
+    try {
+      return window.localStorage.getItem('protradersfx:display-currency') === 'KES' ? 'KES' : 'USD';
+    } catch {
+      return 'USD';
+    }
+  });
   const [direction, setDirection] = useState<'RISE' | 'FALL'>('RISE');
   const [contractType, setContractType] = useState<'RISE/FALL' | 'OVER/UNDER' | 'ODD/EVEN'>('RISE/FALL');
   const [contractSide, setContractSide] = useState<'RISE' | 'FALL' | 'OVER' | 'UNDER' | 'ODD' | 'EVEN'>('RISE');
+  const [manualContractMenuOpen, setManualContractMenuOpen] = useState(false);
+  const [manualQuotesBySide, setManualQuotesBySide] = useState<Partial<Record<ManualContractSide, DerivProposalQuote>>>({});
+  const [manualQuoteErrorsBySide, setManualQuoteErrorsBySide] = useState<Partial<Record<ManualContractSide, string>>>({});
+  const [manualQuoteState, setManualQuoteState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [manualQuoteError, setManualQuoteError] = useState('');
   const [stake, setStake] = useState('10');
+  const [manualEntries, setManualEntries] = useState('1');
+  const [manualEntriesExecuting, setManualEntriesExecuting] = useState(false);
   const [numberOfTicks, setNumberOfTicks] = useState('1');
   const [manualBarrier, setManualBarrier] = useState('4');
   const [reviewState, setReviewState] = useState('');
@@ -1036,42 +1478,31 @@ function Home() {
   const manualTradeHistory = manualHistoryByAccount[manualHistoryKey] ?? [];
   const [freeBotToOpen, setFreeBotToOpen] = useState<'diagnosis' | 'recovery' | 'scanner1' | 'scanner2' | null>(null);
   const [manualTraderLoading, setManualTraderLoading] = useState(true);
-  const [activeTool, setActiveTool] = useState(() => {
-    const view = new URLSearchParams(window.location.search).get('view');
-    const viewLabels: Record<string, string> = {
-      dashboard: 'Dashboard',
-      'bot-builder': 'Bot Builder',
-      'volt-ai': 'Volt AI',
-      'auto-ai': 'Auto AI',
-      'free-bots': 'Free Bots',
-      'premium-ai-bots': 'Deriv Pro Bots',
-      'deriv-pro-bots': 'Deriv Pro Bots',
-      'quick-bot': 'Quick Bot',
-      'signal-ai': 'Signal AI',
-      'manual-trader': 'Manual Trader',
-      'bulk-trader': 'Bulk Trader',
-      'apex-bot': 'Apex Bot',
-      'copy-trader': 'Copy Trader',
-      'analysis-tools': 'Analysis Tools',
-      'owner-activity': 'Owner Activity',
-    };
-    return (view && viewLabels[view]) || 'Manual Trader';
-  });
+  const manualExecutionLockRef = useRef(false);
+  const manualStopRequestedRef = useRef(false);
+  const [activeTool, setActiveTool] = useWorkspaceNavigation();
   const terminalMainRef = useRef<HTMLElement>(null);
+  const terminalNavigationRef = useRef<HTMLDivElement>(null);
   const openTool = (tool: string, botId?: 'diagnosis' | 'recovery' | 'scanner1' | 'scanner2') => {
     setFreeBotToOpen(tool === 'Free Bots' ? botId ?? null : null);
     setActiveTool(tool);
   };
   useEffect(() => {
-    const view = activeTool.toLowerCase().replace(/\s+/g, '-');
-    const url = new URL(window.location.href);
-    url.searchParams.set('view', view);
-    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
     terminalMainRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+    terminalNavigationRef.current?.querySelector('[aria-selected="true"]')
+      ?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
+    window.scrollTo({ top: 0, behavior: 'auto' });
   }, [activeTool]);
   useEffect(() => {
     setAccountMode(activeMode === 'real' ? 'REAL' : 'DEMO');
   }, [activeMode]);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('protradersfx:display-currency', displayCurrency);
+    } catch {
+      // The currency preference is a convenience and must not block trading UI.
+    }
+  }, [displayCurrency]);
   useEffect(() => {
     if (!isSignedIn) {
       setManualHistoryByAccount({});
@@ -1088,6 +1519,15 @@ function Home() {
     return () => window.clearTimeout(timer);
   }, [activeTool]);
   const marketQuotes = usePublicMarketBoard();
+  const usdKesRateState = useUsdKesRate();
+  const usdKesRate = usdKesRateState.rate;
+  const displayBalance = balance === null
+    ? '—'
+    : formatMoneyForDisplay(balance, currency, displayCurrency, usdKesRate);
+  const canConvertBalance = ['USD', 'KES', 'KSH'].includes(currency.toUpperCase());
+  const alternateBalance = balance !== null && usdKesRate !== null && canConvertBalance
+    ? formatMoneyForDisplay(balance, currency, displayCurrency === 'USD' ? 'KES' : 'USD', usdKesRate)
+    : null;
   const activeDefinition = getMarketDefinition(activeMarket);
   const activeQuote = marketQuotes[activeDefinition.symbol];
   const digitDistribution = useMemo(() => getDigitDistribution(activeQuote), [activeQuote]);
@@ -1156,27 +1596,118 @@ function Home() {
       lastPoint: { x: lastX, y: lastY, bottom: plotBottom },
     };
   }, [activeQuote]);
-  const manualPayoutRate = contractType === 'OVER/UNDER' ? 122 : 82;
   const manualContractName = contractType === 'RISE/FALL' ? 'Rise/Fall' : contractType === 'OVER/UNDER' ? 'Over/Under' : 'Even/Odd';
   const latestDigit = digitDistribution.recentDigits.at(-1) ?? null;
-  const selectedResultPercentage = useMemo(() => {
-    if (contractType === 'ODD/EVEN') {
-      return contractSide === 'EVEN' ? digitDistribution.evenPercentage : digitDistribution.oddPercentage;
+  const latestManualTrade = manualTradeHistory.at(-1) ?? null;
+  const latestManualStake = latestManualTrade
+    ? finiteNumber(latestManualTrade.stake) ?? finiteNumber(latestManualTrade.buyPrice)
+    : null;
+  const manualEntryCount = Number(manualEntries);
+  const manualEntryCountValid = Number.isInteger(manualEntryCount) && manualEntryCount >= 1 && manualEntryCount <= 100;
+  const manualEntryStake = finiteNumber(stake);
+  const manualEntryStakeValid = manualEntryStake !== null && manualEntryStake >= 0.35 && manualEntryStake <= 10_000;
+  const manualTotalStake = manualEntryCountValid && manualEntryStakeValid
+    ? manualEntryStake * manualEntryCount
+    : null;
+  const latestManualContractLabel = latestManualTrade
+    ? tradeContractLabel(latestManualTrade)
+    : 'No settled trades yet';
+  const isManualTradeExecuting = manualEntriesExecuting || reviewState.startsWith('Executing ');
+  const manualContractMarketSupported = contractType === 'RISE/FALL' || activeDefinition.family === 'volatility';
+  const quoteAccountModeReady = (activeMode === 'real' ? 'REAL' : 'DEMO') === accountMode;
+  const manualContractOptions: Array<{ type: ManualContractType; side: ManualContractSide; label: string; description: string }> = [
+    { type: 'RISE/FALL', side: 'RISE', label: 'Rise / Fall', description: 'Trade price direction' },
+    { type: 'OVER/UNDER', side: 'OVER', label: 'Over / Under', description: 'Compare digit to barrier' },
+    { type: 'ODD/EVEN', side: 'EVEN', label: 'Even / Odd', description: 'Trade last-digit parity' },
+  ];
+  const manualSideBarrierError = (side: ManualContractSide) => {
+    const proposalContractType = mapManualContractToDeriv(contractType, side);
+    return proposalContractType
+      ? getDerivBarrierError(
+          proposalContractType,
+          contractType === 'OVER/UNDER' ? Number.parseInt(manualBarrier, 10) : undefined,
+        )
+      : null;
+  };
+  useEffect(() => {
+    setManualQuotesBySide({});
+    setManualQuoteErrorsBySide({});
+    setManualQuoteError('');
+    if (!isSignedIn || !manualContractMarketSupported || !quoteAccountModeReady) {
+      setManualQuoteState('idle');
+      return;
     }
-    if (contractType === 'OVER/UNDER') {
-      if (!digitDistribution.sampleSize) return null;
-      const barrier = Number.parseInt(manualBarrier, 10) || 0;
-      const qualifyingDigits = digitDistribution.recentDigits.filter((digit) => contractSide === 'OVER' ? digit > barrier : digit < barrier);
-      return (qualifyingDigits.length / digitDistribution.sampleSize) * 100;
+    const amount = Number(stake);
+    if (!Number.isFinite(amount) || amount < 0.35 || amount > 10_000) {
+      setManualQuoteState('idle');
+      return;
     }
-    return null;
-  }, [contractSide, contractType, digitDistribution.evenPercentage, digitDistribution.oddPercentage, digitDistribution.recentDigits, digitDistribution.sampleSize, manualBarrier]);
-  if (!isLoaded) return <PublicLoadingView />;
-  if (!isSignedIn) return <PublicLandingView marketQuotes={marketQuotes} />;
-
+    const duration = Math.max(1, Math.min(365, Number.parseInt(numberOfTicks, 10) || 1));
+    const sides: ManualContractSide[] = contractType === 'RISE/FALL'
+      ? ['RISE', 'FALL']
+      : contractType === 'OVER/UNDER'
+        ? ['OVER', 'UNDER']
+        : ['EVEN', 'ODD'];
+    const controller = new AbortController();
+    let current = true;
+    setManualQuoteState('loading');
+    const timer = window.setTimeout(async () => {
+      const results = await Promise.all(sides.map(async (side) => {
+        const proposalContractType = mapManualContractToDeriv(contractType, side);
+        if (!proposalContractType) return { side, quote: null, error: 'Choose a side that matches the selected contract.' };
+        const barrier = contractType === 'OVER/UNDER' ? Number.parseInt(manualBarrier, 10) : undefined;
+        const barrierError = getDerivBarrierError(proposalContractType, barrier);
+        if (barrierError) return { side, quote: null, error: barrierError };
+        try {
+          const quote = await requestDerivProposal({
+            symbol: activeDefinition.symbol,
+            contractType: proposalContractType,
+            amount,
+            duration,
+            durationUnit: 't',
+            currency,
+            mode: accountMode === 'REAL' ? 'real' : 'demo',
+            barrier,
+          }, controller.signal);
+          return { side, quote, error: '' };
+        } catch (error) {
+          return { side, quote: null, error: error instanceof Error ? error.message : 'Deriv could not return a proposal quote.' };
+        }
+      }));
+      if (!current) return;
+      const availableQuotes = Object.fromEntries(
+        results.filter((result) => result.quote).map((result) => [result.side, result.quote]),
+      ) as Partial<Record<ManualContractSide, DerivProposalQuote>>;
+      const sideErrors = Object.fromEntries(
+        results.filter((result) => result.error).map((result) => [result.side, result.error]),
+      ) as Partial<Record<ManualContractSide, string>>;
+      setManualQuotesBySide(availableQuotes);
+      setManualQuoteErrorsBySide(sideErrors);
+      const firstError = results.find((result) => result.error)?.error ?? '';
+      setManualQuoteError(Object.keys(availableQuotes).length ? '' : firstError);
+      setManualQuoteState(Object.keys(availableQuotes).length ? 'ready' : 'error');
+    }, 450);
+    return () => {
+      current = false;
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [accountMode, activeDefinition.symbol, activeMode, contractType, currency, isSignedIn, manualBarrier, manualContractMarketSupported, numberOfTicks, quoteAccountModeReady, stake]);
+  const manualPayoutLabel = (side: ManualContractSide) => {
+    const sideError = manualQuoteErrorsBySide[side];
+    if (sideError) return 'Payout quote unavailable';
+    const quote = manualQuotesBySide[side];
+    if (quote?.payout !== null && quote?.payout !== undefined) {
+      return `Potential payout ${quote.currency ?? currency} ${quote.payout.toFixed(2)}`;
+    }
+    if (!manualContractMarketSupported) return 'Select a Volatility market';
+    if (manualQuoteState === 'loading') return 'Updating Deriv quote…';
+    if (manualQuoteError) return 'Payout quote unavailable';
+    return 'Enter a valid stake for a quote';
+  };
   const navItems = [
     { label: 'Dashboard', icon: Gauge },
-    ...(user?.label ? [{ label: 'Owner Activity', icon: ShieldCheck }] : []),
+    ...(ownerAccessQuery.data?.isOwner === true ? [{ label: 'Owner Activity', icon: ShieldCheck }] : []),
     { label: 'Bot Builder', icon: Bot },
     { label: 'Volt AI', icon: Sparkles },
     { label: 'Auto AI', icon: Sparkles },
@@ -1196,7 +1727,9 @@ function Home() {
     requestedSide?: ManualContractSide,
     marketOverride?: MarketDefinition,
     tradeSetup?: DcircleTradeSetup,
+    requestedEntryCount: string | number = 1,
   ): Promise<boolean> {
+    if (manualExecutionLockRef.current) return false;
     const selectedContractType = tradeSetup?.contractType ?? contractType;
     const configuredSide = tradeSetup?.side ?? contractSide;
     if (action === 'SELL' && selectedContractType !== 'RISE/FALL') {
@@ -1216,62 +1749,142 @@ function Home() {
     }
     const amount = Number(tradeSetup?.stake ?? stake);
     const durationTicks = Math.max(1, Number.parseInt(tradeSetup?.durationTicks ?? numberOfTicks, 10) || 1);
+    const entryCount = Number(requestedEntryCount);
+    if (!Number.isInteger(entryCount) || entryCount < 1 || entryCount > 100) {
+      setReviewState('Choose a whole number of runs from 1 to 100.');
+      return false;
+    }
     const barrier = selectedContractType === 'OVER/UNDER'
-      ? Math.min(9, Math.max(0, Number.parseInt(tradeSetup?.barrier ?? manualBarrier, 10) || 0))
+      ? Number.parseInt(tradeSetup?.barrier ?? manualBarrier, 10)
       : undefined;
+    const barrierError = getDerivBarrierError(proposalContractType, barrier);
+    if (barrierError) {
+      setReviewState(`${barrierError} No trade was sent.`);
+      return false;
+    }
     const tradeDefinition = marketOverride ?? activeDefinition;
     if (selectedContractType !== 'RISE/FALL' && tradeDefinition.family !== 'volatility') {
       setReviewState('Over/Under and Even/Odd contracts require a Volatility market. Select one before trading.');
       return false;
     }
-    if (!Number.isFinite(amount) || amount < 0.35) {
-      setReviewState(`Enter a stake of at least ${currency} 0.35.`);
+    if (!Number.isFinite(amount) || amount < 0.35 || amount > 10_000) {
+      setReviewState(`Enter a stake from ${currency} 0.35 to 10,000.`);
       return false;
     }
+    const tradeMode = accountMode;
+    const tradeCurrency = currency;
+    const selectedEntry: DerivExecutionInput = {
+      symbol: tradeDefinition.symbol,
+      contractType: proposalContractType,
+      amount,
+      duration: durationTicks,
+      durationUnit: 't',
+      currency: tradeCurrency,
+      barrier,
+      mode: tradeMode === 'REAL' ? 'real' : 'demo',
+    };
     setManualTradeResult(null);
     const executionLabel = selectedContractType === 'RISE/FALL' ? `${action} ` : '';
-    setReviewState(`Executing ${executionLabel}${formatDerivContractType(proposalContractType, barrier)} on ${tradeDefinition.name} in ${accountMode} mode…`);
+    const contractLabel = formatDerivContractType(proposalContractType, barrier);
+    manualExecutionLockRef.current = true;
+    manualStopRequestedRef.current = false;
+    setManualEntriesExecuting(true);
+    setReviewState(`Run 1/${entryCount} · ${executionLabel}${contractLabel} on ${tradeDefinition.name} in ${tradeMode} mode…`);
+
+    let totalProfit = 0;
+    let settledRuns = 0;
+    let totalStake = 0;
+    let firstError = '';
+    let unknownOrderTrade: ExecutedTrade | null = null;
+    let stoppedByUser = false;
+    const placedTrades: ExecutedTrade[] = [];
     try {
-      const rawTrade = await executeDerivTrade<ExecutedTrade>({
-        symbol: tradeDefinition.symbol,
-        contractType: proposalContractType,
-        amount,
-        duration: durationTicks,
-        durationUnit: 't',
-        currency,
-        barrier,
-        mode: accountMode === 'REAL' ? 'real' : 'demo',
-      });
-      const exactProfit = resolvedTradeProfit(rawTrade);
-      if (exactProfit === null) throw new Error('Deriv did not return an exact settled P/L.');
-      await refreshAccount();
-      const settledTrade: ExecutedTrade = {
-        ...normalizeExecutedTrade(rawTrade),
-        marketName: tradeDefinition.name,
-        mode: accountMode,
-      };
-      const historyKey = `${accountMode}:${settledTrade.currency ?? currency}`;
-      setManualHistoryByAccount((current) => ({
-        ...current,
-        [historyKey]: [...(current[historyKey] ?? []), settledTrade],
-      }));
-      setManualTransactionTab('Transactions');
-      setManualTradeResult({
-        profit: exactProfit,
-        amount: settledTrade.buyPrice ?? settledTrade.stake ?? amount,
-        trades: 1,
-        currency: settledTrade.currency ?? currency,
-        tradeResults: [settledTrade],
-      });
-      setReviewState(formatSignedProfit(resolvedTradeProfit(rawTrade)));
-      return true;
-    } catch (error) {
-      setReviewState(error instanceof Error ? error.message : 'Unable to execute the Deriv contract.');
-      return false;
+      for (let index = 0; index < entryCount; index += 1) {
+        if (manualStopRequestedRef.current) {
+          stoppedByUser = true;
+          break;
+        }
+        setReviewState(`Run ${index + 1}/${entryCount} · same ${executionLabel}${contractLabel} · ${tradeDefinition.name} · ${tradeMode}…`);
+        try {
+          const rawTrade = await executeDerivTrade<ExecutedTrade>(selectedEntry);
+          let executedTrade: ExecutedTrade = {
+            ...normalizeExecutedTrade(rawTrade),
+            marketName: tradeDefinition.name,
+            mode: tradeMode,
+          };
+          const batchDecision = manualEntryBatchDecision(executedTrade);
+          const exactProfit = resolvedTradeProfit(executedTrade);
+          if (!executedTrade.orderStatusUnknown && !executedTrade.settlementPending && exactProfit === null) {
+            executedTrade = { ...executedTrade, settlementPending: true };
+          }
+          if (batchDecision === 'stop-unknown' && !executedTrade.orderStatusUnknown) {
+            executedTrade = { ...executedTrade, orderStatusUnknown: true, settlementPending: true };
+          }
+          placedTrades.push(executedTrade);
+          if (!executedTrade.orderStatusUnknown) {
+            totalStake += finiteNumber(executedTrade.buyPrice) ?? finiteNumber(executedTrade.stake) ?? amount;
+          }
+          const historyKey = `${tradeMode}:${executedTrade.currency ?? tradeCurrency}`;
+          setManualHistoryByAccount((current) => ({
+            ...current,
+            [historyKey]: [...(current[historyKey] ?? []), executedTrade],
+          }));
+          setManualTransactionTab('Transactions');
+          if (batchDecision === 'stop-unknown') {
+            unknownOrderTrade = executedTrade;
+            break;
+          }
+          totalProfit += exactProfit ?? 0;
+          if (exactProfit !== null) settledRuns += 1;
+        } catch (error) {
+          firstError = error instanceof Error ? error.message : 'Unable to execute the Deriv contract.';
+          break;
+        }
+      }
+    } finally {
+      manualExecutionLockRef.current = false;
+      setManualEntriesExecuting(false);
     }
+
+    if (placedTrades.length > 0) {
+      const pendingSettlementCount = placedTrades.filter((trade) => (
+        trade.settlementPending && !trade.orderStatusUnknown
+      )).length;
+      const settledProfitLabel = settledRuns > 0
+        ? `${formatSignedProfit(totalProfit)} settled P/L ${tradeCurrency}`
+        : 'no results settled yet';
+      setManualTradeResult({
+        profit: totalProfit,
+        amount: totalStake,
+        trades: placedTrades.length,
+        currency: tradeCurrency,
+        settlementPending: placedTrades.some((trade) => trade.settlementPending),
+        orderStatusUnknown: placedTrades.some((trade) => trade.orderStatusUnknown),
+        tradeResults: placedTrades,
+      });
+      if (unknownOrderTrade) {
+        setReviewState(`${unresolvedTradeMessage(unknownOrderTrade)} Remaining runs stopped to avoid a duplicate order.`);
+      } else if (firstError) {
+        setReviewState(`${placedTrades.length}/${entryCount} same-selection runs placed before stopping: ${firstError}${pendingSettlementCount ? ` · ${pendingSettlementCount} result${pendingSettlementCount === 1 ? '' : 's'} pending` : ''} · ${settledProfitLabel}`);
+      } else if (stoppedByUser) {
+        setReviewState(`Stopped after ${placedTrades.length}/${entryCount} same-selection runs · ${pendingSettlementCount ? `${pendingSettlementCount} result${pendingSettlementCount === 1 ? '' : 's'} pending · ` : ''}${settledProfitLabel}`);
+      } else if (pendingSettlementCount > 0) {
+        setReviewState(`${placedTrades.length}/${entryCount} same-selection runs placed · ${pendingSettlementCount} result${pendingSettlementCount === 1 ? '' : 's'} pending · ${settledProfitLabel}`);
+      } else {
+        setReviewState(`${placedTrades.length}/${entryCount} same-selection runs settled · ${settledProfitLabel}`);
+      }
+      void Promise.resolve().then(() => refreshAccount()).catch(() => undefined);
+      return true;
+    }
+    setReviewState(firstError || (stoppedByUser ? 'Stopped before placing an entry.' : 'No manual entries were placed.'));
+    return false;
   }
 
   async function handleAccountMode(nextMode: 'DEMO' | 'REAL') {
+    if (manualExecutionLockRef.current) {
+      setReviewState('Wait for the current manual batch to finish before switching accounts.');
+      return;
+    }
     setAccountMode(nextMode);
     try {
       await switchMode(nextMode.toLowerCase() as 'demo' | 'real');
@@ -1287,7 +1900,7 @@ function Home() {
     if (profit === null) return;
     setManualTradeResult({
       profit,
-      amount: manualTradeHistory.reduce((total, trade) => total + (trade.buyPrice ?? trade.stake ?? 0), 0),
+      amount: manualTradeHistory.reduce((total, trade) => total + (trade.stake ?? trade.buyPrice ?? 0), 0),
       trades: manualTradeHistory.length,
       currency,
       tradeResults: manualTradeHistory,
@@ -1295,6 +1908,11 @@ function Home() {
   }
 
   return (
+    <CurrencyDisplayContext.Provider value={{
+      displayCurrency,
+      rate: usdKesRate,
+      toggleDisplayCurrency: () => setDisplayCurrency((current) => current === 'USD' ? 'KES' : 'USD'),
+    }}>
     <div className={`terminal-shell ${activeTool === 'Manual Trader' ? 'is-manual-mode' : ''} ${activeTool === 'Manual Trader' && manualTraderLoading ? 'is-manual-loading' : ''} ${activeTool === 'Dashboard' ? 'is-dashboard-mode' : ''} ${['Bot Builder', 'Free Bots', 'Deriv Pro Bots', 'Bulk Trader', 'Quick Bot', 'Analysis Tools', 'Volt AI', 'Auto AI', 'Signal AI', 'Apex Bot', 'Copy Trader'].includes(activeTool) ? 'is-reference-mode' : ''}`}>
       <header className="terminal-header">
         <a href={basePath || '/'} className="terminal-brand" aria-label="ProTraders FX home">
@@ -1307,19 +1925,43 @@ function Home() {
             <button type="button" className={accountMode === 'DEMO' ? 'is-selected' : ''} onClick={() => void handleAccountMode('DEMO')}>DEMO</button>
             <button type="button" className={accountMode === 'REAL' ? 'is-selected' : ''} onClick={() => void handleAccountMode('REAL')}>REAL</button>
           </div>
-          <div className="terminal-balance"><CircleDollarSign size={15} /><strong>{balance === null ? '—' : `${currency} ${balance.toFixed(2)}`}</strong><ChevronDown size={13} /></div>
+          <div className="terminal-balance">
+            <CircleDollarSign size={15} />
+            <div className="terminal-balance-copy">
+              <div className="terminal-balance-primary">
+                <strong>{displayBalance}</strong>
+                <UsdKesConverter
+                  rate={usdKesRate}
+                  updatedAt={usdKesRateState.updatedAt}
+                  displayCurrency={displayCurrency}
+                  onToggleDisplayCurrency={() => setDisplayCurrency((current) => current === 'USD' ? 'KES' : 'USD')}
+                />
+              </div>
+              {canConvertBalance && (
+                <small
+                  className={`terminal-balance-kes ${alternateBalance === null ? 'is-unavailable' : ''}`}
+                  data-testid="usd-kes-balance-equivalent"
+                  title={usdKesRate === null
+                    ? 'USD/KSh estimate is unavailable until the daily reference rate loads.'
+                    : `Display-only conversion using the daily USD/KSh reference rate. Your Deriv account and trade currency remain ${currency}.`}
+                >
+                  {alternateBalance === null
+                    ? 'Currency estimate unavailable'
+                    : `≈ ${alternateBalance} · display only`}
+                </small>
+              )}
+            </div>
+            <ChevronDown size={13} />
+          </div>
           <a href={`${basePath}/account`} className="account-button">Account</a>
           <a href={DERIV_REFERRAL_URL} target="_blank" rel="noopener noreferrer" className="get-started">Get Started</a>
-          <button type="button" className="terminal-mobile-toggle" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} aria-label="Toggle trading navigation">
-            {mobileMenuOpen ? <X size={19} /> : <Menu size={19} />}
-          </button>
         </div>
       </header>
 
-      <nav className={`terminal-nav ${mobileMenuOpen ? 'is-open' : ''}`} aria-label="Trading products" role="tablist">
-        <div className="terminal-nav-scroll">
+      <nav className="terminal-nav" aria-label="Trading products" role="tablist" aria-orientation="horizontal">
+        <div ref={terminalNavigationRef} className="terminal-nav-scroll" tabIndex={0} aria-label="Scrollable trading tools">
           {navItems.map(({ label, icon: Icon }) => (
-            <button key={label} type="button" role="tab" aria-selected={activeTool === label} className={`terminal-nav-item ${activeTool === label ? 'is-active' : ''}`} onClick={() => { setFreeBotToOpen(null); setActiveTool(label); setMobileMenuOpen(false); }}>
+            <button key={label} type="button" role="tab" aria-selected={activeTool === label} className={`terminal-nav-item ${activeTool === label ? 'is-active' : ''}`} onClick={() => { setFreeBotToOpen(null); setActiveTool(label); }}>
               <Icon size={13} /> <span>{label}</span>
             </button>
           ))}
@@ -1348,13 +1990,11 @@ function Home() {
         onTradeMarket: (definition, setup) => executeManualTrade('BUY', setup.side, definition, setup),
       }}>
       <main ref={terminalMainRef} id="trading-workspace-panel" className={`terminal-main ${activeTool === 'Manual Trader' ? 'manual-main' : ''}`} role="tabpanel" aria-label={`${activeTool} workspace`}>
-        {activeTool === 'Dashboard' ? <DashboardView accountMode={accountMode} marketQuotes={marketQuotes} onNavigate={setActiveTool} /> : activeTool === 'Owner Activity' ? <OwnerActivityView /> : activeTool === 'Quick Bot' ? <QuickBotView accountMode={accountMode} currency={currency} balance={balance} activeMarket={activeMarket} marketQuotes={marketQuotes} onNavigate={openTool} onTradeSettled={refreshAccount} /> : activeTool === 'Bulk Trader' ? <BulkTraderView accountMode={accountMode} currency={currency} activeMarket={activeMarket} setActiveMarket={setActiveMarket} marketQuotes={marketQuotes} onTradeSettled={refreshAccount} /> : activeTool === 'Analysis Tools' ? <AnalysisToolsView marketQuotes={marketQuotes} /> : activeTool === 'Volt AI' ? <VoltAiView activeMarket={activeMarket} setActiveMarket={setActiveMarket} marketQuotes={marketQuotes} onNavigate={setActiveTool} /> : activeTool === 'Auto AI' ? <AutoAiView activeMarket={activeMarket} setActiveMarket={setActiveMarket} marketQuotes={marketQuotes} onNavigate={setActiveTool} /> : activeTool === 'Signal AI' ? <SignalAiView activeMarket={activeMarket} setActiveMarket={setActiveMarket} marketQuotes={marketQuotes} onNavigate={setActiveTool} /> : activeTool === 'Apex Bot' ? <ApexBotView activeMarket={activeMarket} setActiveMarket={setActiveMarket} marketQuotes={marketQuotes} /> : activeTool === 'Copy Trader' ? <CopyTraderView activeMarket={activeMarket} marketQuotes={marketQuotes} /> : activeTool === 'Free Bots' ? <FreeBotsView accountMode={accountMode} currency={currency} balance={balance} activeMarket={activeMarket} marketQuotes={marketQuotes} onTradeSettled={refreshAccount} initialBotId={freeBotToOpen} /> : activeTool === 'Bot Builder' ? <RecoveryBotView accountMode={accountMode} currency={currency} balance={balance} activeMarket={activeMarket} marketQuotes={marketQuotes} onTradeSettled={refreshAccount} /> : activeTool === 'Deriv Pro Bots' ? <DerivProBotsView accountMode={accountMode} currency={currency} balance={balance} activeMarket={activeMarket} setActiveMarket={setActiveMarket} marketDefinitions={MARKET_DEFINITIONS} marketQuotes={marketQuotes} supportPhoneDisplay={SUPPORT_PHONE_DISPLAY} onTradeSettled={refreshAccount} /> : activeTool === 'Manual Trader' ? (
+        {activeTool === 'Dashboard' ? <DashboardView accountMode={accountMode} marketQuotes={marketQuotes} isOwner={ownerAccessQuery.data?.isOwner === true} onNavigate={setActiveTool} /> : activeTool === 'Owner Activity' ? <OwnerActivityView /> : activeTool === 'Quick Bot' ? <QuickBotView accountMode={accountMode} currency={currency} balance={balance} activeMarket={activeMarket} marketQuotes={marketQuotes} onNavigate={openTool} onTradeSettled={refreshAccount} /> : activeTool === 'Bulk Trader' ? <BulkTraderView accountMode={accountMode} currency={currency} activeMarket={activeMarket} setActiveMarket={setActiveMarket} marketQuotes={marketQuotes} onTradeSettled={refreshAccount} /> : activeTool === 'Analysis Tools' ? <AnalysisToolsView marketQuotes={marketQuotes} /> : activeTool === 'Volt AI' ? <VoltAiView activeMarket={activeMarket} setActiveMarket={setActiveMarket} marketQuotes={marketQuotes} onNavigate={setActiveTool} /> : activeTool === 'Auto AI' ? <AutoAiView activeMarket={activeMarket} setActiveMarket={setActiveMarket} marketQuotes={marketQuotes} onNavigate={setActiveTool} /> : activeTool === 'Signal AI' ? <SignalAiView activeMarket={activeMarket} setActiveMarket={setActiveMarket} marketQuotes={marketQuotes} onNavigate={setActiveTool} /> : activeTool === 'Apex Bot' ? <ApexBotView activeMarket={activeMarket} setActiveMarket={setActiveMarket} marketQuotes={marketQuotes} /> : activeTool === 'Copy Trader' ? <CopyTraderView activeMarket={activeMarket} marketQuotes={marketQuotes} currency={currency} /> : activeTool === 'Free Bots' ? <FreeBotsView accountMode={accountMode} currency={currency} balance={balance} activeMarket={activeMarket} marketQuotes={marketQuotes} onTradeSettled={refreshAccount} initialBotId={freeBotToOpen} /> : activeTool === 'Bot Builder' ? <RecoveryBotView accountMode={accountMode} currency={currency} balance={balance} activeMarket={activeMarket} marketQuotes={marketQuotes} onTradeSettled={refreshAccount} /> : activeTool === 'Deriv Pro Bots' ? <DerivProBotsView accountMode={accountMode} currency={currency} balance={balance} activeMarket={activeMarket} setActiveMarket={setActiveMarket} marketDefinitions={MARKET_DEFINITIONS} marketQuotes={marketQuotes} supportPhoneDisplay={SUPPORT_PHONE_DISPLAY} onTradeSettled={refreshAccount} /> : activeTool === 'Manual Trader' ? (
         manualTraderLoading ? <ManualTraderLaunchScreen /> : <>
         <div className="terminal-heading">
           <div>
-            <p className="terminal-eyebrow">MANUAL TRADER</p>
-            <h1>Execute with control</h1>
-            <p>Read the live digit frequencies, set a barrier, then execute directly beside the digits.</p>
+             <h1>Manual Trader</h1>
           </div>
           <span className="mode-badge">{accountMode} MODE</span>
         </div>
@@ -1364,7 +2004,7 @@ function Home() {
            <section className="chart-card" aria-label="Market chart">
             <div className="chart-card-header">
               <div className="manual-market-picker">
-                <span className="chart-label">SELECTED MARKET / VOLATILITY</span>
+                 <span className="chart-label">MARKET</span>
                 <select value={activeMarket} onChange={(event) => setActiveMarket(event.target.value)} aria-label="Select market">
                   <optgroup label="Forex">
                     {MARKET_DEFINITIONS.filter(({ family }) => family === 'fx').map(({ label, name }) => <option key={label} value={label}>{name}</option>)}
@@ -1382,7 +2022,7 @@ function Home() {
             </div>
             <div className="chart-stage">
               <span className="chart-window-badge" data-testid="text-chart-window">
-                {chart.sampleSize ? `LAST ${chart.sampleSize} TICKS · ONE POINT PER TICK` : 'WAITING FOR LIVE TICKS'}
+                 {chart.sampleSize ? `${chart.sampleSize} TICKS` : 'WAITING'}
               </span>
               <div className="chart-y-labels">{chart.labels.map((label, index) => <span key={`${label}-${index}`}>{label}</span>)}</div>
               <svg
@@ -1433,8 +2073,13 @@ function Home() {
                   {chart.lastPoint && (
                     <g className={`chart-live-cursor is-${chart.direction}`} aria-label="Latest price cursor">
                       <line x1={chart.lastPoint.x} y1={chart.lastPoint.y} x2={chart.lastPoint.x} y2={chart.lastPoint.bottom} />
-                      <circle cx={chart.lastPoint.x} cy={chart.lastPoint.y} r="7" />
-                      <circle cx={chart.lastPoint.x} cy={chart.lastPoint.y} r="3.5" />
+                       <polygon
+                         className="chart-cursor-arrow"
+                         points={`${chart.lastPoint.x - 28},${chart.lastPoint.y - 16} ${chart.lastPoint.x},${chart.lastPoint.y} ${chart.lastPoint.x - 28},${chart.lastPoint.y + 16}`}
+                         data-testid="chart-current-arrow"
+                       />
+                       <circle cx={chart.lastPoint.x} cy={chart.lastPoint.y} r="10" />
+                       <circle cx={chart.lastPoint.x} cy={chart.lastPoint.y} r="4.5" />
                     </g>
                   )}
               </svg>
@@ -1464,169 +2109,319 @@ function Home() {
               </div>
             </div>
             <div className="chart-footer">
-              <span><i className={activeQuote?.status === 'live' ? 'positive-dot' : 'status-dot-muted'} /> {activeQuote?.status === 'live' ? 'Live market feed' : 'Last quote available'}</span>
-              <span>{chart.sampleSize} sequential ticks</span>
+               <span><i className={activeQuote?.status === 'live' ? 'positive-dot' : 'status-dot-muted'} /> {activeQuote?.status === 'live' ? 'Live' : 'Last quote'}</span>
+               <span>{chart.sampleSize} ticks</span>
               <span className={`chart-move is-${chart.direction}`} data-testid="text-chart-direction">
-                {chart.trend}{chart.sampleSize > 1 ? ` · ${chart.delta > 0 ? '+' : chart.delta < 0 ? '−' : ''}${formatMarketPrice(Math.abs(chart.delta), activeQuote?.pipSize ?? 2)} price move` : ''}
+                 {chart.trend}{chart.sampleSize > 1 ? ` · ${chart.delta > 0 ? '+' : chart.delta < 0 ? '−' : ''}${formatMarketPrice(Math.abs(chart.delta), activeQuote?.pipSize ?? 2)}` : ''}
               </span>
             </div>
            </section>
-             <section className="manual-digit-panel" aria-label="Live digit distribution">
-              <header className="manual-digit-panel-header">
-                <div>
-                  <span className="chart-label">DIGIT DISTRIBUTION</span>
-                  <strong>{digitDistribution.recentDigits.length ? digitDistribution.recentDigits.slice(-18).join(', ') : 'Waiting for live digits'}</strong>
-                </div>
-                <div className="manual-digit-status-group">
-                  <span className="manual-digit-live"><i /> {activeQuote?.status === 'live' ? 'LIVE DIGITS' : 'CONNECTING'}</span>
-                </div>
-              </header>
+            </div>
 
-              <div className={`manual-digit-grid ${contractType === 'OVER/UNDER' ? 'is-barrier-mode' : contractType === 'ODD/EVEN' ? 'is-parity-mode' : ''}`} role="group" aria-label="Digit frequencies and Over/Under barrier">
-                {digitDistribution.percentages.map((percentage, digit) => {
-                  const frequencyTone = digit % 2 === 0 ? 'is-positive' : 'is-negative';
-                  const selectedBarrier = manualBarrier === String(digit);
-                  return (
-                    <button
-                      type="button"
-                      key={digit}
-                      className={`manual-digit-cell ${frequencyTone} ${selectedBarrier ? 'is-barrier' : ''} ${latestDigit === digit ? 'is-latest' : ''}`}
-                      onClick={() => setManualBarrier(String(digit))}
-                      aria-pressed={selectedBarrier}
-                      aria-label={`Digit ${digit}, ${digitDistribution.sampleSize ? `${percentage.toFixed(1)} percent` : 'frequency unavailable'}${selectedBarrier ? ', selected Over/Under barrier' : ''}`}
-                      data-testid={`manual-digit-${digit}`}
-                    >
-                      <strong>{digit}</strong>
-                      <span>{digitDistribution.sampleSize ? `${percentage.toFixed(1)}%` : '—'}</span>
-                    </button>
-                  );
-                })}
+            <form className="trade-ticket manual-trade-ticket" onSubmit={(event) => event.preventDefault()}>
+              <div className="trade-ticket-header manual-ticket-header">
+                <div className="manual-ticket-title">
+                   <span className="chart-label">TYPE</span>
+                  <button
+                    type="button"
+                    className="manual-contract-trigger"
+                    aria-expanded={manualContractMenuOpen}
+                    aria-haspopup="listbox"
+                    disabled={isManualTradeExecuting}
+                    onClick={() => setManualContractMenuOpen((open) => !open)}
+                  >
+                    <span className="manual-contract-icon"><LineChart size={16} /></span>
+                    <strong>{manualContractName}</strong>
+                    <ChevronDown size={16} />
+                  </button>
+                </div>
+                <span className="ticket-mode">{accountMode}</span>
+                {manualContractMenuOpen && (
+                  <div className="manual-contract-menu" role="listbox" aria-label="Choose a contract type">
+                    {manualContractOptions.map((option) => (
+                      <button
+                        type="button"
+                        key={option.type}
+                        role="option"
+                        aria-selected={contractType === option.type}
+                        className={contractType === option.type ? 'is-selected' : ''}
+                        onClick={() => {
+                          setContractType(option.type);
+                          setContractSide(option.side);
+                          setManualContractMenuOpen(false);
+                        }}
+                      >
+                        <strong>{option.label}</strong>
+                        <small>{option.description}</small>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
+              <section className="manual-digit-panel manual-ticket-digit-panel" aria-label="Live digit distribution">
+                <header className="manual-digit-panel-header">
+                  <div>
+                    <span className="chart-label">DIGITS</span>
+                    <strong>{digitDistribution.recentDigits.length ? digitDistribution.recentDigits.slice(-8).join('') : 'Waiting'}</strong>
+                    {contractType === 'OVER/UNDER' && <small className="manual-digit-hint">Tap digit for barrier</small>}
+                  </div>
+                  <div className="manual-digit-status-group">
+                    <span className="manual-digit-live"><i /> {activeQuote?.status === 'live' ? 'LIVE' : 'CONNECTING'}</span>
+                  </div>
+                </header>
 
-              {contractType !== 'RISE/FALL' && (
-                <div className="manual-digit-summary">
-                  {contractType === 'OVER/UNDER' ? (
+                <div className={`manual-digit-grid ${contractType === 'OVER/UNDER' ? 'is-barrier-mode' : ''}`} role="group" aria-label="Live digit distribution">
+                  {digitDistribution.percentages.map((percentage, digit) => {
+                    const frequencyTone = !digitDistribution.sampleSize
+                      ? 'is-neutral'
+                      : percentage > 10
+                        ? 'is-positive'
+                        : percentage < 10
+                          ? 'is-negative'
+                          : 'is-neutral';
+                    const selectedBarrier = contractType === 'OVER/UNDER' && manualBarrier === String(digit);
+                    const frequencyLabel = frequencyTone === 'is-positive'
+                      ? 'above recent 10 percent baseline'
+                      : frequencyTone === 'is-negative'
+                        ? 'below recent 10 percent baseline'
+                        : 'at recent 10 percent baseline';
+                    const isEntryDigit = latestDigit === digit;
+                    return (
+                      <button
+                        type="button"
+                        key={digit}
+                        className={`manual-digit-cell ${frequencyTone} ${selectedBarrier ? 'is-barrier' : ''} ${isEntryDigit ? 'is-latest' : ''}`}
+                        disabled={isManualTradeExecuting}
+                        onClick={() => setManualBarrier(String(digit))}
+                        aria-pressed={selectedBarrier}
+                        aria-label={`Digit ${digit}, ${digitDistribution.sampleSize ? `${percentage.toFixed(1)} percent, ${frequencyLabel}` : 'frequency unavailable'}${isEntryDigit ? ', latest live tick cursor' : ''}${contractType === 'OVER/UNDER' ? selectedBarrier ? ', selected Over/Under barrier' : ', select as Over/Under barrier' : ''}`}
+                        title={digitDistribution.sampleSize
+                          ? `${percentage.toFixed(1)}% recent frequency · ${frequencyLabel}${isEntryDigit ? ' · Latest live tick cursor' : ''}`
+                          : `Digit ${digit}: frequency unavailable until live ticks arrive`}
+                        data-testid={`manual-digit-${digit}`}
+                        data-current-tick={isEntryDigit || undefined}
+                      >
+                        <strong>{digit}</strong>
+                        <span>{digitDistribution.sampleSize ? `${percentage.toFixed(1)}%` : '—'}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <footer className="manual-digit-panel-footer">
+                  <span><i className="digit-legend-above" /> ABOVE 10%</span>
+                  <span><i className="digit-legend-below" /> BELOW 10%</span>
+                  <span><i className="digit-legend-entry" /> CURRENT ENTRY</span>
+                  <span>{digitDistribution.sampleSize ? `${digitDistribution.sampleSize} TICKS · FREQUENCY ONLY` : 'WAITING FOR TICKS'}</span>
+                </footer>
+              </section>
+              <div className="ticket-body manual-contract-body">
+                {contractType === 'OVER/UNDER' && (
+                  <section className="manual-prediction" aria-label="Choose last digit prediction barrier">
+                    <div className="manual-prediction-heading">
+                      <span>BARRIER</span>
+                      <strong>Barrier {manualBarrier}</strong>
+                    </div>
+                    <div className="manual-prediction-grid">
+                      {Array.from({ length: 10 }, (_, digit) => (
+                        <button
+                          type="button"
+                          key={digit}
+                          className={manualBarrier === String(digit) ? 'is-selected' : ''}
+                          aria-pressed={manualBarrier === String(digit)}
+                          aria-label={`Set Over/Under barrier to ${digit}`}
+                          onClick={() => setManualBarrier(String(digit))}
+                        >
+                          {digit}
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                )}
+                <div className="manual-ticket-field manual-duration-field">
+                   <label className="field-label" htmlFor="manual-number-of-ticks">DURATION</label>
+                  <div className="manual-tick-range">
+                    <input
+                      id="manual-number-of-ticks"
+                      type="range"
+                      min="1"
+                      max="365"
+                      step="1"
+                      value={Math.min(365, Math.max(1, Number.parseInt(numberOfTicks, 10) || 1))}
+                      disabled={isManualTradeExecuting}
+                      onChange={(event) => setNumberOfTicks(event.target.value)}
+                      data-testid="manual-ticks-input"
+                    />
+                    <output htmlFor="manual-number-of-ticks">{numberOfTicks} Ticks</output>
+                  </div>
+                </div>
+                <div className="manual-ticket-field">
+                  <label className="field-label" htmlFor="stake">STAKE</label>
+                  <div className="manual-number-row">
+                    <button type="button" disabled={isManualTradeExecuting} onClick={() => setStake(String(Math.max(1, Number(stake || 0) - 1)))} aria-label="Decrease stake" data-testid="manual-stake-decrease">−</button>
+                    <input id="stake" inputMode="decimal" disabled={isManualTradeExecuting} value={stake} onChange={(event) => setStake(event.target.value)} data-testid="manual-stake-input" />
+                    <span>{currency}</span>
+                    <button type="button" disabled={isManualTradeExecuting} onClick={() => setStake(String(Number(stake || 0) + 1))} aria-label="Increase stake" data-testid="manual-stake-increase">+</button>
+                  </div>
+                </div>
+                <div className="manual-entry-settings">
+                  <div className="manual-ticket-field">
+                    <label className="field-label" htmlFor="manual-entry-count">RUNS ON THIS SELECTION</label>
+                    <div className="manual-number-row manual-entry-number-row">
+                      <button type="button" disabled={isManualTradeExecuting || manualEntryCount <= 1} onClick={() => setManualEntries(String(Math.max(1, Math.floor(manualEntryCount || 1) - 1)))} aria-label="Decrease number of runs">−</button>
+                      <input
+                        id="manual-entry-count"
+                        type="number"
+                        inputMode="numeric"
+                        min="1"
+                        max="100"
+                        step="1"
+                        disabled={isManualTradeExecuting}
+                        value={manualEntries}
+                        onChange={(event) => setManualEntries(event.target.value)}
+                        data-testid="manual-entry-count"
+                      />
+                      <button type="button" disabled={isManualTradeExecuting || manualEntryCount >= 100} onClick={() => setManualEntries(String(Math.min(100, Math.floor(manualEntryCount || 1) + 1)))} aria-label="Increase number of runs">+</button>
+                    </div>
+                  </div>
+                  <div className="manual-entry-risk" aria-live="polite">
+                    <small>ESTIMATED TOTAL STAKE</small>
+                    <strong>{manualTotalStake === null ? '—' : `${manualTotalStake.toFixed(2)} ${currency}`}</strong>
+                    <span>{manualEntryCountValid ? `Repeats this market, side and barrier · same stake each run` : 'Choose 1–100 runs'}</span>
+                  </div>
+                </div>
+                <div className="manual-ticket-context">
+                  <span><small>MARKET</small><strong>{activeDefinition.name}</strong></span>
+                  <span><small>CONTRACT</small><strong>{contractType === 'OVER/UNDER' ? `${contractSide} ${manualBarrier}` : contractSide}</strong></span>
+                </div>
+                <div className="manual-payout-readout" aria-live="polite">
+                  <span>PAYOUT</span>
+                  <strong>{manualPayoutLabel(contractSide)}</strong>
+                  {(manualQuoteErrorsBySide[contractSide] || manualQuoteState === 'error') && (
+                    <small>Quote unavailable. The trade button requests a fresh Deriv proposal when you place the order.</small>
+                  )}
+                </div>
+                {!manualContractMarketSupported && (
+                  <p className="live-execution-warning" role="alert">Choose a Volatility market for digit trades.</p>
+                )}
+                {reviewState && <p className="review-state" role="status" data-testid="manual-trade-status">{reviewState}</p>}
+                {manualEntriesExecuting && (
+                  <button
+                    type="button"
+                    className="manual-stop-after-current"
+                    onClick={() => {
+                      manualStopRequestedRef.current = true;
+                      setReviewState('Stop requested · waiting for the current entry to settle…');
+                    }}
+                    data-testid="manual-stop-batch"
+                  >
+                    STOP AFTER CURRENT ENTRY
+                  </button>
+                )}
+                <div className={`manual-ticket-actions is-${contractType === 'RISE/FALL' ? 'direction' : contractType === 'OVER/UNDER' ? 'barrier' : 'parity'}`} aria-label={`${manualContractName} execution`}>
+                  {contractType === 'RISE/FALL' ? (
                     <>
-                      <span className="manual-summary-label">RECENT BARRIER DISTRIBUTION · {manualBarrier}</span>
-                      <div className="manual-probability-bars">
-                        {(['OVER', 'UNDER'] as const).map((side) => {
-                          const barrier = Number.parseInt(manualBarrier, 10) || 0;
-                          const percentage = digitDistribution.sampleSize
-                            ? digitDistribution.recentDigits.filter((digit) => side === 'OVER' ? digit > barrier : digit < barrier).length / digitDistribution.sampleSize * 100
-                            : null;
-                          return (
-                            <div className={`manual-probability-row ${side === 'OVER' ? 'is-positive' : 'is-negative'}`} key={side}>
-                              <span>{side} {barrier}</span>
-                              <div><i style={{ width: `${percentage ?? 0}%` }} /></div>
-                              <strong>{percentage === null ? '—' : `${percentage.toFixed(1)}%`}</strong>
-                            </div>
-                          );
-                        })}
-                      </div>
+                      <button type="button" className="is-rise" disabled={isManualTradeExecuting} onClick={() => { setContractSide('RISE'); void executeManualTrade('BUY', 'RISE', undefined, undefined, manualEntries); }} data-testid="manual-execute-rise">
+                        <strong>BUY RISE</strong><span>{manualPayoutLabel('RISE')}</span><small>PLACE {manualEntryCountValid ? manualEntryCount : '—'} {manualEntryCount === 1 ? 'RUN' : 'RUNS'}</small>
+                      </button>
+                      <button type="button" className="is-fall" disabled={isManualTradeExecuting} onClick={() => { setContractSide('FALL'); void executeManualTrade('BUY', 'FALL', undefined, undefined, manualEntries); }} data-testid="manual-execute-fall">
+                        <strong>BUY FALL</strong><span>{manualPayoutLabel('FALL')}</span><small>PLACE {manualEntryCountValid ? manualEntryCount : '—'} {manualEntryCount === 1 ? 'RUN' : 'RUNS'}</small>
+                      </button>
+                    </>
+                  ) : contractType === 'OVER/UNDER' ? (
+                    <>
+                      <button type="button" className="is-over" disabled={isManualTradeExecuting || !manualContractMarketSupported || Boolean(manualSideBarrierError('OVER'))} onClick={() => { setContractSide('OVER'); void executeManualTrade('BUY', 'OVER', undefined, undefined, manualEntries); }} data-testid="manual-execute-over">
+                        <strong>OVER {manualBarrier}</strong><span>{manualPayoutLabel('OVER')}</span><small>PLACE {manualEntryCountValid ? manualEntryCount : '—'} {manualEntryCount === 1 ? 'RUN' : 'RUNS'}</small>
+                      </button>
+                      <button type="button" className="is-under" disabled={isManualTradeExecuting || !manualContractMarketSupported || Boolean(manualSideBarrierError('UNDER'))} onClick={() => { setContractSide('UNDER'); void executeManualTrade('BUY', 'UNDER', undefined, undefined, manualEntries); }} data-testid="manual-execute-under">
+                        <strong>UNDER {manualBarrier}</strong><span>{manualPayoutLabel('UNDER')}</span><small>PLACE {manualEntryCountValid ? manualEntryCount : '—'} {manualEntryCount === 1 ? 'RUN' : 'RUNS'}</small>
+                      </button>
                     </>
                   ) : (
                     <>
-                      <span className="manual-summary-label">EVEN / ODD DISTRIBUTION</span>
-                      <div className="manual-probability-bars">
-                        {(['EVEN', 'ODD'] as const).map((side) => {
-                          const percentage = side === 'EVEN' ? digitDistribution.evenPercentage : digitDistribution.oddPercentage;
-                          return (
-                            <div className={`manual-probability-row ${side === 'EVEN' ? 'is-positive' : 'is-negative'}`} key={side}>
-                              <span>{side}</span>
-                              <div><i style={{ width: `${percentage ?? 0}%` }} /></div>
-                              <strong>{percentage === null ? '—' : `${percentage.toFixed(1)}%`}</strong>
-                            </div>
-                          );
-                        })}
-                      </div>
+                      <button type="button" className="is-even" disabled={isManualTradeExecuting || !manualContractMarketSupported} onClick={() => { setContractSide('EVEN'); void executeManualTrade('BUY', 'EVEN', undefined, undefined, manualEntries); }} data-testid="manual-execute-even">
+                        <strong>EVEN</strong><span>{manualPayoutLabel('EVEN')}</span><small>PLACE {manualEntryCountValid ? manualEntryCount : '—'} {manualEntryCount === 1 ? 'RUN' : 'RUNS'}</small>
+                      </button>
+                      <button type="button" className="is-odd" disabled={isManualTradeExecuting || !manualContractMarketSupported} onClick={() => { setContractSide('ODD'); void executeManualTrade('BUY', 'ODD', undefined, undefined, manualEntries); }} data-testid="manual-execute-odd">
+                        <strong>ODD</strong><span>{manualPayoutLabel('ODD')}</span><small>PLACE {manualEntryCountValid ? manualEntryCount : '—'} {manualEntryCount === 1 ? 'RUN' : 'RUNS'}</small>
+                      </button>
                     </>
                   )}
                 </div>
-              )}
-              <footer className="manual-digit-panel-footer">
-                <span>BLUE = EVEN DIGITS</span><span>PURPLE = ODD DIGITS</span>
-                <span>{digitDistribution.sampleSize ? `${digitDistribution.sampleSize} DIGITS TRACKED` : 'WAITING FOR TICKS'}</span>
-              </footer>
-            </section>
-            </div>
-
-            <form className="trade-ticket" onSubmit={(event) => event.preventDefault()}>
-              <div className="trade-ticket-header">
-                <div><span className="chart-label">TRADE SETTINGS</span><h2>Stake &amp; duration</h2></div>
-                <span className="ticket-mode">{accountMode} MODE</span>
-              </div>
-              <div className="ticket-body manual-contract-body">
-                <div className="manual-ticket-settings">
-                  <div className="manual-ticket-field">
-                    <label className="field-label" htmlFor="manual-number-of-ticks">NUMBER OF TICKS <span>ⓘ</span></label>
-                    <div className="manual-number-row">
-                      <button type="button" onClick={() => setNumberOfTicks(String(Math.max(1, Number(numberOfTicks || 0) - 1)))} aria-label="Decrease number of ticks" data-testid="manual-ticks-decrease">−</button>
-                      <input id="manual-number-of-ticks" inputMode="numeric" value={numberOfTicks} onChange={(event) => setNumberOfTicks(event.target.value.replace(/\D/g, '').slice(0, 3) || '1')} data-testid="manual-ticks-input" />
-                      <span>TICKS</span>
-                      <button type="button" onClick={() => setNumberOfTicks(String(Math.min(365, Number(numberOfTicks || 0) + 1)))} aria-label="Increase number of ticks" data-testid="manual-ticks-increase">+</button>
-                    </div>
-                  </div>
-                  <div className="manual-ticket-field">
-                    <label className="field-label" htmlFor="stake">STAKE</label>
-                    <div className="manual-number-row">
-                      <button type="button" onClick={() => setStake(String(Math.max(1, Number(stake || 0) - 1)))} aria-label="Decrease stake" data-testid="manual-stake-decrease">−</button>
-                      <input id="stake" inputMode="decimal" value={stake} onChange={(event) => setStake(event.target.value)} data-testid="manual-stake-input" />
-                      <span>{currency}</span>
-                      <button type="button" onClick={() => setStake(String(Number(stake || 0) + 1))} aria-label="Increase stake" data-testid="manual-stake-increase">+</button>
-                    </div>
-                  </div>
-                </div>
-                <div className="manual-ticket-outcome">
-                  <div className="manual-contract-stats">
-                    <span><strong>SELECTED MARKET</strong><b>{activeDefinition.name}</b></span>
-                    <span><strong>{contractType === 'OVER/UNDER' ? 'BARRIER DIGIT' : 'CONTRACT'}</strong><b>{contractType === 'OVER/UNDER' ? manualBarrier : manualContractName}</b></span>
-                    <span><strong>DURATION</strong><b>{numberOfTicks} tick{numberOfTicks === '1' ? '' : 's'}</b></span>
-                  </div>
-                </div>
-                <p className="live-execution-warning">Tap a digit to highlight its Over/Under barrier.</p>
-                {reviewState && <p className="review-state" role="status" data-testid="manual-trade-status">{reviewState}</p>}
               </div>
             </form>
-            <section className="manual-result-aside" aria-live="polite" aria-label="Selected market results">
-              <header><span>LIVE RESULTS</span><small>{activeDefinition.name} · {accountMode}</small></header>
-              <div className="manual-result-primary">
-                <div><small>SELECTED MARKET</small><strong>{contractSide}</strong></div>
-                <b>{selectedResultPercentage === null ? '—' : `${selectedResultPercentage.toFixed(1)}%`}</b>
-              </div>
-              <div className="manual-result-stats">
-                <span><small>LAST DIGIT</small><strong>{latestDigit ?? '—'}</strong></span>
-                <span><small>PAYOUT RATE</small><strong>{manualPayoutRate}%</strong></span>
-                <span><small>FEED</small><strong>{activeQuote?.status === 'live' ? 'LIVE' : 'WAITING'}</strong></span>
-              </div>
-            </section>
+            <ErrorBoundary
+              resetKey={`${manualHistoryKey}:${manualTradeHistory.length}`}
+              FallbackComponent={() => (
+                <section className="manual-result-aside manual-result-error" role="status">
+                  <header><span>TRADE DETAILS</span></header>
+                  <p>Manual Trader is still available. The latest result details could not be displayed.</p>
+                </section>
+              )}
+            >
+              <section className="manual-result-aside" aria-live="polite" aria-label="Selected market results">
+                <header><span>LAST TRADE</span><small>{latestManualTrade?.marketName ?? activeDefinition.name} · {latestManualTrade?.mode ?? accountMode}</small></header>
+                <div className="manual-result-primary">
+                  <div><small>{latestManualTrade ? 'CONTRACT' : 'TRADE HISTORY'}</small><strong>{latestManualContractLabel}</strong></div>
+                  <b>{latestManualTrade ? formatSignedMoneyForDisplay(resolvedTradeProfit(latestManualTrade), latestManualTrade.currency ?? currency, displayCurrency, usdKesRate) : '—'}</b>
+                </div>
+                <div className="manual-result-stats">
+                  <span><small>DIGIT</small><strong>{latestDigit ?? '—'}</strong></span>
+                  <span><small>STAKE</small><strong>{latestManualStake === null ? '—' : formatMoneyForDisplay(latestManualStake, latestManualTrade?.currency ?? currency, displayCurrency, usdKesRate)}</strong></span>
+                  <span><small>FEED</small><strong>{activeQuote?.status === 'live' ? 'LIVE' : 'WAITING'}</strong></span>
+                </div>
+              </section>
+            </ErrorBoundary>
          </div>
-         <BotTransactionPanel
-           trades={manualTradeHistory}
-           currency={currency}
-           running={reviewState.startsWith('Executing ')}
-           activeTab={manualTransactionTab}
-           onTabChange={setManualTransactionTab}
-           onViewDetail={openManualHistoryDetail}
-           historyLabel="CURRENT SESSION"
-           sectionLabel="Manual trade history"
-           runningLabel="Manual contract is settling"
-           emptyMessage={reviewState.startsWith('Executing ') ? 'Waiting for the manual contract to settle.' : 'Settled manual trades will appear here.'}
-         />
+          <ErrorBoundary
+            resetKey={`${manualHistoryKey}:${manualTradeHistory.length}`}
+            FallbackComponent={() => (
+              <section className="bot-transaction-panel manual-transaction-error" role="status">
+                <strong>Manual Trader is still open.</strong>
+                <span>The transaction list could not be displayed. Your trade controls remain available.</span>
+              </section>
+            )}
+          >
+            <BotTransactionPanel
+              trades={manualTradeHistory}
+              currency={currency}
+              running={reviewState.startsWith('Executing ')}
+              activeTab={manualTransactionTab}
+              onTabChange={setManualTransactionTab}
+              onViewDetail={openManualHistoryDetail}
+              historyLabel="CURRENT SESSION"
+              sectionLabel="Manual trade history"
+              runningLabel="Manual contract is settling"
+              emptyMessage={reviewState.startsWith('Executing ') ? 'Waiting for the manual contract to settle.' : 'Settled manual trades will appear here.'}
+            />
+          </ErrorBoundary>
         </>
         ) : <ToolPlaceholderView title={activeTool} />}
       </main>
       </DcircleTradeContext.Provider>
 
       <footer className="terminal-footer">
-        <span className="footer-brand">PROTRADERS FX · POWERED BY DERIV</span>
+        <span className="footer-brand">PROTRADERS FX · TRADES VIA DERIV</span>
+        <RiskDisclaimerNote />
         <div className="support-contact-links" aria-label="ProTraders support contacts">
           <a href={SUPPORT_PHONE_LINK} aria-label={`Call ProTraders support at ${SUPPORT_PHONE_DISPLAY}`}>Call support · {SUPPORT_PHONE_DISPLAY}</a>
           <a href={WHATSAPP_SUPPORT_URL} target="_blank" rel="noopener noreferrer">WhatsApp support group <ArrowUpRight size={11} /></a>
         </div>
       </footer>
       <FloatingMarketAI marketQuotes={marketQuotes} draggable accountMode={accountMode} currency={currency} onTradeSettled={refreshAccount} />
-      <TradeResultDialog result={manualTradeResult} onClose={() => setManualTradeResult(null)} />
+      <ErrorBoundary
+        resetKey={manualTradeResult ?? 'closed'}
+        FallbackComponent={({ resetError }) => (
+          <div className="manual-result-render-error" role="alert">
+            <span>The order result popup could not load. Manual Trader and its transaction history remain open.</span>
+            <button type="button" onClick={() => { setManualTradeResult(null); resetError(); }}>Close</button>
+          </div>
+        )}
+      >
+        <TradeResultDialog result={manualTradeResult} onClose={() => setManualTradeResult(null)} />
+      </ErrorBoundary>
     </div>
+    </CurrencyDisplayContext.Provider>
   );
 }
 
@@ -1886,14 +2681,18 @@ function ApexBotView({ activeMarket, setActiveMarket, marketQuotes }: { activeMa
   );
 }
 
-function CopyTraderView({ activeMarket, marketQuotes }: { activeMarket: string; marketQuotes: Record<string, MarketQuote> }) {
+function CopyTraderView({ activeMarket, marketQuotes, currency }: { activeMarket: string; marketQuotes: Record<string, MarketQuote>; currency: string }) {
   const [leader, setLeader] = useState('Atlas Momentum');
-  const [allocation, setAllocation] = useState('10');
+  const [userStake, setUserStake] = useState('');
   const [maxDaily, setMaxDaily] = useState('25');
   const [copyEnabled, setCopyEnabled] = useState(false);
   const [reviewState, setReviewState] = useState('');
   const definition = getMarketDefinition(activeMarket);
   const quote = marketQuotes[definition.symbol];
+  const stakeAmount = Number(userStake);
+  const dailyRiskAmount = Number(maxDaily);
+  const limitsValid = Number.isFinite(stakeAmount) && stakeAmount > 0
+    && Number.isFinite(dailyRiskAmount) && dailyRiskAmount >= stakeAmount;
   const leaders = [
     { name: 'Atlas Momentum', style: 'Trend review', winRate: '68%', risk: 'Balanced', markets: 'Volatility 75 / 100' },
     { name: 'Digit Compass', style: 'Digit review', winRate: '61%', risk: 'Measured', markets: 'Volatility 10 / 25' },
@@ -1905,7 +2704,7 @@ function CopyTraderView({ activeMarket, marketQuotes }: { activeMarket: string; 
     <section className="strategy-workspace copy-trader-workspace">
       <div className="strategy-workspace-main">
         <header className="strategy-workspace-header">
-          <div><span className="terminal-eyebrow">COPY TRADER · REVIEW NETWORK</span><h1>Follow a strategy with clear limits</h1><p>Compare strategy profiles, set an allocation cap, and review what copying would mean before any account connection is enabled.</p></div>
+          <div><span className="terminal-eyebrow">COPY TRADER · REVIEW NETWORK</span><h1>Follow a strategy with clear limits</h1><p>Set your own stake for each copied trade and a daily risk cap. The leader’s stake never determines your order size.</p></div>
           <span className={`strategy-status-pill ${copyEnabled ? 'is-active' : ''}`}><i /> {copyEnabled ? 'REVIEW COPY ON' : 'NOT CONNECTED'}</span>
         </header>
         <div className="copy-leader-grid">
@@ -1913,54 +2712,95 @@ function CopyTraderView({ activeMarket, marketQuotes }: { activeMarket: string; 
         </div>
         <div className="copy-settings">
           <div><span className="strategy-card-kicker">SELECTED PROFILE</span><strong>{selectedLeader.name}</strong><small>{selectedLeader.style} · {selectedLeader.winRate} reviewed win rate</small></div>
-          <label><span>ALLOCATION USD</span><input inputMode="decimal" value={allocation} onChange={(event) => setAllocation(event.target.value)} /></label>
-          <label><span>MAX DAILY RISK</span><input inputMode="decimal" value={maxDaily} onChange={(event) => setMaxDaily(event.target.value)} /></label>
-          <button type="button" className={`strategy-primary-button ${copyEnabled ? 'is-danger' : ''}`} onClick={() => { setCopyEnabled((current) => !current); setReviewState(copyEnabled ? 'Copy review paused. No account was connected.' : `Copy review armed for ${selectedLeader.name} with a ${maxDaily} USD daily cap.`); }}>{copyEnabled ? 'Pause copy review' : 'Start copy review'} <Copy size={14} /></button>
+          <label><span>YOUR STAKE PER TRADE · {currency}</span><input inputMode="decimal" placeholder="Enter your stake" value={userStake} aria-label={`Your stake per copied trade in ${currency}`} onChange={(event) => { setUserStake(event.target.value); setCopyEnabled(false); setReviewState(''); }} /></label>
+          <label><span>MAX DAILY RISK · {currency}</span><input inputMode="decimal" value={maxDaily} aria-label={`Maximum daily risk in ${currency}`} onChange={(event) => { setMaxDaily(event.target.value); setCopyEnabled(false); setReviewState(''); }} /></label>
+          <button type="button" className={`strategy-primary-button ${copyEnabled ? 'is-danger' : ''}`} disabled={!copyEnabled && !limitsValid} onClick={() => {
+            if (copyEnabled) {
+              setCopyEnabled(false);
+              setReviewState('Copy review paused. No account was connected and no trades were placed.');
+              return;
+            }
+            setCopyEnabled(true);
+            setReviewState(`Review set for ${selectedLeader.name}: ${currency} ${stakeAmount.toFixed(2)} per copied trade, with a ${currency} ${dailyRiskAmount.toFixed(2)} daily cap. No trades were placed.`);
+          }}>{copyEnabled ? 'Pause copy review' : 'Review copy settings'} <Copy size={14} /></button>
         </div>
       </div>
       <aside className="strategy-side-panel">
         <div className="strategy-side-kicker">CURRENT MARKET CONTEXT</div>
         <h2>{definition.label}</h2>
         <div className="apex-price">{formatMarketPrice(quote?.price ?? null, quote?.pipSize ?? 2)} <small>{quote?.status === 'live' ? 'LIVE' : 'LAST QUOTE'}</small></div>
-        <p>Copy Trader is a review surface in this build. Personal Deriv connections and live copying remain disabled until secure account linking is completed.</p>
-        <div className="strategy-check-list"><span>✓ Profile comparison</span><span>✓ Allocation cap</span><span>✓ No live copying</span></div>
+        <p>Each follower controls a fixed stake per copied trade. The leader’s stake and balance do not scale it. Live copying remains disabled until secure account linking is completed.</p>
+        <div className="strategy-check-list"><span>✓ User-set stake per trade</span><span>✓ User-set daily cap</span><span>✓ No live copying</span></div>
         {reviewState && <span className="strategy-review-state" role="status">{reviewState}</span>}
       </aside>
     </section>
   );
 }
 
-function PublicLoadingView() {
+const PublicLoadingView = memo(function PublicLoadingView({ onComplete }: { onComplete: () => void }) {
+  const [progress, setProgress] = useState(0);
+  useEffect(() => {
+    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+    return startPublicIntro({
+      durationMs: reducedMotion ? 800 : 2400,
+      onProgress: setProgress,
+      onComplete,
+    });
+  }, [onComplete]);
+
   return (
     <main className="public-loading-screen">
       <div className="public-loading-art" />
-      <section className="public-loading-card" aria-live="polite">
+      <section
+        className={`public-loading-card${progress >= 100 ? ' public-loading-card-complete' : ''}`}
+        aria-live="polite"
+        aria-label="Opening ProTraders FX"
+      >
         <div className="public-loading-logo"><BarChart3 size={22} /></div>
         <span className="public-loading-kicker">PROTRADERS FX</span>
         <h1>Trading Workspace</h1>
-        <p>Loading your Deriv accounts…</p>
-        <div className="public-loading-progress"><i /></div>
-        <small>Boot sequence <b>100%</b></small>
+        <p>Preparing the public market view…</p>
+        <div className="public-loading-progress" role="progressbar" aria-label="Opening workspace" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}>
+          <i style={{ width: `${progress}%` }} />
+        </div>
+        <small>Boot sequence <b>{progress}%</b></small>
       </section>
     </main>
   );
+});
+
+function PublicLandingShell({ startupError, onRetry }: {
+  startupError: string | null;
+  onRetry: () => void;
+}) {
+  const marketQuotes = usePublicMarketBoard();
+  return <PublicLandingView marketQuotes={marketQuotes} startupError={startupError} onRetry={onRetry} />;
 }
 
-function PublicLandingView({ marketQuotes }: { marketQuotes: Record<string, MarketQuote> }) {
+function PublicLandingView({ marketQuotes, startupError, onRetry }: {
+  marketQuotes: Record<string, MarketQuote>;
+  startupError: string | null;
+  onRetry: () => void;
+}) {
   const { signInHref, signUpHref } = useAppAuth();
   const publicMarkets = ['EUR/USD', 'GBP/USD', 'USD/JPY', 'VOL 100 1s', 'VOL 75 1s'];
   return (
     <main className="public-landing">
       <header className="public-landing-header">
         <a href={basePath || '/'} className="public-landing-brand"><span><BarChart3 size={18} /></span><strong>PROTRADERS <b>FX</b><small>DERIV TRADING WORKSPACE</small></strong></a>
-          <div className="public-landing-actions"><a className="public-login" href={signInHref}>Join workspace</a><a className="public-signup" href={signUpHref}>Create account</a></div>
+          <div className="public-landing-actions"><a className="public-login" href={signInHref} aria-label="Connect your Deriv account and enter the workspace">Join workspace</a><a className="public-signup" href={signUpHref} aria-label="Create or connect a Deriv account">Create account</a></div>
       </header>
+      {startupError && <div className="public-auth-recovery" role="alert">
+        <span>{startupError}</span>
+        <button type="button" onClick={onRetry}>Retry account check</button>
+        <a href={signInHref}>Reconnect Deriv</a>
+      </div>}
       <section className="public-hero public-hero-minimal">
         <div className="public-hero-copy">
           <span className="public-hero-kicker"><i /> MARKET CONTEXT, BEFORE THE CLICK</span>
           <h1><small>protradersfx.com</small><br /><span>Trade like a pro</span></h1>
           <p>See live Deriv quotes, choose contract terms, and review settled trade details—all in your ProTraders FX workspace.</p>
-           <div className="public-hero-actions"><a className="public-hero-primary" href={signInHref}>Enter workspace <ArrowUpRight size={15} /></a><a className="public-hero-secondary" href={signUpHref}>Create account <Zap size={14} /></a></div>
+           <div className="public-hero-actions"><a className="public-hero-primary" href={signInHref} aria-label="Sign in with Deriv to enter the ProTraders FX workspace">Enter workspace <ArrowUpRight size={15} /></a><a className="public-hero-secondary" href={signUpHref} aria-label="Create or connect a Deriv account">Create account <Zap size={14} /></a></div>
           <small className="public-hero-note">Your account and trade execution stay connected to Deriv.</small>
         </div>
         <div className="public-market-orbit" aria-hidden="true">
@@ -1978,18 +2818,27 @@ function PublicLandingView({ marketQuotes }: { marketQuotes: Record<string, Mark
             const market = getMarketDefinition(label);
             const quote = marketQuotes[market.symbol];
             const status = quote?.status ?? 'connecting';
-            const hasLivePrice = status === 'live' && typeof quote?.price === 'number' && Number.isFinite(quote.price);
+            const hasPrice = typeof quote?.price === 'number' && Number.isFinite(quote.price);
+            const statusLabel = status === 'live'
+              ? 'LIVE'
+              : status === 'closed'
+                ? 'CLOSED'
+                : status === 'error'
+                  ? 'FEED ERROR'
+                  : hasPrice
+                    ? 'LAST QUOTE'
+                    : 'CONNECTING';
             return (
               <div className="public-ticker-item" key={market.symbol}>
                 <span>{label}</span>
-                {hasLivePrice ? (
+                {hasPrice ? (
                   <strong className={`quote-${quoteTone(quote)}`}>{formatMarketPrice(quote.price, quote.pipSize ?? 2)}</strong>
                 ) : status === 'connecting' ? (
                   <span className="quote-placeholder" aria-hidden="true" />
                 ) : (
                   <strong className="quote-unavailable" aria-label={`${label} quote unavailable`}>—</strong>
                 )}
-                <small className={`quote-status-${status}`}>{status === 'live' ? 'LIVE' : status === 'closed' ? 'CLOSED' : status === 'error' ? 'FEED ERROR' : 'CONNECTING'}</small>
+                <small className={`quote-status-${status}`}>{statusLabel}</small>
               </div>
             );
           })}
@@ -1998,11 +2847,11 @@ function PublicLandingView({ marketQuotes }: { marketQuotes: Record<string, Mark
       <section className="public-process" aria-label="Workspace workflow">
         <div><span>01 / OBSERVE</span><strong>Scan live context</strong><p>Compare market quotes and recent tick behavior from the Deriv feed.</p></div>
         <div><span>02 / CONFIGURE</span><strong>Set the contract</strong><p>Choose a market, contract type, duration and stake before acting.</p></div>
-        <div><span>03 / REVIEW</span><strong>Read the settlement</strong><p>Inspect returned trade details, entry and exit points, and settled P/L.</p></div>
+        <div><span>03 / REVIEW</span><strong>Read the settlement</strong><p>Inspect returned trade details, entry and exit points, and net profit/loss.</p></div>
       </section>
       <footer className="public-landing-footer">
-        <span>PROTRADERS FX <b>×</b> DERIV</span>
-        <span>Market decisions remain yours. Trading involves risk.</span>
+        <span>PROTRADERS FX <b>·</b> TRADES VIA DERIV</span>
+        <RiskDisclaimerNote />
         <div className="public-support-links" aria-label="ProTraders support contacts">
           <a href={SUPPORT_PHONE_LINK} aria-label={`Call ProTraders support at ${SUPPORT_PHONE_DISPLAY}`}>Support · {SUPPORT_PHONE_DISPLAY}</a>
           <a href={WHATSAPP_SUPPORT_URL} target="_blank" rel="noopener noreferrer">WhatsApp group <ArrowUpRight size={12} /></a>
@@ -2013,43 +2862,55 @@ function PublicLandingView({ marketQuotes }: { marketQuotes: Record<string, Mark
   );
 }
 
-function DashboardView({ accountMode, marketQuotes, onNavigate }: { accountMode: 'DEMO' | 'REAL'; marketQuotes: Record<string, MarketQuote>; onNavigate: (tool: string) => void }) {
+function DashboardView({ accountMode, marketQuotes, isOwner, onNavigate }: { accountMode: 'DEMO' | 'REAL'; marketQuotes: Record<string, MarketQuote>; isOwner: boolean; onNavigate: (tool: string) => void }) {
+  const bookingEligibilityQuery = useGetLiveTradingEligibility({
+    query: {
+      queryKey: getGetLiveTradingEligibilityQueryKey(),
+      staleTime: 30_000,
+      refetchOnWindowFocus: true,
+      retry: 1,
+    },
+  });
   const featuredMarkets = MARKET_DEFINITIONS.filter(({ family }) => family === 'volatility').slice(0, 6);
-  const liveMarketCount = Object.values(marketQuotes).filter((quote) => quote.status === 'live').length;
-  const quotedMarketCount = Object.values(marketQuotes).filter((quote) => quote.price !== null).length;
+  const marketQuoteList = MARKET_DEFINITIONS.map(({ symbol }) => marketQuotes[symbol]);
+  const liveMarketCount = marketQuoteList.filter((quote) => quote?.status === 'live').length;
+  const quotedMarketCount = marketQuoteList.filter((quote) => quote?.price !== null && quote?.price !== undefined).length;
+  const canBookLiveTrading = bookingEligibilityQuery.data?.eligible === true && !bookingEligibilityQuery.isError;
   const actions = [
-    { label: 'Load Bot', description: 'Open your trading strategy', icon: Upload, tool: 'Free Bots', accent: 'cyan' },
-    { label: 'Deriv Pro Bots', description: 'Ten free rule-based trading bots', icon: Crown, tool: 'Deriv Pro Bots', accent: 'gold' },
-    { label: 'Speed Bot', description: 'One-click automated trading', icon: Gauge, tool: 'Quick Bot', accent: 'teal' },
-    { label: 'Manual Trading', description: 'Full control, trade your way', icon: LineChart, tool: 'Manual Trader', accent: 'violet' },
+    { label: 'Bulk Scanner', description: 'Scan markets and review trade signals', icon: Layers3, tool: 'Bulk Trader', accent: 'cyan' },
+    { label: 'Manual Trader', description: 'Choose a contract and place trades', icon: LineChart, tool: 'Manual Trader', accent: 'violet' },
+    { label: 'Analysis Tools', description: 'Review market context and digit data', icon: Search, tool: 'Analysis Tools', accent: 'blue' },
+    { label: 'Free Bots', description: 'Open the free bot workspace', icon: Bot, tool: 'Free Bots', accent: 'teal' },
+    { label: 'Deriv Pro Bots', description: 'Open premium rule-based bots', icon: Flame, tool: 'Deriv Pro Bots', accent: 'gold' },
+    { label: 'Owner Activity', description: isOwner ? 'Monitor platform activity' : 'Owner access required', icon: ShieldCheck, tool: 'Owner Activity', accent: 'gold' },
   ];
 
   return (
     <section className="dashboard-view">
-      <div className="dashboard-section-heading">
+      <div className="dashboard-section-heading dashboard-horizontal-lane">
         <div><span className="terminal-eyebrow">YOUR TRADING DESK / DERIV</span><h2>Start with the market. Then choose your method.</h2><p>Quotes first. Contract controls and settled results stay in the same workspace.</p></div>
         <span className="dashboard-session"><i /> {accountMode} SESSION</span>
       </div>
-      <div className="dashboard-context-band">
-        <div className="dashboard-context-title"><span>PUBLIC FEED STATUS</span><strong>Market context</strong><small>Official Deriv quote stream</small></div>
-        <div><span>LIVE MARKETS</span><strong>{liveMarketCount}</strong></div>
-        <div><span>QUOTED MARKETS</span><strong>{quotedMarketCount}</strong></div>
-        <div className="dashboard-context-note"><span>WORKFLOW</span><strong>Observe <b>→</b> Configure <b>→</b> Review</strong></div>
-      </div>
-      <div className="dashboard-action-grid">
+      <div className="dashboard-action-grid dashboard-horizontal-lane" role="navigation" aria-label="Trading tools" tabIndex={0} data-testid="dashboard-tools">
         {actions.map(({ label, description, icon: Icon, tool, accent }, index) => (
-          <button key={label} type="button" className={`dashboard-action-card accent-${accent}`} onClick={() => onNavigate(tool)}>
+          <button
+            key={label}
+            type="button"
+            className={`dashboard-action-card accent-${accent}`}
+            onClick={() => onNavigate(tool)}
+            data-testid={`dashboard-tool-${tool.toLowerCase().replace(/\s+/g, '-')}`}
+            title={label === 'Owner Activity' && !isOwner ? 'Owner access is required to view activity.' : `Open ${label}`}
+          >
             <span className="dashboard-card-number">0{index + 1}</span>
-            <span className="dashboard-action-icon"><Icon size={28} /></span>
+            <span className="dashboard-action-icon"><Icon size={24} /></span>
             <strong>{label}</strong>
             <small>{description}</small>
             <ChevronRight className="dashboard-card-arrow" size={15} />
           </button>
         ))}
       </div>
-
-      <div className="dashboard-live-heading"><span className="terminal-eyebrow">VOLATILITY MARKET BOARD</span><span>Tap a quote to open Manual Trader</span></div>
-      <div className="dashboard-market-grid">
+      <div className="dashboard-live-heading dashboard-horizontal-lane"><span className="terminal-eyebrow">VOLATILITY MARKET BOARD</span><span>Tap a quote to open Manual Trader</span></div>
+      <div className="dashboard-market-grid dashboard-horizontal-lane" role="region" aria-label="Volatility market quotes" tabIndex={0}>
         {featuredMarkets.map(({ label, name, symbol }) => {
           const quote = marketQuotes[symbol];
           return (
@@ -2061,11 +2922,74 @@ function DashboardView({ accountMode, marketQuotes, onNavigate }: { accountMode:
           );
         })}
       </div>
-      <section className="dashboard-review-strip">
+      <section className="dashboard-review-strip dashboard-horizontal-lane" aria-label="Trading workflow steps" tabIndex={0}>
         <span>PROTRADERS FX WORKFLOW</span>
         <div><b>01</b><strong>Read live context</strong></div>
         <div><b>02</b><strong>Make a deliberate contract choice</strong></div>
         <div><b>03</b><strong>Understand the settled result</strong></div>
+      </section>
+      <div className="dashboard-support-strip dashboard-horizontal-lane" role="region" aria-label="ProTraders support" data-testid="dashboard-support">
+        <div><strong>Support</strong><small>Need help with your workspace?</small></div>
+        <a href={SUPPORT_PHONE_LINK} data-testid="dashboard-support-call">Call {SUPPORT_PHONE_DISPLAY}</a>
+        <a href={WHATSAPP_SUPPORT_URL} target="_blank" rel="noopener noreferrer" data-testid="dashboard-support-whatsapp">WhatsApp support</a>
+      </div>
+      <div className="dashboard-context-band dashboard-horizontal-lane" role="region" aria-label="Market status and workflow metrics" tabIndex={0}>
+        <div className="dashboard-context-title"><span>PUBLIC FEED STATUS</span><strong>Market context</strong><small>Official Deriv quote stream</small></div>
+        <div><span>LIVE MARKETS</span><strong>{liveMarketCount}</strong></div>
+        <div><span>QUOTED MARKETS</span><strong>{quotedMarketCount}</strong></div>
+        <div className="dashboard-context-note"><span>WORKFLOW</span><strong>Observe <b>→</b> Configure <b>→</b> Review</strong></div>
+      </div>
+      <section className="dashboard-live-booking dashboard-horizontal-lane" aria-labelledby="dashboard-live-booking-title" tabIndex={0} data-testid="card-live-trading-booking">
+        <div className="dashboard-booking-intro">
+          <span className="terminal-eyebrow">LIVE TRADING / BOOKING</span>
+          <h3 id="dashboard-live-booking-title">Book a live trading session</h3>
+          <p>For traders with a linked real USD Deriv account balance above $100. Demo balance does not qualify.</p>
+        </div>
+        <div className="dashboard-booking-fee" data-testid="text-live-trading-booking-fee">
+          <strong>$5</strong>
+          <span>USD BOOKING FEE</span>
+        </div>
+        <div
+          className={`dashboard-booking-eligibility ${canBookLiveTrading ? 'is-eligible' : ''} ${bookingEligibilityQuery.isError ? 'has-error' : ''}`}
+          role="status"
+          data-testid="status-live-trading-eligibility"
+        >
+          {bookingEligibilityQuery.isPending
+            ? 'Checking your linked Deriv real account…'
+            : bookingEligibilityQuery.isError
+              ? 'Unable to verify your real account right now.'
+              : bookingEligibilityQuery.data?.reason ?? 'Connect a Deriv real USD account to check eligibility.'}
+        </div>
+        <div className="dashboard-booking-bottom">
+          <p className="dashboard-booking-risk" data-testid="text-live-trading-risk-disclaimer">
+            Trading is risky. You can lose some or all of your money. No profits are guaranteed.
+          </p>
+          {canBookLiveTrading ? (
+            <div className="dashboard-booking-actions">
+              <a className="dashboard-booking-call" href={SUPPORT_PHONE_LINK} data-testid="link-call-live-trading">
+                Call {SUPPORT_PHONE_DISPLAY}
+              </a>
+              <a
+                className="dashboard-booking-whatsapp"
+                href={LIVE_TRADING_WHATSAPP_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="link-whatsapp-live-trading"
+              >
+                WhatsApp {SUPPORT_PHONE_DISPLAY}
+              </a>
+            </div>
+          ) : bookingEligibilityQuery.isError ? (
+            <button
+              className="dashboard-booking-retry"
+              type="button"
+              onClick={() => void bookingEligibilityQuery.refetch()}
+              data-testid="button-retry-live-trading-eligibility"
+            >
+              Retry account check
+            </button>
+          ) : null}
+        </div>
       </section>
     </section>
   );
@@ -2307,21 +3231,38 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
   const [stake, setStake] = useState('0.5');
   const [martingale, setMartingale] = useState('1');
   const [bulkTrades, setBulkTrades] = useState('5');
-  const [autoTrader, setAutoTrader] = useState(true);
+  const [autoTrader, setAutoTrader] = useState(false);
   const [reviewState, setReviewState] = useState('');
   const [scannerState, setScannerState] = useState<'idle' | 'scanning' | 'complete'>('idle');
   const [scannerResults, setScannerResults] = useState<BulkScanResult[]>([]);
   const [scannerDigits, setScannerDigits] = useState<Array<{ digit: number; percentage: number }>>([]);
+  const [scannerMessage, setScannerMessage] = useState('Scan the selected live market before trading.');
   const [selectedScannerSymbol, setSelectedScannerSymbol] = useState('');
   const [scannerOpen, setScannerOpen] = useState(false);
   const [executionState, setExecutionState] = useState<'idle' | 'executing'>('idle');
+  const [bulkRunProgress, setBulkRunProgress] = useState<{
+    phase: 'idle' | 'scanning' | 'placing' | 'stopping' | 'complete' | 'stopped' | 'pending' | 'error';
+    current: number;
+    completed: number;
+    total: number;
+  }>({ phase: 'idle', current: 0, completed: 0, total: 0 });
   const [bulkTakeProfit, setBulkTakeProfit] = useState('50');
   const [bulkStopLoss, setBulkStopLoss] = useState('500');
   const [bulkTransactions, setBulkTransactions] = useState<ExecutedTrade[]>([]);
+  const [liveBatchTrades, setLiveBatchTrades] = useState<ExecutedTrade[]>([]);
   const [bulkTransactionTab, setBulkTransactionTab] = useState<BotTransactionTab>('Transactions');
   const [batchResult, setBatchResult] = useState<BatchResult | null>(null);
   const stopRequestedRef = useRef(false);
   const executionLockRef = useRef(false);
+  const marketQuotesRef = useRef(marketQuotes);
+  useEffect(() => { marketQuotesRef.current = marketQuotes; }, [marketQuotes]);
+  useEffect(() => {
+    setScannerResults([]);
+    setScannerDigits([]);
+    setSelectedScannerSymbol('');
+    setScannerState('idle');
+    setScannerMessage('Market or scan window changed. Scan the live feed again.');
+  }, [activeMarket, tradeType, numberOfTicks]);
   useEffect(() => () => {
     if (executionLockRef.current) stopRequestedRef.current = true;
   }, []);
@@ -2335,62 +3276,78 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
     return Number(formatted.replace(/\D/g, '').slice(-1));
   }), [activeQuote]);
   const latestBulkDigit = digitHistory.at(-1)?.toString() ?? '';
+  const liveChart = useMemo(() => {
+    const values = (activeQuote?.ticks ?? []).slice(-28);
+    if (values.length < 2) return null;
+    const low = Math.min(...values);
+    const span = Math.max(...values) - low || 1;
+    const coordinates = values.map((value, index) => ({
+      x: 12 + (index / (values.length - 1)) * 456,
+      y: 108 - ((value - low) / span) * 88,
+    }));
+    return {
+      points: coordinates.map(({ x, y }) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' '),
+      lastY: coordinates.at(-1)?.y ?? 64,
+      count: values.length,
+    };
+  }, [activeQuote?.ticks]);
+  const currentTickChange = activeQuote?.price !== null
+    && activeQuote?.price !== undefined
+    && activeQuote.previousPrice !== null
+    && activeQuote.previousPrice !== undefined
+    && activeQuote.previousPrice !== 0
+    ? ((activeQuote.price - activeQuote.previousPrice) / activeQuote.previousPrice) * 100
+    : null;
   const digitCounts = useMemo(() => {
     const counts = Array.from({ length: 10 }, () => 0);
     digitHistory.forEach((digit) => { if (Number.isFinite(digit)) counts[digit] += 1; });
-    const total = digitHistory.length || 10;
-    return counts.map((count) => ({ count, percentage: digitHistory.length ? (count / total) * 100 : 10 }));
+    return counts.map((count) => ({ count, percentage: digitHistory.length ? (count / digitHistory.length) * 100 : null }));
   }, [digitHistory]);
   const scanMarkets = () => {
-    if (scannerState === 'scanning') return;
-    const preferredDefinition = getVolatilityDefinition(getMarketDefinition(activeMarket).name);
-    const preferredQuote = marketQuotes[preferredDefinition.symbol];
+    if (scannerState === 'scanning' || executionLockRef.current) return;
+    const preferredDefinition = activeDefinition;
+    const scanWindow = Number.parseInt(numberOfTicks, 10);
+    if (!Number.isInteger(scanWindow) || scanWindow < MIN_BULK_SCAN_TICKS || scanWindow > 999) {
+      setScannerMessage(`Set the scan window to ${MIN_BULK_SCAN_TICKS}–999 ticks.`);
+      setReviewState(`Set a live scan window from ${MIN_BULK_SCAN_TICKS} to 999 ticks.`);
+      setScannerState('complete');
+      setScannerResults([]);
+      return;
+    }
+    if (tradeType !== 'Rise/Fall' && preferredDefinition.family !== 'volatility') {
+      const message = 'Even/Odd and Over/Under scans need a Volatility market. Select one before scanning.';
+      setScannerMessage(message);
+      setReviewState(message);
+      setScannerState('complete');
+      setScannerResults([]);
+      setScannerDigits([]);
+      return;
+    }
     setScannerState('scanning');
     setScannerOpen(true);
     setBatchResult(null);
+    setScannerMessage(`Reading ${preferredDefinition.name} from the live Deriv feed…`);
+    setReviewState('');
     window.setTimeout(() => {
-      const ticks = (preferredQuote?.ticks ?? []).slice(-Math.max(20, Number(numberOfTicks) || 120));
-      const counts = Array.from({ length: 10 }, () => 0);
-      ticks.forEach((tick) => {
-        const digit = Number(formatMarketPrice(tick, preferredQuote?.pipSize ?? 2).replace(/\D/g, '').slice(-1));
-        if (Number.isFinite(digit)) counts[digit] += 1;
-      });
-      const digitResults = counts.map((count, digit) => ({ digit, percentage: ticks.length ? (count / ticks.length) * 100 : 0 }));
-      setScannerDigits(digitResults);
-       const first = ticks[0] ?? preferredQuote?.price ?? 0;
-      const last = ticks.at(-1) ?? first;
-       const range = ticks.length ? Math.max(...ticks) - Math.min(...ticks) : 0;
-       const even = ticks.length ? counts.filter((_, digit) => digit % 2 === 0).reduce((sum, count) => sum + count, 0) / ticks.length * 100 : 50;
-       const over = ticks.length ? counts.filter((_, digit) => digit > 4).reduce((sum, count) => sum + count, 0) / ticks.length * 100 : 50;
-       const momentum = ticks.length ? last >= first ? Math.min(100, 50 + Math.abs(last - first) / Math.max(range, Math.abs(first) * 0.00001, 1) * 50) : Math.max(0, 50 - Math.abs(last - first) / Math.max(range, Math.abs(first) * 0.00001, 1) * 50) : 50;
-      const direction = last >= first;
-      let side: BulkScanResult['side'];
-      let contractType: BulkScanResult['contractType'];
-      let confidence: number;
-      let rationale: string;
-      let barrier: number | undefined;
-      if (tradeType === 'Rise/Fall') {
-        side = direction ? 'Rise' : 'Fall';
-        contractType = direction ? 'CALL' : 'PUT';
-         confidence = Math.max(momentum, 100 - momentum);
-         rationale = ticks.length ? `${direction ? 'positive' : 'negative'} momentum across ${ticks.length} ticks` : 'Neutral fallback while live ticks reconnect';
-      } else if (tradeType === 'Over/Under') {
-        side = over >= 50 ? 'Over' : 'Under';
-        contractType = over >= 50 ? 'DIGITOVER' : 'DIGITUNDER';
-        confidence = Math.max(over, 100 - over);
-        barrier = 4;
-         rationale = ticks.length ? `${Math.max(over, 100 - over).toFixed(1)}% of recent digits favor ${side.toLowerCase()} 4` : 'Neutral fallback while live ticks reconnect';
-      } else {
-        side = even >= 50 ? 'Even' : 'Odd';
-        contractType = even >= 50 ? 'DIGITEVEN' : 'DIGITODD';
-        confidence = Math.max(even, 100 - even);
-         rationale = ticks.length ? `${Math.max(even, 100 - even).toFixed(1)}% recent even/odd probability` : 'Neutral fallback while live ticks reconnect';
-      }
-      const result: BulkScanResult = { definition: preferredDefinition, quote: preferredQuote, side, contractType, confidence, sampleSize: ticks.length, rationale, barrier };
-      setScannerResults([result]);
+      const analysis = analyzeBulkMarket(
+        preferredDefinition,
+        marketQuotesRef.current[preferredDefinition.symbol],
+        tradeType,
+        scanWindow,
+      );
+      setScannerDigits(analysis.digitDistribution);
+      setScannerResults(analysis.result ? [analysis.result] : []);
       setSelectedScannerSymbol(preferredDefinition.symbol);
-       setScannerState('complete');
-       if (autoTrader) window.setTimeout(() => { void handleExecuteAiBatch(result); }, 450);
+      setScannerState('complete');
+      setScannerMessage(analysis.message);
+      if (analysis.result?.hasSignal && autoTrader) {
+        setReviewState(`Live scan ready · ${analysis.result.side} observed in ${analysis.result.sampleSize} ticks.`);
+        void handleExecuteAiBatch(analysis.result, true);
+      } else if (analysis.result && !analysis.result.hasSignal) {
+        setReviewState('The scan halves disagree. Auto-run is unavailable; review the sample or choose a side manually.');
+      } else {
+        setReviewState(analysis.message);
+      }
      }, 180);
   };
   const openScanner = () => {
@@ -2398,20 +3355,40 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
     setBatchResult(null);
   };
   const selectedScannerResult = scannerResults.find((result) => result.definition.symbol === selectedScannerSymbol);
-  const handleExecuteAiBatch = async (scanResult?: BulkScanResult) => {
-    const executionResult = scanResult ?? selectedScannerResult;
-    if (executionLockRef.current || executionState === 'executing') {
+  const liveBatchProfit = totalTradeProfit(liveBatchTrades);
+  const scanProgress = bulkRunProgress.total
+    ? Math.min(100, (bulkRunProgress.completed / bulkRunProgress.total) * 100)
+    : 0;
+  const progressLabel = {
+    idle: 'READY',
+    scanning: 'SCANNING',
+    placing: 'PLACING TRADE',
+    stopping: 'STOPPING',
+    complete: 'COMPLETE',
+    stopped: 'STOPPED',
+    pending: 'SETTLEMENT PENDING',
+    error: 'STOPPED ON ERROR',
+  }[bulkRunProgress.phase];
+  const handleExecuteAiBatch = async (scanResult?: BulkScanResult, adaptToLatestScan = false) => {
+    if (executionLockRef.current) {
       stopRequestedRef.current = true;
-      setReviewState('Stopping after the current trade settles…');
+      setBulkRunProgress((current) => ({ ...current, phase: 'stopping' }));
+      setReviewState('Stop requested · waiting for the current trade to settle…');
       return;
     }
+    const executionResult = scanResult ?? selectedScannerResult;
     if (!executionResult) return;
     const amount = Number(stake);
     const duration = Number(ticks);
     const count = Number(bulkTrades);
+    const scanWindow = Number.parseInt(numberOfTicks, 10);
     const martingaleMultiplier = configuredMultiplier(martingale);
     const takeProfitLimit = Number(bulkTakeProfit);
     const stopLossLimit = Number(bulkStopLoss);
+    if (!Number.isInteger(scanWindow) || scanWindow < MIN_BULK_SCAN_TICKS || scanWindow > 999) {
+      setReviewState(`Set a live scan window from ${MIN_BULK_SCAN_TICKS} to 999 ticks.`);
+      return;
+    }
     if (!Number.isFinite(amount) || amount < 0.35 || amount > 10_000) {
       setReviewState(`Enter a stake from ${currency} 0.35 to 10,000.`);
       return;
@@ -2432,11 +3409,17 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
       setReviewState(`Enter valid ${currency} Take Profit and Stop Loss limits.`);
       return;
     }
+    if (tradeType !== 'Rise/Fall' && executionResult.definition.family !== 'volatility') {
+      setReviewState('Even/Odd and Over/Under contracts require a Volatility market.');
+      return;
+    }
     executionLockRef.current = true;
     stopRequestedRef.current = false;
     setExecutionState('executing');
     setBatchResult(null);
-    setReviewState(`Executing ${count} ${formatDerivContractType(executionResult.contractType, executionResult.barrier)} trade${count === 1 ? '' : 's'} on ${executionResult.definition.name} (${accountMode})…`);
+    setLiveBatchTrades([]);
+    setBulkRunProgress({ phase: 'scanning', current: 1, completed: 0, total: count });
+    setReviewState(`Scanning ${executionResult.definition.name} before entry 1 of ${count}…`);
     let completed = 0;
     let firstError = '';
     let cumulativeProfit = 0;
@@ -2444,41 +3427,104 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
     let consecutiveLosses = 0;
     let totalPlaced = 0;
     const settledTrades: ExecutedTrade[] = [];
+    let pendingSettlementTrade: ExecutedTrade | null = null;
+    const recordTrade = (trade: ExecutedTrade) => {
+      settledTrades.push(trade);
+      setLiveBatchTrades((current) => [...current, trade]);
+      setBulkTransactions((current) => [...current, trade]);
+      setBulkTransactionTab('Transactions');
+      void Promise.resolve().then(() => onTradeSettled()).catch(() => undefined);
+    };
+    let scannedEntries = 0;
     for (let index = 0; index < count; index += 1) {
       if (stopRequestedRef.current) {
         stopReason = 'Bot stopped by user.';
         break;
       }
+      setBulkRunProgress({ phase: 'scanning', current: index + 1, completed, total: count });
+      setReviewState(`Scanning ${executionResult.definition.name} before entry ${index + 1}/${count}…`);
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 120));
+      if (stopRequestedRef.current) {
+        stopReason = 'Bot stopped by user.';
+        break;
+      }
+      const analysis = analyzeBulkMarket(
+        executionResult.definition,
+        marketQuotesRef.current[executionResult.definition.symbol],
+        tradeType,
+        scanWindow,
+      );
+      setScannerDigits(analysis.digitDistribution);
+      setScannerResults(analysis.result ? [analysis.result] : []);
+      setSelectedScannerSymbol(executionResult.definition.symbol);
+      setScannerState('complete');
+      setScannerMessage(analysis.message);
+      scannedEntries += 1;
+      if (!analysis.result) {
+        firstError = analysis.message;
+        setBulkRunProgress({ phase: 'error', current: index + 1, completed, total: count });
+        break;
+      }
+      if (adaptToLatestScan && !analysis.result.hasSignal) {
+        stopReason = `No clear recent majority; stopped before entry ${index + 1}.`;
+        setReviewState(`${analysis.message} No automatic entry was placed.`);
+        break;
+      }
+      const entrySignal: BulkScanResult = adaptToLatestScan
+        ? analysis.result
+        : {
+            ...analysis.result,
+            side: executionResult.side,
+            contractType: executionResult.contractType,
+            barrier: executionResult.barrier,
+            rationale: `${analysis.result.rationale} Trader-selected side: ${executionResult.side}.`,
+          };
+      setBulkRunProgress({ phase: 'placing', current: index + 1, completed, total: count });
+      setReviewState(`Entry ${index + 1}/${count} · scanned ${analysis.sampleSize} live ticks · ${adaptToLatestScan ? `signal ${entrySignal.side}` : `selected ${entrySignal.side}`} · placing and waiting for settlement…`);
       try {
         const tradeAmount = nextMartingaleStake(amount, martingaleMultiplier, consecutiveLosses);
         if (!Number.isFinite(tradeAmount) || tradeAmount < 0.35 || tradeAmount > 10_000) {
           throw new Error(`Martingale stake ${tradeAmount.toFixed(2)} is outside the supported ${currency} 0.35–10,000 range.`);
         }
         const rawTrade = await executeDerivTrade<ExecutedTrade>({
-          symbol: executionResult.definition.symbol,
-          contractType: executionResult.contractType,
+          symbol: entrySignal.definition.symbol,
+          contractType: entrySignal.contractType,
           amount: tradeAmount,
           duration,
           durationUnit: 't',
           currency,
-          barrier: executionResult.barrier,
+          barrier: entrySignal.barrier,
           mode: accountMode === 'REAL' ? 'real' : 'demo',
         });
-        const settledTrade: ExecutedTrade = {
+        let settledTrade: ExecutedTrade = {
           ...normalizeExecutedTrade(rawTrade),
-          marketName: executionResult.definition.name,
+          marketName: entrySignal.definition.name,
           mode: accountMode,
         };
+        if (!settledTrade.settlementPending && !settledTrade.orderStatusUnknown && resolvedTradeProfit(settledTrade) === null) {
+          settledTrade = { ...settledTrade, settlementPending: true };
+        }
+        if (settledTrade.settlementPending || settledTrade.orderStatusUnknown) {
+          pendingSettlementTrade = settledTrade;
+          if (!settledTrade.orderStatusUnknown) totalPlaced += settledTrade.stake ?? settledTrade.buyPrice ?? tradeAmount;
+          recordTrade(settledTrade);
+          setBulkRunProgress({ phase: 'pending', current: index + 1, completed, total: count });
+          break;
+        }
         const exactProfit = resolvedTradeProfit(settledTrade);
-        if (exactProfit === null) throw new Error('Deriv did not return an exact settled P/L.');
+        if (exactProfit === null) {
+          pendingSettlementTrade = { ...settledTrade, settlementPending: true };
+          recordTrade(pendingSettlementTrade);
+          setBulkRunProgress({ phase: 'pending', current: index + 1, completed, total: count });
+          break;
+        }
         completed += 1;
         cumulativeProfit += exactProfit;
-        totalPlaced += settledTrade.buyPrice ?? settledTrade.stake ?? tradeAmount;
+        totalPlaced += settledTrade.stake ?? settledTrade.buyPrice ?? tradeAmount;
         consecutiveLosses = exactProfit < 0 ? consecutiveLosses + 1 : 0;
-        settledTrades.push(settledTrade);
-        setBulkTransactions((current) => [...current, settledTrade]);
-        setBulkTransactionTab('Transactions');
-        await onTradeSettled();
+        recordTrade(settledTrade);
+        setBulkRunProgress({ phase: 'scanning', current: index + 2, completed, total: count });
+        setReviewState(`Entry ${index + 1}/${count} settled · ${formatSignedProfit(exactProfit)} ${settledTrade.currency ?? currency} · scanning next entry…`);
         if (takeProfitLimit > 0 && cumulativeProfit >= takeProfitLimit) {
           stopReason = `Take Profit reached at ${cumulativeProfit.toFixed(2)} ${currency}.`;
           break;
@@ -2494,9 +3540,21 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
     }
     setExecutionState('idle');
     executionLockRef.current = false;
+    const progressPhase = pendingSettlementTrade ? 'pending' : firstError ? 'error' : stopReason ? 'stopped' : 'complete';
+    setBulkRunProgress({ phase: progressPhase, current: Math.min(count, scannedEntries), completed, total: count });
     const batchProfit = cumulativeProfit;
-    if (completed > 0) setBatchResult({ profit: batchProfit, amount: totalPlaced, trades: completed, currency, tradeResults: settledTrades });
-    if (firstError) {
+    if (completed > 0 || pendingSettlementTrade) setBatchResult({
+      profit: batchProfit,
+      amount: totalPlaced,
+      trades: completed + (pendingSettlementTrade ? 1 : 0),
+      currency,
+      settlementPending: Boolean(pendingSettlementTrade),
+      orderStatusUnknown: Boolean(pendingSettlementTrade?.orderStatusUnknown),
+      tradeResults: settledTrades,
+    });
+    if (pendingSettlementTrade) {
+      setReviewState(`${unresolvedTradeMessage(pendingSettlementTrade)} The batch stopped to prevent another order.`);
+    } else if (firstError) {
       setReviewState(`${completed}/${count} trades settled before stopping: ${firstError}`);
     } else if (stopReason) {
       setReviewState(`${completed}/${count} trades settled · ${stopReason} · ${formatSignedProfit(batchProfit)} ${currency}`);
@@ -2526,12 +3584,15 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
       quote: activeQuote,
       side,
       contractType,
-      confidence: 0,
+      observedShare: 0,
+      recentObservedShare: 0,
+      windowAgreement: false,
+      hasSignal: false,
       sampleSize: digitHistory.length,
       rationale: `Trader-selected ${side} batch.`,
       barrier: tradeType === 'Over/Under' ? 4 : undefined,
     };
-    void handleExecuteAiBatch(result);
+    void handleExecuteAiBatch(result, false);
   };
   function openBulkHistoryDetail() {
     if (!bulkTransactions.length) return;
@@ -2539,7 +3600,7 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
     if (profit === null) return;
     setBatchResult({
       profit,
-      amount: bulkTransactions.reduce((total, trade) => total + (trade.buyPrice ?? trade.stake ?? 0), 0),
+      amount: bulkTransactions.reduce((total, trade) => total + (trade.stake ?? trade.buyPrice ?? 0), 0),
       trades: bulkTransactions.length,
       currency,
       tradeResults: bulkTransactions,
@@ -2547,75 +3608,207 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
   }
 
   return (
-    <section className="bulk-trader-view">
-      <form onSubmit={(event) => event.preventDefault()}>
-        <div className="bulk-control-grid">
-          <label><span>MARKET</span><select value={activeMarket} onChange={(event) => setActiveMarket(event.target.value)}>{MARKET_DEFINITIONS.map(({ label, name }) => <option key={label} value={label}>{name}</option>)}</select></label>
-          <label><span>TRADE TYPE</span><select value={tradeType} onChange={(event) => setTradeType(event.target.value as typeof tradeType)}><option>Even/Odd</option><option>Rise/Fall</option><option>Over/Under</option></select></label>
+    <section className="bulk-trader-view ptx-bulk" aria-label="Bulk Trader">
+      <div className="ptx-shell">
+        <header className="ptx-topbar">
+          <div className="ptx-brand">
+            <span className="ptx-brand-mark"><BarChart3 size={16} aria-hidden="true" /></span>
+            <span className="ptx-brand-word">protradersfx.com</span>
+          </div>
+          <div className="ptx-session"><i className={activeQuote?.status === 'live' ? 'is-live' : ''} /> DERIV WORKSPACE <span>/</span> BULK TRADER</div>
+          <span className="ptx-account-tag">{accountMode} · {currency}</span>
+        </header>
+        <div className="ptx-ticker" role="region" aria-label="Live Deriv market quotes">
+          {MARKET_DEFINITIONS.slice(0, 9).map(({ name, symbol }) => {
+            const quote = marketQuotes[symbol];
+            const quoteDotClass = quote?.status === 'live' ? 'is-live' : quote?.status === 'error' ? 'is-error' : '';
+            return <div className="ptx-ticker-item" key={symbol} aria-label={`${name}: ${quote?.status === 'live' ? 'live' : quote?.price !== null && quote?.price !== undefined ? 'last quote' : 'connecting'}, ${formatMarketPrice(quote?.price ?? null, quote?.pipSize ?? 2)}`}>
+              <i className={`ptx-ticker-dot ${quoteDotClass}`} />
+              <b>{name.replace('Volatility ', 'VOL ').replace(' Index', '')}</b>
+              <em>{formatMarketPrice(quote?.price ?? null, quote?.pipSize ?? 2)}</em>
+            </div>;
+          })}
         </div>
-         <label className="bulk-ticks-control"><span>SCAN TICK WINDOW</span><input inputMode="numeric" value={numberOfTicks} onChange={(event) => setNumberOfTicks(event.target.value.replace(/\D/g, '').slice(0, 3) || '1')} /></label>
-         <div className="bulk-current-tick"><span>CURRENT TICK</span><strong>{formatMarketPrice(activeQuote?.price ?? null, activeQuote?.pipSize ?? 2)}</strong><small>{activeQuote?.status === 'live' ? '● LIVE' : activeQuote?.price !== null ? 'LAST QUOTE' : 'CONNECTING'}</small><button type="button" onClick={openScanner} disabled={scannerState === 'scanning'}><Sparkles size={12} /> {scannerState === 'scanning' ? 'SCANNING…' : 'AI SCANNER'}</button></div>
-        <div className="bulk-digit-grid">
-          {digitCounts.map(({ percentage }, digit) => <div key={digit} className={`bulk-digit digit-${digit}`}><strong>{digit}</strong><span>{percentage.toFixed(2)}%</span></div>)}
-        </div>
-        <div className="bulk-history-row"><span>TICKS</span>{digitHistory.length ? digitHistory.map((digit, index) => <b key={`${digit}-${index}`} className={`digit-chip digit-${digit}`}>{digit}</b>) : <small>Waiting for live tick history</small>}</div>
-        <div className="bulk-input-grid">
-          <label><span>CONTRACT DURATION (TICKS)</span><input inputMode="numeric" value={ticks} onChange={(event) => setTicks(event.target.value.replace(/\D/g, '').slice(0, 3) || '1')} /></label>
-          <label><span>STAKE</span><input inputMode="decimal" value={stake} onChange={(event) => setStake(event.target.value)} /></label>
-          <label><span>MARTINGALE ×</span><input inputMode="decimal" value={martingale} onChange={(event) => setMartingale(event.target.value)} /></label>
-          <label><span>NO. OF BULK TRADES</span><input inputMode="numeric" value={bulkTrades} onChange={(event) => setBulkTrades(event.target.value)} /></label>
-          <label><span>TAKE PROFIT</span><input inputMode="decimal" value={bulkTakeProfit} onChange={(event) => setBulkTakeProfit(event.target.value)} /></label>
-          <label><span>STOP LOSS</span><input inputMode="decimal" value={bulkStopLoss} onChange={(event) => setBulkStopLoss(event.target.value)} /></label>
-        </div>
-        <p className="bulk-execution-notice">Choose a side to place the configured batch immediately on your {accountMode} account.</p>
-        <div className="bulk-action-row">
-          <button type="button" className="bulk-even-button" onClick={() => executeBulkChoice('left')} disabled={executionState === 'executing'}><span><CircleDollarSign size={12} /> {leftChoice}</span><b>{currency} {stake || '0.00'}</b><small>PLACE {bulkTrades || '0'} TRADE{bulkTrades === '1' ? '' : 'S'}</small></button>
-          <button type="button" className="bulk-odd-button" onClick={() => executeBulkChoice('right')} disabled={executionState === 'executing'}><span><CircleDollarSign size={12} /> {rightChoice}</span><b>{currency} {stake || '0.00'}</b><small>PLACE {bulkTrades || '0'} TRADE{bulkTrades === '1' ? '' : 'S'}</small></button>
-        </div>
-        <div className="bulk-bottom-row"><button type="button" className={`bulk-auto-button ${autoTrader ? 'is-on' : ''}`} onClick={() => setAutoTrader(!autoTrader)}><Settings2 size={12} /> {autoTrader ? 'Live auto mode on' : 'Live auto mode'}</button>{executionState === 'executing' && <button type="button" className="bulk-stop-button" onClick={() => void handleExecuteAiBatch()}>■ STOP AFTER CURRENT TRADE</button>}{reviewState && <span role="status">{reviewState}</span>}</div>
-      </form>
-      <BotTransactionPanel
-        trades={bulkTransactions}
-        currency={currency}
-        running={executionState === 'executing'}
-        activeTab={bulkTransactionTab}
-        onTabChange={setBulkTransactionTab}
-        onViewDetail={openBulkHistoryDetail}
-        historyLabel="CURRENT SESSION"
-        sectionLabel="Bulk trade history"
-        runningLabel="Batch is executing sequentially"
-        emptyMessage="Settled Bulk Trader trades will appear here."
-      />
+        <section className="ptx-heading">
+          <div>
+            <div className="ptx-eyebrow"><span>TRADING WORKSPACE</span><span>/</span><span>LIVE MARKET · BATCH EXECUTION</span></div>
+            <h1>Bulk Trader</h1>
+            <p>Review live market context, choose one side, and follow each entry through settlement.</p>
+          </div>
+          <div className="ptx-heading-actions">
+            <span className="ptx-connection"><i className={activeQuote?.status === 'live' ? 'is-live' : ''} />{activeQuote?.status === 'live' ? 'DERIV FEED LIVE' : activeQuote?.price !== null && activeQuote?.price !== undefined ? 'LAST QUOTE' : activeQuote?.status === 'error' ? 'FEED ERROR' : 'CONNECTING'}</span>
+            <span className="ptx-account-tag">{accountMode} ACCOUNT</span>
+          </div>
+        </section>
+        <form className="ptx-workspace" onSubmit={(event) => event.preventDefault()}>
+          <div className="ptx-left">
+            <section className="ptx-card ptx-market-card" aria-label="Market context and digit scan">
+              <div className="ptx-card-head">
+                <div className="ptx-card-title"><span className="ptx-step">01</span> Market context</div>
+                <span className="ptx-card-meta">OFFICIAL DERIV QUOTES</span>
+              </div>
+              <div className="ptx-market-overview">
+                <div className="ptx-market-info">
+                  <label><span>MARKET</span><select disabled={executionState === 'executing' || scannerState === 'scanning'} value={activeMarket} onChange={(event) => setActiveMarket(event.target.value)} data-testid="bulk-market">{MARKET_DEFINITIONS.map(({ label, name }) => <option key={label} value={label}>{name}</option>)}</select></label>
+                  <div className="ptx-quote-label">{activeQuote?.status === 'live' ? 'LIVE QUOTE' : activeQuote?.price !== null && activeQuote?.price !== undefined ? 'LAST QUOTE' : 'WAITING FOR QUOTE'}</div>
+                  <div className="ptx-quote">
+                    {formatMarketPrice(activeQuote?.price ?? null, activeQuote?.pipSize ?? 2)}
+                    {currentTickChange !== null && <span className={`ptx-quote-change ${currentTickChange < 0 ? 'is-negative' : ''}`}>{currentTickChange >= 0 ? '+' : ''}{currentTickChange.toFixed(2)}%</span>}
+                  </div>
+                  <div className="ptx-quote-foot">{activeDefinition.name} · {activeQuote?.status === 'live' ? 'streaming' : activeQuote?.status ?? 'connecting'}</div>
+                </div>
+                <div className="ptx-market-chart">
+                  <div className="ptx-chart-top"><strong>Market trace</strong><span>{liveChart ? `LAST ${liveChart.count} TICKS` : 'LIVE TICKS'}</span></div>
+                  {liveChart ? <svg className="ptx-chart-svg" viewBox="0 0 480 128" preserveAspectRatio="none" role="img" aria-label={`Live price trace for ${activeDefinition.name}`}>
+                    <g className="ptx-chart-grid"><line x1="0" y1="20" x2="480" y2="20" /><line x1="0" y1="64" x2="480" y2="64" /><line x1="0" y1="108" x2="480" y2="108" /></g>
+                    <polyline className="ptx-chart-line" points={liveChart.points} />
+                    <circle className="ptx-chart-dot" cx="468" cy={liveChart.lastY} r="4" />
+                  </svg> : <div className="ptx-chart-empty">{activeQuote?.status === 'live' ? 'Waiting for enough live ticks to draw the market trace.' : 'Live market trace will appear when Deriv quotes connect.'}</div>}
+                  <span className="ptx-chart-axis">{liveChart?.count ?? 0} recent ticks</span>
+                </div>
+              </div>
+              <div className="ptx-signal-row">
+                <div className="ptx-trade-type"><label><span>TRADE TYPE</span><select disabled={executionState === 'executing' || scannerState === 'scanning'} value={tradeType} onChange={(event) => setTradeType(event.target.value as typeof tradeType)} data-testid="bulk-trade-type"><option>Even/Odd</option><option>Rise/Fall</option><option>Over/Under</option></select></label></div>
+                <div className="ptx-scan-window">
+                  <label className="ptx-field"><span>SCAN WINDOW <small>MIN {MIN_BULK_SCAN_TICKS}</small></span><input className="ptx-input" inputMode="numeric" min={MIN_BULK_SCAN_TICKS} max="999" disabled={executionState === 'executing' || scannerState === 'scanning'} value={numberOfTicks} onChange={(event) => setNumberOfTicks(event.target.value.replace(/\D/g, '').slice(0, 3))} data-testid="bulk-scan-window" /></label>
+                  <button type="button" className="ptx-button" onClick={openScanner} disabled={scannerState === 'scanning' || executionState === 'executing'} data-testid="bulk-open-scanner"><Sparkles size={13} aria-hidden="true" /> {scannerState === 'scanning' ? 'SCANNING…' : 'OPEN SCANNER'}</button>
+                </div>
+              </div>
+              <div className="ptx-digit-section">
+                <div className="ptx-digit-heading"><span>LIVE DIGIT DISTRIBUTION</span><b>{digitHistory.length} RECENT TICKS</b></div>
+                <div className="ptx-digit-bars" aria-label="Live tick digit distribution">
+                  {digitCounts.map(({ percentage }, digit) => {
+                    const highestShare = digitCounts.reduce((highest, item) => item.percentage !== null ? Math.max(highest, item.percentage) : highest, 0);
+                    const leading = percentage !== null && percentage > 0 && percentage === highestShare;
+                    return <div key={digit} className={`ptx-digit ${leading ? 'is-leading' : ''}`} style={{ '--bar': `${Math.max(0, percentage ?? 0)}%` } as React.CSSProperties}><strong>{digit}</strong><span>{percentage === null ? '—' : `${percentage.toFixed(1)}%`}</span></div>;
+                  })}
+                </div>
+                <div className="ptx-recent"><span>RECENT DIGITS</span>{digitHistory.length ? digitHistory.slice(-12).map((digit, index) => <b key={`${digit}-${index}`} aria-label={`Digit ${digit}`}>{digit}</b>) : <small>Waiting for live tick history</small>}</div>
+              </div>
+            </section>
+            <section className="ptx-card" aria-label="Bulk contract parameters">
+              <div className="ptx-card-head"><div className="ptx-card-title"><span className="ptx-step">02</span> Contract parameters</div><span className="ptx-card-meta">PER ENTRY</span></div>
+              <div className="ptx-contract-grid">
+                <label className="ptx-field"><span>CONTRACT DURATION <small>TICKS</small></span><input className="ptx-input" inputMode="numeric" disabled={executionState === 'executing'} value={ticks} onChange={(event) => setTicks(event.target.value.replace(/\D/g, '').slice(0, 3) || '1')} /></label>
+                <label className="ptx-field"><span>STAKE <small>{currency}</small></span><input className="ptx-input" inputMode="decimal" disabled={executionState === 'executing'} value={stake} onChange={(event) => setStake(event.target.value)} /></label>
+                <label className="ptx-field"><span>MARTINGALE <small>MULTIPLIER</small></span><input className="ptx-input" inputMode="decimal" disabled={executionState === 'executing'} value={martingale} onChange={(event) => setMartingale(event.target.value)} /></label>
+                <label className="ptx-field"><span>BULK ENTRIES <small>COUNT</small></span><input className="ptx-input" inputMode="numeric" disabled={executionState === 'executing'} value={bulkTrades} onChange={(event) => setBulkTrades(event.target.value)} /></label>
+                <label className="ptx-field"><span>TAKE PROFIT <small>{currency}</small></span><input className="ptx-input" inputMode="decimal" disabled={executionState === 'executing'} value={bulkTakeProfit} onChange={(event) => setBulkTakeProfit(event.target.value)} /></label>
+                <label className="ptx-field"><span>STOP LOSS <small>{currency}</small></span><input className="ptx-input" inputMode="decimal" disabled={executionState === 'executing'} value={bulkStopLoss} onChange={(event) => setBulkStopLoss(event.target.value)} /></label>
+              </div>
+              <p className="ptx-risk-note"><span aria-hidden="true">!</span><span>Sequential entries. Stops on error, unsettled trade, Take Profit, Stop Loss, or your Stop command.</span></p>
+            </section>
+            <section className="ptx-card" aria-label="Choose a trade side">
+              <div className="ptx-card-head"><div className="ptx-card-title"><span className="ptx-step">03</span> Choose a side</div><span className="ptx-card-meta">{bulkTrades || '0'} ENTRIES · SAME SIDE</span></div>
+              <div className="ptx-actions">
+                <button type="button" className={`ptx-action ${/under|odd|fall/i.test(leftChoice) ? 'alt' : ''}`} onClick={() => executeBulkChoice('left')} disabled={executionState === 'executing' || scannerState === 'scanning'} data-testid="bulk-execute-left">
+                  <span className="ptx-action-title">{tradeType === 'Even/Odd' ? <CircleDollarSign size={14} /> : /rise|over/i.test(leftChoice) ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}{leftChoice}</span>
+                  <strong>{currency} {stake || '0.00'}</strong>
+                  <small>PLACE {bulkTrades || '0'} TRADE{bulkTrades === '1' ? '' : 'S'}</small>
+                </button>
+                <button type="button" className={`ptx-action ${/under|odd|fall/i.test(rightChoice) ? 'alt' : ''}`} onClick={() => executeBulkChoice('right')} disabled={executionState === 'executing' || scannerState === 'scanning'} data-testid="bulk-execute-right">
+                  <span className="ptx-action-title">{tradeType === 'Even/Odd' ? <CircleDollarSign size={14} /> : /rise|over/i.test(rightChoice) ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}{rightChoice}</span>
+                  <strong>{currency} {stake || '0.00'}</strong>
+                  <small>PLACE {bulkTrades || '0'} TRADE{bulkTrades === '1' ? '' : 'S'}</small>
+                </button>
+              </div>
+              <div className="ptx-action-foot">
+                <button type="button" className="ptx-toggle-wrap" onClick={() => setAutoTrader(!autoTrader)} disabled={executionState === 'executing' || scannerState === 'scanning'} data-testid="bulk-auto-mode" aria-checked={autoTrader} role="switch"><span className="ptx-toggle" aria-hidden="true" />Auto-execute {autoTrader ? 'on' : 'off'}</button>
+                {executionState === 'executing' && <button type="button" className="ptx-button" onClick={() => void handleExecuteAiBatch()} data-testid="bulk-stop-run">STOP AFTER CURRENT</button>}
+                <span className="ptx-local-label">LIVE DERIV ORDERS</span>
+                {reviewState && <span className="ptx-action-status" role="status" data-testid="bulk-review-status">{reviewState}</span>}
+              </div>
+            </section>
+          </div>
+          <aside className="ptx-right">
+            <section className="ptx-card ptx-monitor" aria-live="polite" data-testid="bulk-live-monitor">
+              <div className="ptx-monitor-top">
+                <div className="ptx-monitor-title">
+                  <div><span>04 / EXECUTION MONITOR</span><strong>{scannerMessage}</strong></div>
+                  <b className="ptx-status-chip">{executionState === 'executing' ? progressLabel : scannerState === 'scanning' ? 'SCANNING' : progressLabel}</b>
+                </div>
+                {bulkRunProgress.total > 0 && <div className="ptx-progress" role="progressbar" aria-valuemin={0} aria-valuemax={bulkRunProgress.total} aria-valuenow={bulkRunProgress.completed} aria-label={`${bulkRunProgress.completed} of ${bulkRunProgress.total} trades settled`}><span style={{ width: `${scanProgress}%` }} /></div>}
+                <div className="ptx-metrics">
+                  <div className="ptx-metric"><span>ENTRY</span><strong>{bulkRunProgress.total ? `${bulkRunProgress.current}/${bulkRunProgress.total}` : '—'}</strong></div>
+                  <div className="ptx-metric"><span>SETTLED</span><strong>{bulkRunProgress.total ? `${bulkRunProgress.completed}/${bulkRunProgress.total}` : '0'}</strong></div>
+                  <div className="ptx-metric"><span>BATCH NET P/L</span><strong className={liveBatchProfit === null ? '' : liveBatchProfit < 0 ? 'bad' : 'good'}>{liveBatchTrades.length ? liveBatchProfit === null ? 'PENDING' : `${formatSignedProfit(liveBatchProfit)} ${currency}` : '—'}</strong></div>
+                </div>
+              </div>
+              {selectedScannerResult && <div className="ptx-scan-reading">
+                <div><span>{selectedScannerResult.windowAgreement ? 'WINDOWS AGREE' : 'WINDOWS DIFFER'}</span><small>Observed sample · not a forecast</small></div>
+                <strong>{selectedScannerResult.side}</strong>
+                <b>{selectedScannerResult.recentObservedShare.toFixed(1)}%</b>
+                <small>{selectedScannerResult.sampleSize} live ticks · {selectedScannerResult.rationale}</small>
+              </div>}
+              <div className="ptx-results">
+                <div className="ptx-results-head"><span>THIS BATCH · LATEST FIRST</span><b>{liveBatchTrades.length} {liveBatchTrades.length === 1 ? 'ENTRY' : 'ENTRIES'}</b></div>
+                {liveBatchTrades.length > 0 ? liveBatchTrades.slice(-5).reverse().map((trade, index) => {
+                  const tradeProfit = resolvedTradeProfit(trade);
+                  const tradeNumber = liveBatchTrades.length - index;
+                  return <div className="ptx-result-row" key={`${trade.contractId ?? 'pending'}-${tradeNumber}`} data-testid={`bulk-live-entry-${tradeNumber}`}>
+                    <span><b>#{tradeNumber} · {tradeContractLabel(trade)}</b><small>E {formatTradePoint(trade.entrySpot)} · X {formatTradePoint(trade.exitSpot)}</small><TradeMoneyDetails trade={trade} fallbackCurrency={currency} /></span>
+                    <strong className={trade.orderStatusUnknown || trade.settlementPending ? 'is-pending' : tradeProfit !== null && tradeProfit < 0 ? 'is-loss' : ''}>{trade.orderStatusUnknown ? 'STATUS UNKNOWN' : trade.settlementPending ? 'PENDING' : `${formatSignedProfit(tradeProfit)} ${trade.currency ?? currency}`}</strong>
+                  </div>;
+                }) : <p className="ptx-empty">{executionState === 'executing' ? 'Scanning live ticks before entry one.' : 'Trade entries and settled P/L will appear here as the batch runs.'}</p>}
+              </div>
+            </section>
+            <div className="ptx-disclaimer"><span aria-hidden="true">!</span><div>Digit readings describe the selected tick sample; they are not a forecast or win probability. Trading can lead to losses.</div></div>
+          </aside>
+        </form>
+        <BotTransactionPanel
+          trades={bulkTransactions}
+          currency={currency}
+          running={executionState === 'executing'}
+          activeTab={bulkTransactionTab}
+          onTabChange={setBulkTransactionTab}
+          onViewDetail={openBulkHistoryDetail}
+          historyLabel="CURRENT SESSION"
+          sectionLabel="Bulk trade history"
+          runningLabel="Batch is executing sequentially"
+          emptyMessage="Settled Bulk Trader trades will appear here."
+        />
+      </div>
       {scannerOpen && (
-        <div className="ai-scanner-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setScannerOpen(false); }}>
-          <section className="ai-scanner-modal" role="dialog" aria-modal="true" aria-labelledby="ai-scanner-title" onMouseDown={(event) => event.stopPropagation()}>
-            <div className="ai-scanner-chrome" aria-hidden="true"><i /><i /><i /><button type="button" onClick={() => setScannerOpen(false)} aria-label="Close AI scanner"><X size={17} /></button></div>
-            <div className="ai-scanner-header">
-              <span>AI MARKET MATRIX</span>
-              <h2 id="ai-scanner-title">Analysis Dashboard - Digit Scanner</h2>
+        <div className="ptx-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setScannerOpen(false); }}>
+          <section className="ptx-modal" role="dialog" aria-modal="true" aria-labelledby="ai-scanner-title" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="ptx-modal-bar"><span>PROTRADERS FX / DERIV LIVE SCAN</span><button className="ptx-close" type="button" onClick={() => setScannerOpen(false)} aria-label="Close market scanner"><X size={16} /></button></div>
+            <div className="ptx-modal-body">
+              <span className="ptx-modal-kicker">MARKET REVIEW · LIVE TICK SAMPLE</span>
+              <h2 id="ai-scanner-title">Market scan</h2>
+              <p className="ptx-modal-intro">Review the selected market and batch settings. Tick patterns are observations, not contract win odds.</p>
+              <div className="ptx-modal-grid">
+                <label><span>{tradeType === 'Rise/Fall' ? 'MARKET' : 'VOLATILITY MARKET'}</span><select disabled={executionState === 'executing'} value={activeMarket} onChange={(event) => setActiveMarket(event.target.value)}>{MARKET_DEFINITIONS.map(({ label, name, family }) => <option key={label} value={label} disabled={tradeType !== 'Rise/Fall' && family !== 'volatility'}>{name}</option>)}</select></label>
+                <label><span>STAKE · {currency}</span><input inputMode="decimal" disabled={executionState === 'executing'} value={stake} onChange={(event) => setStake(event.target.value)} /></label>
+                <label><span>MARTINGALE ×</span><input inputMode="decimal" disabled={executionState === 'executing'} value={martingale} onChange={(event) => setMartingale(event.target.value)} /></label>
+                <label><span>BULK ENTRIES</span><input inputMode="numeric" disabled={executionState === 'executing'} value={bulkTrades} onChange={(event) => setBulkTrades(event.target.value)} /></label>
+                <label><span>TAKE PROFIT · {currency}</span><input inputMode="decimal" disabled={executionState === 'executing'} value={bulkTakeProfit} onChange={(event) => setBulkTakeProfit(event.target.value)} /></label>
+                <label><span>STOP LOSS · {currency}</span><input inputMode="decimal" disabled={executionState === 'executing'} value={bulkStopLoss} onChange={(event) => setBulkStopLoss(event.target.value)} /></label>
+              </div>
+              <div className="ptx-scanner-market"><span>{activeQuote?.status === 'live' ? 'LIVE MARKET' : 'MARKET STATUS'}</span><b>{scannerState === 'complete' && selectedScannerResult ? selectedScannerResult.definition.name : activeDefinition.name} · {activeQuote?.status ?? 'connecting'}</b></div>
+              <div className="ptx-modal-status">
+                <div><span>{scannerState === 'complete' ? selectedScannerResult?.windowAgreement ? 'WINDOWS AGREE' : 'MIXED WINDOW REVIEW' : scannerState === 'scanning' ? 'SCANNING' : 'READY TO SCAN'}</span><strong>{scannerMessage}</strong></div>
+                <Sparkles size={20} aria-hidden="true" />
+              </div>
+              {scannerState === 'complete' && selectedScannerResult && <div className="ptx-best"><span>OBSERVED SAMPLE · NOT WIN ODDS</span><b>{selectedScannerResult.side}</b><em>{selectedScannerResult.observedShare.toFixed(1)}% full · {selectedScannerResult.recentObservedShare.toFixed(1)}% recent · {selectedScannerResult.sampleSize} ticks</em><small>{selectedScannerResult.rationale}</small></div>}
+              {scannerState === 'complete' && <div className="ptx-modal-digits" aria-label="Digit scan results">{scannerDigits.map(({ digit, percentage }) => <div key={digit} className={latestBulkDigit === String(digit) ? 'is-latest' : ''}><strong>{digit}</strong><span>{selectedScannerResult ? `${percentage.toFixed(1)}%` : '—'}</span></div>)}</div>}
+              {liveBatchTrades.length > 0 && <div className="ptx-results">
+                <div className="ptx-results-head"><span>ACTIVE BATCH · LATEST FIRST</span><b>{liveBatchTrades.length} ENTRIES</b></div>
+                {liveBatchTrades.slice(-5).reverse().map((trade, index) => {
+                  const tradeProfit = resolvedTradeProfit(trade);
+                  const tradeNumber = liveBatchTrades.length - index;
+                  return <div className="ptx-result-row" key={`scanner-${trade.contractId ?? 'pending'}-${tradeNumber}`}>
+                    <span><b>#{tradeNumber} · {tradeContractLabel(trade)}</b><small>E {formatTradePoint(trade.entrySpot)} · X {formatTradePoint(trade.exitSpot)}</small><TradeMoneyDetails trade={trade} fallbackCurrency={currency} /></span>
+                    <strong className={trade.orderStatusUnknown || trade.settlementPending ? 'is-pending' : tradeProfit !== null && tradeProfit < 0 ? 'is-loss' : ''}>{trade.orderStatusUnknown ? 'STATUS UNKNOWN' : trade.settlementPending ? 'PENDING' : `${formatSignedProfit(tradeProfit)} ${trade.currency ?? currency}`}</strong>
+                  </div>;
+                })}
+              </div>}
+              <TradeFigureStrip trades={bulkTransactions} currency={currency} />
+              {bulkTransactions.length > 0 && <div className="ptx-review-status" aria-label="Bulk transaction count">{bulkTransactions.length} settled or pending transactions recorded in this session.</div>}
+              {reviewState && <div className="ptx-review-status" role="status">{reviewState}</div>}
+              <div className="ptx-modal-action">
+                <button type="button" className={`ptx-button primary ${executionState === 'executing' ? 'is-stop' : ''}`} disabled={scannerState === 'scanning' && executionState !== 'executing'} onClick={(event) => { event.preventDefault(); if (executionState === 'executing') void handleExecuteAiBatch(); else if (scannerState === 'complete' && !autoTrader && selectedScannerResult?.hasSignal) void handleExecuteAiBatch(selectedScannerResult, true); else scanMarkets(); }} data-testid="bulk-scan-or-stop">{scannerState === 'scanning' ? 'SCANNING…' : executionState === 'executing' ? 'STOP AFTER CURRENT TRADE' : scannerState === 'complete' && !autoTrader && selectedScannerResult?.hasSignal ? 'RUN BOT' : scannerState === 'complete' ? 'SCAN AGAIN' : 'SCAN MARKET'}</button>
+              </div>
             </div>
-            <div className="ai-scanner-inputs">
-               <label><span>VOLATILITY MARKET</span><select value={activeMarket} onChange={(event) => setActiveMarket(event.target.value)}>{VOLATILITY_DEFINITIONS.map(({ label }) => <option key={label} value={label}>{label}</option>)}</select></label>
-              <label><span>STAKE</span><input inputMode="decimal" value={stake} onChange={(event) => setStake(event.target.value)} /></label>
-                <label><span>MARTINGALE ×</span><input inputMode="decimal" value={martingale} onChange={(event) => setMartingale(event.target.value)} /></label>
-              <label><span>NO. OF BULK TRADES</span><input inputMode="numeric" value={bulkTrades} onChange={(event) => setBulkTrades(event.target.value)} /></label>
-              <label><span>TAKE PROFIT</span><input inputMode="decimal" value={bulkTakeProfit} onChange={(event) => setBulkTakeProfit(event.target.value)} /></label>
-              <label><span>STOP LOSS</span><input inputMode="decimal" value={bulkStopLoss} onChange={(event) => setBulkStopLoss(event.target.value)} /></label>
-            </div>
-            <div className="ai-scanner-markets"><span>PREFERRED MARKET</span><b>{scannerState === 'complete' && selectedScannerResult ? selectedScannerResult.definition.name : activeDefinition.name}</b></div>
-            <div className={`ai-scanner-status ${scannerState === 'scanning' ? 'is-scanning' : ''}`}>
-              <div><span>{scannerState === 'complete' ? 'SCAN COMPLETE' : scannerState === 'scanning' ? 'SCANNING' : 'STANDBY'}</span><strong>{scannerState === 'complete' && selectedScannerResult ? `${selectedScannerResult.definition.name} · ${selectedScannerResult.side}` : scannerState === 'scanning' ? 'Reading live market pressure...' : 'Ready to scan for last-four digit pressure.'}</strong></div>
-              <div className="ai-orb"><Sparkles size={17} /><b>AI</b></div>
-            </div>
-            {scannerState === 'complete' && selectedScannerResult && <div className="ai-scanner-best"><span>DIGIT SIGNAL</span><b>{selectedScannerResult.side}</b><em>{selectedScannerResult.confidence.toFixed(1)}% confidence · {selectedScannerResult.sampleSize} ticks</em></div>}
-            {scannerState === 'complete' && <div className="ai-scanner-digits" aria-label="Digit scan results">{scannerDigits.map(({ digit, percentage }) => <div key={digit} className={latestBulkDigit === String(digit) ? 'is-latest' : ''}><strong>{digit}</strong><span>{percentage.toFixed(1)}%</span></div>)}</div>}
-             <TradeFigureStrip trades={bulkTransactions} currency={currency} />
-            {bulkTransactions.length > 0 && <div className="ai-scanner-history" aria-label="Bulk bot transaction history">
-              <div><span>TRANSACTIONS</span><b>{bulkTransactions.length}</b><span>P/L</span><b className={totalTradeProfit(bulkTransactions) !== null && totalTradeProfit(bulkTransactions)! < 0 ? 'is-loss' : 'is-win'}>{formatSignedProfit(totalTradeProfit(bulkTransactions))}</b></div>
-              {bulkTransactions.slice().reverse().map((trade, index) => <div className="ai-scanner-history-row" key={`${trade.contractId ?? 'bulk-run'}-${index}`}><strong>{bulkTransactions.length - index}</strong><span>{(trade.buyPrice ?? trade.stake ?? 0).toFixed(2)} {trade.currency ?? currency}<small className="trade-row-points">E {formatTradePoint(trade.entrySpot)} · X {formatTradePoint(trade.exitSpot)}</small></span><b className={resolvedTradeProfit(trade) !== null && resolvedTradeProfit(trade)! < 0 ? 'is-loss' : 'is-win'}>{formatSignedProfit(resolvedTradeProfit(trade))}</b></div>)}
-            </div>}
-            {reviewState && <div className="ai-scanner-execution-state" role="status">{reviewState}</div>}
-              <button type="button" className={`ai-scanner-scan-button ${executionState === 'executing' ? 'is-stop' : ''}`} onClick={(event) => { event.preventDefault(); if (executionState === 'executing') void handleExecuteAiBatch(); else if (scannerState === 'complete' && !autoTrader) void handleExecuteAiBatch(); else scanMarkets(); }}>{scannerState === 'scanning' ? 'SCANNING…' : executionState === 'executing' ? '■ STOP BOT' : scannerState === 'complete' && !autoTrader ? 'RUN BOT' : scannerState === 'complete' ? 'SCAN AGAIN' : 'SCAN MARKET'}</button>
           </section>
         </div>
       )}
@@ -2625,6 +3818,7 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
 }
 
 function RecoveryBotView({ accountMode, currency, balance, activeMarket, marketQuotes, onTradeSettled }: { accountMode: 'DEMO' | 'REAL'; currency: string; balance: number | null; activeMarket: string; marketQuotes: Record<string, MarketQuote>; onTradeSettled: () => Promise<void> }) {
+  const { displayCurrency, rate } = useCurrencyDisplay();
   const [running, setRunning] = useState(false);
   const [proposalState, setProposalState] = useState<'idle' | 'requesting' | 'ready' | 'error'>('idle');
   const [proposalMessage, setProposalMessage] = useState('');
@@ -2696,6 +3890,7 @@ function RecoveryBotView({ accountMode, currency, balance, activeMarket, marketQ
     let lossStreak = 0;
     let totalPlaced = 0;
     const settledTrades: ExecutedTrade[] = [];
+    let pendingSettlementTrade: ExecutedTrade | null = null;
     for (let runIndex = 0; runIndex < requestedRuns; runIndex += 1) {
       if (stopRequestedRef.current) {
         stopReason = 'Bot stopped by user.';
@@ -2718,18 +3913,29 @@ function RecoveryBotView({ accountMode, currency, balance, activeMarket, marketQ
           marketName: selectedDefinition.name,
           mode: accountMode,
         };
+        if (settledTrade.settlementPending || settledTrade.orderStatusUnknown) {
+          pendingSettlementTrade = settledTrade;
+          totalPlaced += settledTrade.stake ?? settledTrade.buyPrice ?? tradeAmount;
+          settledTrades.push(settledTrade);
+          setLastTrade(settledTrade);
+          setTransactions((current) => [...current, settledTrade]);
+          await onTradeSettled();
+          setSummaryTab('Transactions');
+          setJournalEntries((current) => [...current, `Run ${runIndex + 1}/${requestedRuns} · ${tradeContractLabel(settledTrade)} · ${selectedDefinition.name} · entry ${formatTradePoint(settledTrade.entrySpot)} → exit ${formatTradePoint(settledTrade.exitSpot)} · stake ${formatTradePoint(settledTrade.stake ?? settledTrade.buyPrice)} ${settledTrade.currency ?? currency} · net P/L pending settlement`]);
+          break;
+        }
         const exactProfit = resolvedTradeProfit(settledTrade);
-        if (exactProfit === null) throw new Error('Deriv did not return an exact settled P/L.');
+        if (exactProfit === null) throw new Error('Deriv did not return an exact settled net profit/loss.');
         completed += 1;
         cumulativeProfit += exactProfit;
-        totalPlaced += settledTrade.buyPrice ?? settledTrade.stake ?? tradeAmount;
+        totalPlaced += settledTrade.stake ?? settledTrade.buyPrice ?? tradeAmount;
         lossStreak = exactProfit < 0 ? lossStreak + 1 : 0;
         settledTrades.push(settledTrade);
         setLastTrade(settledTrade);
         setTransactions((current) => [...current, settledTrade]);
         await onTradeSettled();
         setSummaryTab('Transactions');
-        setJournalEntries((current) => [...current, `Run ${runIndex + 1}/${requestedRuns} · ${formatSignedProfit(resolvedTradeProfit(settledTrade))} ${settledTrade.currency ?? currency} · ${selectedDefinition.name}`]);
+        setJournalEntries((current) => [...current, `Run ${runIndex + 1}/${requestedRuns} · ${tradeContractLabel(settledTrade)} · ${selectedDefinition.name} · entry ${formatTradePoint(settledTrade.entrySpot)} → exit ${formatTradePoint(settledTrade.exitSpot)} · stake ${formatTradePoint(settledTrade.stake ?? settledTrade.buyPrice)} ${settledTrade.currency ?? currency} · net P/L ${formatSignedProfit(resolvedTradeProfit(settledTrade))} ${settledTrade.currency ?? currency}`]);
         if (takeProfitLimit > 0 && cumulativeProfit >= takeProfitLimit) {
           stopReason = `Take Profit reached at ${cumulativeProfit.toFixed(2)} ${currency}.`;
           break;
@@ -2753,14 +3959,23 @@ function RecoveryBotView({ accountMode, currency, balance, activeMarket, marketQ
     setRunning(false);
     stopRequestedRef.current = false;
     const batchProfit = cumulativeProfit;
-    if (completed > 0) setBatchResult({ profit: batchProfit, amount: totalPlaced, trades: completed, currency, tradeResults: settledTrades });
+    if (completed > 0 || pendingSettlementTrade) setBatchResult({
+      profit: batchProfit,
+      amount: totalPlaced,
+      trades: completed + (pendingSettlementTrade ? 1 : 0),
+      currency,
+      settlementPending: Boolean(pendingSettlementTrade),
+      orderStatusUnknown: Boolean(pendingSettlementTrade?.orderStatusUnknown),
+      tradeResults: settledTrades,
+    });
     setProposalState(failed ? 'error' : 'ready');
-    setProposalMessage(failed ? `${completed}/${requestedRuns} runs completed before execution stopped.` : completed > 0 ? `${completed}/${requestedRuns} settled · ${formatSignedProfit(batchProfit)}` : stopReason || `${completed}/${requestedRuns} runs completed.`);
+    setProposalMessage(pendingSettlementTrade
+      ? `${unresolvedTradeMessage(pendingSettlementTrade)} The bot stopped to prevent another order.`
+      : failed ? `${completed}/${requestedRuns} runs completed before execution stopped.` : completed > 0 ? `${completed}/${requestedRuns} settled · ${formatSignedProfit(batchProfit)}` : stopReason || `${completed}/${requestedRuns} runs completed.`);
   };
   const resultCurrency = transactions.at(-1)?.currency ?? currency;
-   const resultStake = transactions.reduce((total, trade) => total + (trade.buyPrice ?? trade.stake ?? 0), 0);
+   const resultStake = transactions.reduce((total, trade) => total + (trade.stake ?? trade.buyPrice ?? 0), 0);
   const resultProfit = totalTradeProfit(transactions);
-   const resultPayout = transactions.reduce((total, trade) => total + (trade.payout ?? Math.max(0, (trade.buyPrice ?? trade.stake ?? 0) + (resolvedTradeProfit(trade) ?? 0))), 0);
   const resultRuns = transactions.length;
   const resultLost = transactions.filter((trade) => trade.result === 'lost').length;
   const resultWon = transactions.filter((trade) => trade.result === 'won').length;
@@ -2772,11 +3987,11 @@ function RecoveryBotView({ accountMode, currency, balance, activeMarket, marketQ
         <button type="button">Risk Disclaimer</button>
         <button type="button" className="cashier-button">Cashier</button>
         <button type="button" className="telegram-button">Join Telegram</button>
-         <a className="whatsapp-button" href={WHATSAPP_SUPPORT_URL} target="_blank" rel="noopener noreferrer" aria-label="Join the ProTraders WhatsApp support group">WhatsApp Group</a>
+         <a className="whatsapp-button" href={WHATSAPP_GROUP_URL} target="_blank" rel="noopener noreferrer" aria-label="Join the ProTraders WhatsApp support group">WhatsApp Group</a>
         <span className="recovery-spacer" />
         <span className="recovery-live-quote"><i /> {selectedDefinition.name} {formatMarketPrice(selectedQuote?.price ?? null, selectedQuote?.pipSize ?? 2)}</span>
-        <span className="recovery-currency">USD⌄</span>
-        <strong className="recovery-balance">◉ {balance === null ? '—' : `${currency} ${balance.toFixed(2)}`}</strong>
+        <span className="recovery-currency">{displayCurrency === 'USD' ? 'USD' : 'KSh'}⌄</span>
+        <strong className="recovery-balance">◉ {balance === null ? '—' : formatMoneyForDisplay(balance, currency, displayCurrency, rate)}</strong>
         <span className="recovery-demo">{accountMode}</span>
         <button type="button" className="transfer-button">Transfer</button>
       </div>
@@ -2834,26 +4049,26 @@ function RecoveryBotView({ accountMode, currency, balance, activeMarket, marketQ
             <div className="recovery-empty"><p>When you’re ready to trade, hit <strong>Run Bot</strong>.<br />You’ll be able to track your bot’s<br />performance here.</p></div>
           </>}
           {summaryTab === 'Transactions' && <div className="recovery-transactions">
-             <div className="recovery-transaction-head"><span>TRANSACTION</span><span>ENTRY</span><span>EXIT</span><span>P/L</span></div>
+             <div className="recovery-transaction-head"><span>TRANSACTION</span><span>ENTRY</span><span>EXIT</span><span>NET P/L</span></div>
             {transactions.length ? transactions.slice().reverse().map((trade, index) => <div className="recovery-transaction-row" key={`${trade.contractId ?? 'run'}-${index}`}>
                <span className="recovery-transaction-type"><i className={resolvedTradeProfit(trade) !== null && resolvedTradeProfit(trade)! < 0 ? 'is-loss' : 'is-win'} /><strong>#{transactions.length - index} · {tradeContractLabel(trade)}</strong></span>
                <span className="recovery-spots"><span><i className="spot-entry" />{formatTradePoint(trade.entrySpot)}</span></span>
                <span className="recovery-spots"><span><i className="spot-exit" />{formatTradePoint(trade.exitSpot)}</span></span>
-              <span className="recovery-buy-pnl"><span>{formatTradePoint(trade.buyPrice ?? trade.stake)} {trade.currency ?? resultCurrency}</span><em className={resolvedTradeProfit(trade) !== null && resolvedTradeProfit(trade)! < 0 ? 'is-loss' : 'is-win'}>{formatSignedProfit(resolvedTradeProfit(trade))}</em></span>
+              <span className="recovery-buy-pnl"><span>Stake {formatMoneyForDisplay(trade.stake ?? trade.buyPrice, trade.currency ?? resultCurrency, displayCurrency, rate)}</span><em className={resolvedTradeProfit(trade) !== null && resolvedTradeProfit(trade)! < 0 ? 'is-loss' : 'is-win'}>{formatSignedMoneyForDisplay(resolvedTradeProfit(trade), trade.currency ?? resultCurrency, displayCurrency, rate)}</em></span>
             </div>) : <div className="recovery-transaction-empty">No bot transactions yet.</div>}
             <a className="recovery-whats-this" href="#recovery-transactions-help">What's this?</a>
           </div>}
           {summaryTab === 'Journal' && <div className="recovery-tab-content"><strong>Journal</strong>{journalEntries.length ? journalEntries.slice(-5).map((entry, index) => <p key={`${entry}-${index}`}>{entry}</p>) : <p>Your bot activity journal will appear here after you run the bot.</p>}</div>}
-           {summaryTab === 'Results' && <div className="recovery-tab-content"><strong>Results</strong><div className="recovery-figure-results"><b className={resultProfit !== null && resultProfit < 0 ? 'is-loss' : 'is-win'}>{formatSignedProfit(resultProfit)} {resultCurrency}</b><span>{resultPayout.toFixed(2)} {resultCurrency}</span><span>{resultRuns}</span><span>{resultWon}</span><span>{resultLost}</span></div>{lastTrade && <div className="recovery-entry-exit-card"><span><small>LAST ENTRY</small><b>{formatTradePoint(lastTrade.entrySpot)}</b></span><span><small>LAST EXIT</small><b>{formatTradePoint(lastTrade.exitSpot)}</b></span></div>}</div>}
+           {summaryTab === 'Results' && <div className="recovery-tab-content"><strong>Results</strong><div className="recovery-figure-results"><b className={resultProfit !== null && resultProfit < 0 ? 'is-loss' : 'is-win'}>{formatSignedMoneyForDisplay(resultProfit, resultCurrency, displayCurrency, rate)}</b><span>{tradeContractSummary(transactions)}</span><span>{resultRuns}</span><span>{resultWon}</span><span>{resultLost}</span></div>{lastTrade && <div className="recovery-entry-exit-card"><span><small>LAST ENTRY</small><b>{formatTradePoint(lastTrade.entrySpot)}</b></span><span><small>LAST EXIT</small><b>{formatTradePoint(lastTrade.exitSpot)}</b></span></div>}</div>}
           {summaryTab !== 'Journal' && <div className="recovery-metrics">
             {[
-              ['Total stake', `${resultStake.toFixed(2)} ${resultCurrency}`],
-              ['Total payout', `${resultPayout.toFixed(2)} ${resultCurrency}`],
+              ['Total stake', formatMoneyForDisplay(resultStake, resultCurrency, displayCurrency, rate)],
+              ['Contract', tradeContractSummary(transactions)],
               ['No. of runs', String(resultRuns)],
               ['Contracts lost', String(resultLost)],
               ['Contracts won', String(resultWon)],
-              ['Total profit/loss', `${formatSignedProfit(resultProfit)} ${resultCurrency}`],
-            ].map(([label, value]) => <div key={label}><strong>{label}</strong><span className={label === 'Total profit/loss' && resultProfit !== null && resultProfit < 0 ? 'is-loss' : label === 'Total profit/loss' ? 'is-win' : ''}>{value}</span></div>)}
+              ['Total net profit/loss', formatSignedMoneyForDisplay(resultProfit, resultCurrency, displayCurrency, rate)],
+            ].map(([label, value]) => <div key={label}><strong>{label}</strong><span className={label === 'Total net profit/loss' && resultProfit !== null && resultProfit < 0 ? 'is-loss' : label === 'Total net profit/loss' ? 'is-win' : ''}>{value}</span></div>)}
           </div>}
            <button type="button" className="recovery-reset" onClick={() => { stopRequestedRef.current = true; setRunning(false); setProposalState('idle'); setProposalMessage(''); setLastTrade(null); setTransactions([]); setJournalEntries([]); setSummaryTab('Summary'); setStake('10'); setRunCount('1'); setNumberOfTicks('1'); setMartingale('2'); setTakeProfit('50'); setStopLoss('500'); setConsecutiveLosses('5'); }}>Reset</button>
         </aside>
@@ -3110,6 +4325,7 @@ function FreeBotsView({ accountMode, currency, balance, activeMarket, marketQuot
     let totalPlaced = 0;
     let scannerFiveBarrier = 9;
     const settledTrades: ExecutedTrade[] = [];
+    let pendingSettlementTrade: ExecutedTrade | null = null;
     for (let runIndex = 0; runIndex < requestedRuns; runIndex += 1) {
       if (stopRequestedRef.current) {
         stopReason = 'Bot stopped by user.';
@@ -3133,11 +4349,19 @@ function FreeBotsView({ accountMode, currency, balance, activeMarket, marketQuot
           marketName: executionDefinition?.name ?? selectedDefinition.name,
           mode: accountMode,
         };
+        if (settledTrade.settlementPending || settledTrade.orderStatusUnknown) {
+          pendingSettlementTrade = settledTrade;
+          totalPlaced += settledTrade.stake ?? settledTrade.buyPrice ?? tradeAmount;
+          settledTrades.push(settledTrade);
+          setBotTransactions((current) => [...current, settledTrade]);
+          await onTradeSettled();
+          break;
+        }
         const exactProfit = resolvedTradeProfit(settledTrade);
-        if (exactProfit === null) throw new Error('Deriv did not return an exact settled P/L.');
+        if (exactProfit === null) throw new Error('Deriv did not return an exact settled net profit/loss.');
         completed += 1;
         cumulativeProfit += exactProfit;
-        totalPlaced += settledTrade.buyPrice ?? settledTrade.stake ?? tradeAmount;
+        totalPlaced += settledTrade.stake ?? settledTrade.buyPrice ?? tradeAmount;
         lossStreak = exactProfit < 0 ? lossStreak + 1 : 0;
         if (selectedBotId === 'scanner5') {
           scannerFiveBarrier = exactProfit >= 0 ? 8 : scannerFiveBarrier === 9 || scannerFiveBarrier === 8 ? 6 : 5;
@@ -3166,8 +4390,18 @@ function FreeBotsView({ accountMode, currency, balance, activeMarket, marketQuot
     }
     setBotRunning(false);
     stopRequestedRef.current = false;
-    if (completed > 0) setBatchResult({ profit: cumulativeProfit, amount: totalPlaced, trades: completed, currency, tradeResults: settledTrades });
-    setBotStatus(failed ? `${completed}/${requestedRuns} settled · ${stopReason}` : completed > 0 ? formatSignedProfit(cumulativeProfit) : stopReason || `${completed}/${requestedRuns} runs completed.`);
+    if (completed > 0 || pendingSettlementTrade) setBatchResult({
+      profit: cumulativeProfit,
+      amount: totalPlaced,
+      trades: completed + (pendingSettlementTrade ? 1 : 0),
+      currency,
+      settlementPending: Boolean(pendingSettlementTrade),
+      orderStatusUnknown: Boolean(pendingSettlementTrade?.orderStatusUnknown),
+      tradeResults: settledTrades,
+    });
+    setBotStatus(pendingSettlementTrade
+      ? `${unresolvedTradeMessage(pendingSettlementTrade)} The bot stopped to prevent another order.`
+      : failed ? `${completed}/${requestedRuns} settled · ${stopReason}` : completed > 0 ? formatSignedProfit(cumulativeProfit) : stopReason || `${completed}/${requestedRuns} runs completed.`);
   };
 
   if (!selectedBotId) {
@@ -3267,7 +4501,7 @@ function FreeBotsView({ accountMode, currency, balance, activeMarket, marketQuot
                if (!botTransactions.length) return;
                setBatchResult({
                  profit: totalTradeProfit(botTransactions) ?? 0,
-                 amount: botTransactions.reduce((total, trade) => total + (trade.buyPrice ?? trade.stake ?? 0), 0),
+                 amount: botTransactions.reduce((total, trade) => total + (trade.stake ?? trade.buyPrice ?? 0), 0),
                  trades: botTransactions.length,
                  currency,
                  tradeResults: botTransactions,
@@ -3408,7 +4642,7 @@ function FreeBotsView({ accountMode, currency, balance, activeMarket, marketQuot
            if (!botTransactions.length) return;
            setBatchResult({
              profit: totalTradeProfit(botTransactions) ?? 0,
-             amount: botTransactions.reduce((total, trade) => total + (trade.buyPrice ?? trade.stake ?? 0), 0),
+             amount: botTransactions.reduce((total, trade) => total + (trade.stake ?? trade.buyPrice ?? 0), 0),
              trades: botTransactions.length,
              currency,
              tradeResults: botTransactions,
@@ -3510,8 +4744,11 @@ function LegacyAuthPage({ mode }: { mode: 'login' | 'signup' }) {
 
 function AuthPage({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-[100dvh] items-center justify-center bg-[#0d1617] px-4 py-10">
-      <div className="w-full max-w-[460px]">{children}</div>
+    <div className="auth-page-shell">
+      <div className="auth-page-content">
+        <div className="w-full max-w-[460px]">{children}</div>
+      </div>
+      <footer className="auth-page-footer"><RiskDisclaimerNote /></footer>
     </div>
   );
 }
@@ -3537,6 +4774,9 @@ function Account() {
 }
 
 function LegacyRoutes() {
+  const [introComplete, setIntroComplete] = useState(false);
+  const completeIntro = useCallback(() => setIntroComplete(true), []);
+  if (!introComplete) return <PublicLoadingView onComplete={completeIntro} />;
   return (
     <LegacyAuthProvider>
       <Router />
@@ -3550,15 +4790,6 @@ function RoutedErrorBoundary({ children }: { children: ReactNode }) {
 }
 
 function App() {
-  useEffect(() => {
-    const robots = document.querySelector('meta[name="robots"]');
-    if (!robots) return;
-    const path = window.location.pathname.replace(/\/+$/, '') || '/';
-    const hasWorkspaceView = new URLSearchParams(window.location.search).has('view');
-    const isPrivateWorkspacePath = path !== '/' || hasWorkspaceView;
-    robots.setAttribute('content', isPrivateWorkspacePath ? 'noindex, nofollow, noarchive' : 'index, follow');
-  }, []);
-
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>

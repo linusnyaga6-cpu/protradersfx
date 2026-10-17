@@ -1,0 +1,75 @@
+/* Every workspace shares the same swipeable tool rail, including on phones. */
+.terminal-shell {
+  grid-template-rows: 52px auto 31px minmax(0, 1fr) auto;
+}
+
+.terminal-shell .terminal-main,
+.terminal-shell .market-strip {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.terminal-shell .terminal-nav {
+  display: block;
+  height: auto;
+  min-width: 0;
+}
+
+.terminal-shell .terminal-nav-scroll {
+  display: flex;
+  flex-wrap: nowrap;
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.terminal-shell .terminal-nav-item {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.terminal-shell [role="tablist"]:not(.terminal-nav),
+.terminal-shell :is(.recovery-nav, .margic-nav, .tool-placeholder-tabs) {
+  display: flex;
+  flex-wrap: nowrap;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.terminal-shell [role="tablist"]:not(.terminal-nav) > *,
+.terminal-shell :is(.recovery-nav, .margic-nav, .tool-placeholder-tabs) > * {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.terminal-shell :is(.terminal-nav-scroll, [role="tablist"]:not(.terminal-nav), .market-strip, .recovery-nav, .margic-nav, .tool-placeholder-tabs),
+.dashboard-horizontal-lane {
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #8c9bb4 transparent;
+  -webkit-overflow-scrolling: touch;
+}
+
+.terminal-shell .terminal-nav-scroll::-webkit-scrollbar {
+  display: block;
+  height: 6px;
+}
+
+.terminal-shell .terminal-nav-scroll::-webkit-scrollbar-thumb {
+  background: #8c9bb4;
+  border-radius: 6px;
+}
+
+.terminal-shell .terminal-nav-scroll:focus-visible {
+  outline: 2px solid #477af3;
+  outline-offset: -2px;
+}
+
+.terminal-shell :is(.bot-transaction-table, .bulk-history-table, .ai-batch-result-table, .deriv-pro-bot-table-wrap, .ptx-table-wrap) {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}

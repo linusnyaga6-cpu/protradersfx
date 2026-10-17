@@ -1,0 +1,44 @@
+/* Footer content gets its own space, including when the risk text is expanded. */
+.terminal-shell {
+  grid-template-rows: 52px 38px 31px minmax(0, 1fr) auto;
+}
+
+.terminal-footer .risk-disclaimer-note,
+.public-landing-footer .risk-disclaimer-note {
+  order: 3;
+}
+
+@media (max-width: 700px) {
+  .terminal-shell,
+  .terminal-shell.is-manual-mode {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  }
+
+  .terminal-shell .terminal-main {
+    overflow: visible;
+  }
+
+  .terminal-footer,
+  .public-landing-footer {
+    position: static;
+    align-self: end;
+    align-items: flex-start;
+    justify-content: flex-start;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    height: auto;
+    gap: 10px;
+    padding-bottom: max(14px, env(safe-area-inset-bottom));
+  }
+
+  .terminal-footer .risk-disclaimer-note,
+  .public-landing-footer .risk-disclaimer-note {
+    flex: 0 0 auto;
+    width: 100%;
+    min-width: 0;
+    margin-top: 2px;
+  }
+}
