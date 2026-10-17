@@ -19,6 +19,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import { LegacyAuthProvider, useAppAuth } from '@/auth';
 import { useWorkspaceNavigation } from './hooks/useWorkspaceNavigation';
+import { analyzeBulkMarket, MIN_BULK_SCAN_TICKS, type BulkScanResult } from './lib/bulk-trader-scanner';
 import {
   executeDerivTrade,
   formatDerivContractType,
@@ -34,7 +35,7 @@ import {
 } from './lib/deriv-contracts';
 import { manualEntryBatchDecision } from './lib/manual-entry-batch';
 import { startPublicIntro } from './lib/public-intro';
-import { settledTradeNetProfit, sumSettledTradeNetProfit } from './lib/trade-financials';
+import { normalizeTradeExecution, settledTradeNetProfit, sumSettledTradeNetProfit } from './lib/trade-financials';
 import {
   CurrencyDisplayContext,
   formatMoneyForDisplay,
@@ -79,7 +80,6 @@ const DERIV_REFERRAL_URL = 'https://t.deriv.link?t=SSJBZ9FQTVP8';
 const SUPPORT_PHONE_DISPLAY = '0793614024';
 const SUPPORT_PHONE_LINK = 'tel:+254793614024';
 const SUPPORT_PHONE_INTERNATIONAL = SUPPORT_PHONE_DISPLAY.replace(/\D/g, '').replace(/^0/, '254');
-const LIVE_TRADING_WHATSAPP_URL = `https://wa.me/${SUPPORT_PHONE_INTERNATIONAL}?text=${encodeURIComponent('Hi, I would like to book a live trading session. My real USD Deriv account balance is above $100.')}`;
 const WHATSAPP_SUPPORT_URL = `https://wa.me/${SUPPORT_PHONE_INTERNATIONAL}?text=${encodeURIComponent('Hi, I need support with ProTraders FX.')}`;
 const WHATSAPP_GROUP_URL = 'https://chat.whatsapp.com/CSjckmOKEZgBGgAoKacPNt';
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -160,14 +160,7 @@ function nextMartingaleStake(baseStake: number, multiplier: number, consecutiveL
 }
 
 function normalizeExecutedTrade(trade: ExecutedTrade): ExecutedTrade {
-  const normalized: ExecutedTrade = {
-    ...trade,
-    buyPrice: finiteNumber(trade.buyPrice) ?? undefined,
-    stake: finiteNumber(trade.stake) ?? undefined,
-    payout: finiteNumber(trade.payout),
-    profit: finiteNumber(trade.profit),
-  };
-  return { ...normalized, profit: resolvedTradeProfit(normalized) };
+  return normalizeTradeExecution(trade);
 }
 
 function unresolvedTradeMessage(trade: ExecutedTrade) {
@@ -915,152 +908,6 @@ type MarketAiResult = {
   score: number;
   bias: 'RISE' | 'FALL' | 'WAIT';
 };
-type BulkScanResult = {
-  definition: MarketDefinition;
-  quote: MarketQuote;
-  side: 'Even' | 'Odd' | 'Rise' | 'Fall' | 'Over' | 'Under';
-  contractType: DerivContractType;
-  observedShare: number;
-  recentObservedShare: number;
-  windowAgreement: boolean;
-  hasSignal: boolean;
-  sampleSize: number;
-  rationale: string;
-  barrier?: number;
-};
-
-type BulkScanAnalysis = {
-  result: BulkScanResult | null;
-  digitDistribution: Array<{ digit: number; percentage: number }>;
-  sampleSize: number;
-  message: string;
-};
-
-const MIN_BULK_SCAN_TICKS = 20;
-const MAX_BULK_TICK_AGE_MS = 15_000;
-
-type BulkWindowSummary = {
-  side: BulkScanResult['side'];
-  observedShare: number;
-  hasActivity: boolean;
-  rationale: string;
-};
-
-function summarizeBulkWindow(
-  ticks: number[],
-  digits: number[],
-  tradeType: 'Even/Odd' | 'Rise/Fall' | 'Over/Under',
-): BulkWindowSummary {
-  if (tradeType === 'Rise/Fall') {
-    const changes = ticks.slice(1).map((tick, index) => tick - ticks[index]);
-    const rising = changes.filter((change) => change > 0).length;
-    const falling = changes.filter((change) => change < 0).length;
-    const directional = rising + falling;
-    const side = rising >= falling ? 'Rise' : 'Fall';
-    return {
-      side,
-      observedShare: directional ? (Math.max(rising, falling) / directional) * 100 : 0,
-      hasActivity: directional > 0 && rising !== falling,
-      rationale: `Up ${rising}/${directional} and down ${falling}/${directional} non-flat moves`,
-    };
-  }
-
-  if (tradeType === 'Over/Under') {
-    const over = digits.filter((digit) => digit > 4).length;
-    const under = digits.filter((digit) => digit < 4).length;
-    const comparableDigits = over + under;
-    const side = over > under ? 'Over' : 'Under';
-    return {
-      side,
-      observedShare: comparableDigits ? (Math.max(over, under) / comparableDigits) * 100 : 0,
-      hasActivity: comparableDigits > 0 && over !== under,
-      rationale: `${over} digits above 4 and ${under} below 4; digit 4 is neutral`,
-    };
-  }
-
-  const even = digits.filter((digit) => digit % 2 === 0).length;
-  const odd = digits.length - even;
-  return {
-    side: even >= odd ? 'Even' : 'Odd',
-    observedShare: digits.length ? (Math.max(even, odd) / digits.length) * 100 : 0,
-    hasActivity: even !== odd,
-    rationale: `${even} even and ${odd} odd digits`,
-  };
-}
-
-function analyzeBulkMarket(
-  definition: MarketDefinition,
-  quote: MarketQuote | undefined,
-  tradeType: 'Even/Odd' | 'Rise/Fall' | 'Over/Under',
-  requestedWindow: number,
-): BulkScanAnalysis {
-  const windowSize = Math.max(MIN_BULK_SCAN_TICKS, Math.min(999, Math.floor(requestedWindow) || 120));
-  const ticks = (quote?.ticks ?? []).filter(Number.isFinite).slice(-windowSize);
-  const digits = ticks.map((tick) => Number(formatMarketPrice(tick, quote?.pipSize ?? 2).replace(/\D/g, '').slice(-1)))
-    .filter((digit) => Number.isInteger(digit) && digit >= 0 && digit <= 9);
-  const counts = Array.from({ length: 10 }, () => 0);
-  digits.forEach((digit) => { counts[digit] += 1; });
-  const digitDistribution = counts.map((count, digit) => ({
-    digit,
-    percentage: digits.length ? (count / digits.length) * 100 : 0,
-  }));
-  const sampleSize = ticks.length;
-  const tickAge = quote?.lastTickAt === null || quote?.lastTickAt === undefined
-    ? Number.POSITIVE_INFINITY
-    : Date.now() - quote.lastTickAt;
-  if (quote?.status !== 'live' || tickAge > MAX_BULK_TICK_AGE_MS) {
-    return { result: null, digitDistribution, sampleSize, message: `Waiting for a fresh live Deriv tick on ${definition.name}.` };
-  }
-  if (sampleSize < windowSize || sampleSize < MIN_BULK_SCAN_TICKS) {
-    return {
-      result: null,
-      digitDistribution,
-      sampleSize,
-      message: `Need ${windowSize} live ticks for this scan window; received ${sampleSize}.`,
-    };
-  }
-
-  const overall = summarizeBulkWindow(ticks, digits, tradeType);
-  const splitIndex = Math.floor(ticks.length / 2);
-  const firstHalf = summarizeBulkWindow(ticks.slice(0, splitIndex), digits.slice(0, splitIndex), tradeType);
-  const recentHalf = summarizeBulkWindow(ticks.slice(splitIndex), digits.slice(splitIndex), tradeType);
-  const windowAgreement = firstHalf.hasActivity && recentHalf.hasActivity &&
-    firstHalf.side === recentHalf.side && overall.side === recentHalf.side;
-  const side = overall.side;
-  let contractType: DerivContractType;
-  let barrier: number | undefined;
-  if (tradeType === 'Rise/Fall') {
-    contractType = side === 'Rise' ? 'CALL' : 'PUT';
-  } else if (tradeType === 'Over/Under') {
-    contractType = side === 'Over' ? 'DIGITOVER' : 'DIGITUNDER';
-    barrier = 4;
-  } else {
-    contractType = side === 'Even' ? 'DIGITEVEN' : 'DIGITODD';
-  }
-  const hasSignal = windowAgreement;
-  const rationale = `${overall.rationale}. First half: ${firstHalf.side} ${firstHalf.observedShare.toFixed(1)}%; recent half: ${recentHalf.side} ${recentHalf.observedShare.toFixed(1)}%.`;
-  return {
-    result: {
-      definition,
-      quote: quote!,
-      side,
-      contractType,
-      observedShare: overall.observedShare,
-      recentObservedShare: recentHalf.observedShare,
-      windowAgreement,
-      hasSignal,
-      sampleSize,
-      rationale,
-      barrier,
-    },
-    digitDistribution,
-    sampleSize,
-    message: hasSignal
-      ? `${definition.name}: both halves show ${side} in ${sampleSize} live ticks. This describes the sample; it is not a forecast.`
-      : `${definition.name}: the two halves do not agree in ${sampleSize} live ticks. No automatic entry is available.`,
-  };
-}
-
 type FloatingDigitRecommendation = {
   side: 'Over' | 'Under';
   contractType: 'DIGITOVER' | 'DIGITUNDER';
@@ -1138,6 +985,8 @@ function getFloatingScanResult(definition: MarketDefinition, quote?: MarketQuote
   const [trades, setTrades] = useState<ExecutedTrade[]>([]);
   const [batchResult, setBatchResult] = useState<BatchResult | null>(null);
   const stopRequestedRef = useRef(false);
+  const floatingExecutionLockRef = useRef(false);
+  useEffect(() => () => { stopRequestedRef.current = true; }, []);
   const [position, setPosition] = useState(() => ({
     x: Math.max(16, window.innerWidth - 82),
     y: Math.max(100, window.innerHeight - 150),
@@ -1164,7 +1013,7 @@ function getFloatingScanResult(definition: MarketDefinition, quote?: MarketQuote
   }, []);
 
   const executeBestMarket = async (result: FloatingScanResult) => {
-    if (executionState === 'executing') {
+    if (floatingExecutionLockRef.current) {
       stopRequestedRef.current = true;
       setExecutionStatus('Stopping after the current trade settles…');
       return;
@@ -1189,6 +1038,7 @@ function getFloatingScanResult(definition: MarketDefinition, quote?: MarketQuote
       return;
     }
     stopRequestedRef.current = false;
+    floatingExecutionLockRef.current = true;
     setExecutionState('executing');
     setBatchResult(null);
     setTrades([]);
@@ -1253,6 +1103,7 @@ function getFloatingScanResult(definition: MarketDefinition, quote?: MarketQuote
         break;
       }
     }
+    floatingExecutionLockRef.current = false;
     setExecutionState('idle');
     setExecutionStatus(pendingSettlementTrade
       ? `${unresolvedTradeMessage(pendingSettlementTrade)} The bot stopped to prevent another order.`
@@ -2875,7 +2726,9 @@ function DashboardView({ accountMode, marketQuotes, isOwner, onNavigate }: { acc
   const marketQuoteList = MARKET_DEFINITIONS.map(({ symbol }) => marketQuotes[symbol]);
   const liveMarketCount = marketQuoteList.filter((quote) => quote?.status === 'live').length;
   const quotedMarketCount = marketQuoteList.filter((quote) => quote?.price !== null && quote?.price !== undefined).length;
-  const canBookLiveTrading = bookingEligibilityQuery.data?.eligible === true && !bookingEligibilityQuery.isError;
+  const canBookLiveTrading = accountMode === 'REAL'
+    && bookingEligibilityQuery.data?.eligible === true
+    && !bookingEligibilityQuery.isError;
   const actions = [
     { label: 'Bulk Scanner', description: 'Scan markets and review trade signals', icon: Layers3, tool: 'Bulk Trader', accent: 'cyan' },
     { label: 'Manual Trader', description: 'Choose a contract and place trades', icon: LineChart, tool: 'Manual Trader', accent: 'violet' },
@@ -2939,7 +2792,7 @@ function DashboardView({ accountMode, marketQuotes, isOwner, onNavigate }: { acc
         <div><span>QUOTED MARKETS</span><strong>{quotedMarketCount}</strong></div>
         <div className="dashboard-context-note"><span>WORKFLOW</span><strong>Observe <b>→</b> Configure <b>→</b> Review</strong></div>
       </div>
-      <section className="dashboard-live-booking dashboard-horizontal-lane" aria-labelledby="dashboard-live-booking-title" tabIndex={0} data-testid="card-live-trading-booking">
+      {canBookLiveTrading && <section className="dashboard-live-booking dashboard-horizontal-lane" aria-labelledby="dashboard-live-booking-title" tabIndex={0} data-testid="card-live-trading-booking">
         <div className="dashboard-booking-intro">
           <span className="terminal-eyebrow">LIVE TRADING / BOOKING</span>
           <h3 id="dashboard-live-booking-title">Book a live trading session</h3>
@@ -2954,43 +2807,28 @@ function DashboardView({ accountMode, marketQuotes, isOwner, onNavigate }: { acc
           role="status"
           data-testid="status-live-trading-eligibility"
         >
-          {bookingEligibilityQuery.isPending
-            ? 'Checking your linked Deriv real account…'
-            : bookingEligibilityQuery.isError
-              ? 'Unable to verify your real account right now.'
-              : bookingEligibilityQuery.data?.reason ?? 'Connect a Deriv real USD account to check eligibility.'}
+          {bookingEligibilityQuery.data?.reason ?? 'Verified real USD account above $100.'}
         </div>
         <div className="dashboard-booking-bottom">
           <p className="dashboard-booking-risk" data-testid="text-live-trading-risk-disclaimer">
             Trading is risky. You can lose some or all of your money. No profits are guaranteed.
           </p>
-          {canBookLiveTrading ? (
-            <div className="dashboard-booking-actions">
-              <a className="dashboard-booking-call" href={SUPPORT_PHONE_LINK} data-testid="link-call-live-trading">
-                Call {SUPPORT_PHONE_DISPLAY}
-              </a>
-              <a
-                className="dashboard-booking-whatsapp"
-                href={LIVE_TRADING_WHATSAPP_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                data-testid="link-whatsapp-live-trading"
-              >
-                WhatsApp {SUPPORT_PHONE_DISPLAY}
-              </a>
-            </div>
-          ) : bookingEligibilityQuery.isError ? (
-            <button
-              className="dashboard-booking-retry"
-              type="button"
-              onClick={() => void bookingEligibilityQuery.refetch()}
-              data-testid="button-retry-live-trading-eligibility"
+          <div className="dashboard-booking-actions">
+            <a
+              className="dashboard-booking-whatsapp"
+              href={WHATSAPP_GROUP_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid="link-whatsapp-live-trading"
             >
-              Retry account check
-            </button>
-          ) : null}
+              Join WhatsApp booking group
+            </a>
+            <span className="dashboard-booking-whatsapp-number" data-testid="text-live-trading-whatsapp-number">
+              WhatsApp: {SUPPORT_PHONE_DISPLAY}
+            </span>
+          </div>
         </div>
-      </section>
+      </section>}
     </section>
   );
 }
@@ -3839,13 +3677,15 @@ function RecoveryBotView({ accountMode, currency, balance, activeMarket, marketQ
   const selectedDefinition = getVolatilityDefinition(recoveryMarket);
   const selectedQuote = marketQuotes[selectedDefinition.symbol];
   const stopRequestedRef = useRef(false);
+  const recoveryExecutionLockRef = useRef(false);
+  useEffect(() => () => { stopRequestedRef.current = true; }, []);
 
   useEffect(() => {
     setRecoveryMarket(getVolatilityDefinition(getMarketDefinition(activeMarket).name).name);
   }, [activeMarket]);
 
   const handleRun = async () => {
-    if (running) {
+    if (recoveryExecutionLockRef.current) {
       stopRequestedRef.current = true;
       setProposalMessage('Stopping after the current trade settles…');
       return;
@@ -3879,6 +3719,7 @@ function RecoveryBotView({ accountMode, currency, balance, activeMarket, marketQ
     const consecutiveLossLimit = configuredConsecutiveLosses;
     const requestedRuns = Math.max(1, Math.floor(Number(runCount) || 1));
     stopRequestedRef.current = false;
+    recoveryExecutionLockRef.current = true;
     setRunning(true);
     setBatchResult(null);
     setProposalState('requesting');
@@ -3956,6 +3797,7 @@ function RecoveryBotView({ accountMode, currency, balance, activeMarket, marketQ
         break;
       }
     }
+    recoveryExecutionLockRef.current = false;
     setRunning(false);
     stopRequestedRef.current = false;
     const batchProfit = cumulativeProfit;
@@ -4070,7 +3912,7 @@ function RecoveryBotView({ accountMode, currency, balance, activeMarket, marketQ
               ['Total net profit/loss', formatSignedMoneyForDisplay(resultProfit, resultCurrency, displayCurrency, rate)],
             ].map(([label, value]) => <div key={label}><strong>{label}</strong><span className={label === 'Total net profit/loss' && resultProfit !== null && resultProfit < 0 ? 'is-loss' : label === 'Total net profit/loss' ? 'is-win' : ''}>{value}</span></div>)}
           </div>}
-           <button type="button" className="recovery-reset" onClick={() => { stopRequestedRef.current = true; setRunning(false); setProposalState('idle'); setProposalMessage(''); setLastTrade(null); setTransactions([]); setJournalEntries([]); setSummaryTab('Summary'); setStake('10'); setRunCount('1'); setNumberOfTicks('1'); setMartingale('2'); setTakeProfit('50'); setStopLoss('500'); setConsecutiveLosses('5'); }}>Reset</button>
+           <button type="button" className="recovery-reset" disabled={running} onClick={() => { if (recoveryExecutionLockRef.current) return; stopRequestedRef.current = true; setRunning(false); setProposalState('idle'); setProposalMessage(''); setLastTrade(null); setTransactions([]); setJournalEntries([]); setSummaryTab('Summary'); setStake('10'); setRunCount('1'); setNumberOfTicks('1'); setMartingale('2'); setTakeProfit('50'); setStopLoss('500'); setConsecutiveLosses('5'); }}>Reset</button>
         </aside>
        </div>
        <TradeFigureStrip trades={transactions} currency={resultCurrency} />
@@ -4124,6 +3966,8 @@ function FreeBotsView({ accountMode, currency, balance, activeMarket, marketQuot
   const [botStatus, setBotStatus] = useState('');
   const [transactionTab, setTransactionTab] = useState<BotTransactionTab>('Transactions');
   const stopRequestedRef = useRef(false);
+  const freeBotExecutionLockRef = useRef(false);
+  useEffect(() => () => { stopRequestedRef.current = true; }, [selectedBotId]);
   const selectedBot = FREE_BOT_DEFINITIONS.find((bot) => bot.id === selectedBotId) ?? FREE_BOT_DEFINITIONS[0];
   const selectedDefinition = getVolatilityDefinition(botMarket);
   const scannerOneDefinition = getVolatilityDefinition('Volatility 25 (1s) Index');
@@ -4218,6 +4062,11 @@ function FreeBotsView({ accountMode, currency, balance, activeMarket, marketQuot
   }, [activeMarket, selectedBotId]);
 
   const resetBot = () => {
+    if (freeBotExecutionLockRef.current) {
+      stopRequestedRef.current = true;
+      setBotStatus('Stopping after the current trade settles. Reset after it finishes.');
+      return;
+    }
     stopRequestedRef.current = true;
     setBotRunning(false);
     setRecoveryMode(true);
@@ -4253,7 +4102,7 @@ function FreeBotsView({ accountMode, currency, balance, activeMarket, marketQuot
   };
 
   const runDiagnosisBot = async () => {
-    if (botRunning) {
+    if (freeBotExecutionLockRef.current) {
       stopRequestedRef.current = true;
       setBotStatus('Stopping after the current trade settles…');
       revealTransactions();
@@ -4311,6 +4160,7 @@ function FreeBotsView({ accountMode, currency, balance, activeMarket, marketQuot
       return;
     }
     stopRequestedRef.current = false;
+    freeBotExecutionLockRef.current = true;
     setBotRunning(true);
     setBatchResult(null);
     revealTransactions();
@@ -4388,6 +4238,7 @@ function FreeBotsView({ accountMode, currency, balance, activeMarket, marketQuot
         break;
       }
     }
+    freeBotExecutionLockRef.current = false;
     setBotRunning(false);
     stopRequestedRef.current = false;
     if (completed > 0 || pendingSettlementTrade) setBatchResult({

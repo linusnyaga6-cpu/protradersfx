@@ -6263,6 +6263,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   flex: 0 0 auto;
   gap: 8px;
 }
+.dashboard-booking-whatsapp-number {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  color: #c9f7e8;
+  font: 600 11px var(--app-font-sans);
+  white-space: nowrap;
+}
 .dashboard-booking-actions a,
 .dashboard-booking-retry {
   display: inline-flex;
