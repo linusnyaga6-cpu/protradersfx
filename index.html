@@ -20,7 +20,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script type="module" crossorigin src="/assets/index-owner-access-timeout.js?v=splash-gated-1"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-Cu5S4abW.css?v=splash-gated-1">
-      <script id="pt-usd-kes-converter-loader" defer src="/usd-kes-converter.js?v=live-20261014-1"></script>
+      <script id="pt-usd-kes-converter-loader" defer src="/usd-kes-converter.js?v=live-20261018-1"></script>
   </head>
   <body>
     <div id="root"></div>
@@ -66,7 +66,14 @@ return;
 }
 if(root&&root.childElementCount>0&&!fallback){fallback=document.createElement("footer");fallback.className="pt-risk-global-footer";fallback.append(makeNote());body.append(fallback);body.style.overflowY="auto";}
 };
-new MutationObserver(sync).observe(body,{childList:true,subtree:true});
+let syncFrame=0;
+const hasRiskFooter=(node)=>node.nodeType===1&&(node.matches(selector)||node.matches(".pt-risk-global-footer")||Boolean(node.querySelector(selector)));
+const watchRiskFooter=(records)=>{
+if(!records.some((record)=>record.target===root||[...record.addedNodes,...record.removedNodes].some(hasRiskFooter)))return;
+if(syncFrame)return;
+syncFrame=requestAnimationFrame(()=>{syncFrame=0;sync();});
+};
+new MutationObserver(watchRiskFooter).observe(body,{childList:true,subtree:true});
 window.addEventListener("popstate",sync);sync();
 })();
 </script>
