@@ -82,11 +82,7 @@ import {
 
 const queryClient = new QueryClient();
 const DERIV_REFERRAL_URL = 'https://t.deriv.link?t=SSJBZ9FQTVP8';
-const SUPPORT_PHONE_DISPLAY = '0793614024';
-const SUPPORT_PHONE_LINK = 'tel:+254793614024';
-const SUPPORT_PHONE_INTERNATIONAL = SUPPORT_PHONE_DISPLAY.replace(/\D/g, '').replace(/^0/, '254');
-const WHATSAPP_SUPPORT_URL = `https://wa.me/${SUPPORT_PHONE_INTERNATIONAL}?text=${encodeURIComponent('Hi, I need support with ProTraders FX.')}`;
-const WHATSAPP_GROUP_URL = 'https://chat.whatsapp.com/CSjckmOKEZgBGgAoKacPNt';
+import { WHATSAPP_GROUP_URL } from './lib/support';
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
 const PUBLIC_MARKET_WS = 'wss://api.derivws.com/trading/v1/options/ws/public';
 const PUBLIC_TICK_BUFFER = 1000;
@@ -1839,7 +1835,7 @@ function AuthenticatedHome() {
         onTradeMarket: (definition, setup) => executeManualTrade('BUY', setup.side, definition, setup),
       }}>
       <main ref={terminalMainRef} id="trading-workspace-panel" className={`terminal-main ${activeTool === 'Manual Trader' ? 'manual-main' : ''}`} role="tabpanel" tabIndex={0} aria-label={`${activeTool} workspace`}>
-        {activeTool === 'Dashboard' ? <DashboardView accountMode={accountMode} marketQuotes={marketQuotes} isOwner={ownerAccessQuery.data?.isOwner === true} onNavigate={setActiveTool} /> : activeTool === 'Owner Activity' ? <OwnerActivityView /> : activeTool === 'Quick Bot' ? <QuickBotView accountMode={accountMode} currency={currency} balance={balance} activeMarket={activeMarket} marketQuotes={marketQuotes} onNavigate={openTool} onTradeSettled={refreshAccount} /> : activeTool === 'Bulk Trader' ? <BulkTraderView accountMode={accountMode} currency={currency} activeMarket={activeMarket} setActiveMarket={setActiveMarket} marketQuotes={marketQuotes} onTradeSettled={refreshAccount} /> : activeTool === 'Analysis Tools' ? <AnalysisToolsView marketQuotes={marketQuotes} /> : activeTool === 'Volt AI' ? <VoltAiView activeMarket={activeMarket} setActiveMarket={setActiveMarket} marketQuotes={marketQuotes} onNavigate={setActiveTool} /> : activeTool === 'Auto AI' ? <AutoAiView activeMarket={activeMarket} setActiveMarket={setActiveMarket} marketQuotes={marketQuotes} onNavigate={setActiveTool} /> : activeTool === 'Signal AI' ? <SignalAiView activeMarket={activeMarket} setActiveMarket={setActiveMarket} marketQuotes={marketQuotes} onNavigate={setActiveTool} /> : activeTool === 'Apex Bot' ? <ApexBotView activeMarket={activeMarket} setActiveMarket={setActiveMarket} marketQuotes={marketQuotes} /> : activeTool === 'Copy Trader' ? <CopyTraderView activeMarket={activeMarket} marketQuotes={marketQuotes} currency={currency} /> : activeTool === 'Free Bots' ? <FreeBotsView accountMode={accountMode} currency={currency} balance={balance} activeMarket={activeMarket} marketQuotes={marketQuotes} onTradeSettled={refreshAccount} initialBotId={freeBotToOpen} /> : activeTool === 'Bot Builder' ? <RecoveryBotView accountMode={accountMode} currency={currency} balance={balance} activeMarket={activeMarket} marketQuotes={marketQuotes} onTradeSettled={refreshAccount} /> : activeTool === 'Deriv Pro Bots' ? <DerivProBotsView accountMode={accountMode} currency={currency} balance={balance} activeMarket={activeMarket} setActiveMarket={setActiveMarket} marketDefinitions={MARKET_DEFINITIONS} marketQuotes={marketQuotes} supportPhoneDisplay={SUPPORT_PHONE_DISPLAY} onTradeSettled={refreshAccount} /> : activeTool === 'Manual Trader' ? (
+        {activeTool === 'Dashboard' ? <DashboardView accountMode={accountMode} marketQuotes={marketQuotes} isOwner={ownerAccessQuery.data?.isOwner === true} onNavigate={setActiveTool} /> : activeTool === 'Owner Activity' ? <OwnerActivityView /> : activeTool === 'Quick Bot' ? <QuickBotView accountMode={accountMode} currency={currency} balance={balance} activeMarket={activeMarket} marketQuotes={marketQuotes} onNavigate={openTool} onTradeSettled={refreshAccount} /> : activeTool === 'Bulk Trader' ? <BulkTraderView accountMode={accountMode} currency={currency} activeMarket={activeMarket} setActiveMarket={setActiveMarket} marketQuotes={marketQuotes} onTradeSettled={refreshAccount} /> : activeTool === 'Analysis Tools' ? <AnalysisToolsView marketQuotes={marketQuotes} /> : activeTool === 'Volt AI' ? <VoltAiView activeMarket={activeMarket} setActiveMarket={setActiveMarket} marketQuotes={marketQuotes} onNavigate={setActiveTool} /> : activeTool === 'Auto AI' ? <AutoAiView activeMarket={activeMarket} setActiveMarket={setActiveMarket} marketQuotes={marketQuotes} onNavigate={setActiveTool} /> : activeTool === 'Signal AI' ? <SignalAiView activeMarket={activeMarket} setActiveMarket={setActiveMarket} marketQuotes={marketQuotes} onNavigate={setActiveTool} /> : activeTool === 'Apex Bot' ? <ApexBotView activeMarket={activeMarket} setActiveMarket={setActiveMarket} marketQuotes={marketQuotes} /> : activeTool === 'Copy Trader' ? <CopyTraderView activeMarket={activeMarket} marketQuotes={marketQuotes} currency={currency} /> : activeTool === 'Free Bots' ? <FreeBotsView accountMode={accountMode} currency={currency} balance={balance} activeMarket={activeMarket} marketQuotes={marketQuotes} onTradeSettled={refreshAccount} initialBotId={freeBotToOpen} /> : activeTool === 'Bot Builder' ? <RecoveryBotView accountMode={accountMode} currency={currency} balance={balance} activeMarket={activeMarket} marketQuotes={marketQuotes} onTradeSettled={refreshAccount} /> : activeTool === 'Deriv Pro Bots' ? <DerivProBotsView accountMode={accountMode} currency={currency} balance={balance} activeMarket={activeMarket} setActiveMarket={setActiveMarket} marketDefinitions={MARKET_DEFINITIONS} marketQuotes={marketQuotes} onTradeSettled={refreshAccount} /> : activeTool === 'Manual Trader' ? (
         manualTraderLoading ? <ManualTraderLaunchScreen /> : <>
         <div className="terminal-heading">
           <div>
@@ -2253,8 +2249,7 @@ function AuthenticatedHome() {
         <span className="footer-brand">PROTRADERS FX · TRADES VIA DERIV</span>
         <RiskDisclaimerNote />
         <div className="support-contact-links" aria-label="ProTraders support contacts">
-          <a href={SUPPORT_PHONE_LINK} aria-label={`Call ProTraders support at ${SUPPORT_PHONE_DISPLAY}`}>Call support · {SUPPORT_PHONE_DISPLAY}</a>
-          <a href={WHATSAPP_SUPPORT_URL} target="_blank" rel="noopener noreferrer">WhatsApp support group <ArrowUpRight size={11} /></a>
+          <a href={WHATSAPP_GROUP_URL} target="_blank" rel="noopener noreferrer">WhatsApp support group <ArrowUpRight size={11} /></a>
         </div>
       </footer>
       <FloatingMarketAI marketQuotes={marketQuotes} draggable accountMode={accountMode} currency={currency} onTradeSettled={refreshAccount} />
@@ -2709,8 +2704,7 @@ function PublicLandingView({ marketQuotes, startupError, onRetry }: {
         <span>PROTRADERS FX <b>·</b> TRADES VIA DERIV</span>
         <RiskDisclaimerNote />
         <div className="public-support-links" aria-label="ProTraders support contacts">
-          <a href={SUPPORT_PHONE_LINK} aria-label={`Call ProTraders support at ${SUPPORT_PHONE_DISPLAY}`}>{t('Support')} · {SUPPORT_PHONE_DISPLAY}</a>
-          <a href={WHATSAPP_SUPPORT_URL} target="_blank" rel="noopener noreferrer">WhatsApp group <ArrowUpRight size={12} /></a>
+          <a href={WHATSAPP_GROUP_URL} target="_blank" rel="noopener noreferrer">{t('Support')} · WhatsApp group <ArrowUpRight size={12} /></a>
         </div>
         <a href={DERIV_REFERRAL_URL} target="_blank" rel="noopener noreferrer">Open a Deriv account <ArrowUpRight size={13} /></a>
       </footer>
@@ -2789,8 +2783,7 @@ function DashboardView({ accountMode, marketQuotes, isOwner, onNavigate }: { acc
       </section>
       <div className="dashboard-support-strip dashboard-horizontal-lane" role="region" aria-label="ProTraders support" data-testid="dashboard-support">
         <div><strong>{t('Support')}</strong><small>Need help with your workspace?</small></div>
-        <a href={SUPPORT_PHONE_LINK} data-testid="dashboard-support-call">Call {SUPPORT_PHONE_DISPLAY}</a>
-        <a href={WHATSAPP_SUPPORT_URL} target="_blank" rel="noopener noreferrer" data-testid="dashboard-support-whatsapp">WhatsApp support</a>
+        <a href={WHATSAPP_GROUP_URL} target="_blank" rel="noopener noreferrer" data-testid="dashboard-support-whatsapp">Join WhatsApp support group</a>
       </div>
       <div className="dashboard-context-band dashboard-horizontal-lane" role="region" aria-label="Market status and workflow metrics" tabIndex={0}>
         <div className="dashboard-context-title"><span>PUBLIC FEED STATUS</span><strong>Market context</strong><small>Official Deriv quote stream</small></div>
@@ -2829,9 +2822,6 @@ function DashboardView({ accountMode, marketQuotes, isOwner, onNavigate }: { acc
             >
               Join WhatsApp booking group
             </a>
-            <span className="dashboard-booking-whatsapp-number" data-testid="text-live-trading-whatsapp-number">
-              WhatsApp: {SUPPORT_PHONE_DISPLAY}
-            </span>
           </div>
         </div>
       </section>}
