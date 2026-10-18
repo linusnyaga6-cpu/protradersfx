@@ -10,6 +10,7 @@ import './footer-layout.css';
 import './bulk-trader-theme.css';
 import './workspace-navigation.css';
 import './scrolling.css';
+import './traderscheme-refresh.css';
 
 createRoot(document.getElementById('root')!, {
   // Keeps caught errors off reportError(), which would raise the dev overlay.

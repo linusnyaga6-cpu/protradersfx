@@ -44,13 +44,14 @@ export default function CurrencyConverter({
   return <div className="currency-converter-control">
     <label className="currency-display-label">
       <ArrowLeftRight size={14} aria-hidden="true" />
-      <select className="currency-display-select" aria-label="Display currency for balances and trade results"
+      <select className="currency-display-select" dir="ltr" aria-label="Display currency for balances and trade results"
         data-testid="display-currency-select" value={automatic ? "auto" : displayCurrency}
         onChange={event => {
           if (event.target.value === "auto" || isDisplayCurrency(event.target.value)) onSelectCurrency(event.target.value);
         }}>
-        <option value="auto">Auto · {currencyLabel(countryCurrency)} (country)</option>
-        {options}
+        <option value="auto">Auto · {currencyLabel(countryCurrency)}</option>
+        {Object.entries(currencyNames).map(([code, name]) =>
+          <option key={code} value={code} title={name}>{currencyLabel(code)}</option>)}
       </select>
     </label>
     <button ref={trigger} type="button" className="currency-converter-open" aria-label="Open currency converter"
@@ -65,7 +66,7 @@ export default function CurrencyConverter({
         onClick={event => { if (event.target === dialog.current) setOpen(false); }}>
         <div className="currency-converter-content">
           <header>
-            <div><strong>Currency converter</strong><small>21 currencies · daily reference estimates</small></div>
+            <div><strong>Currency converter</strong><small>{Object.keys(currencyNames).length} currencies · daily reference estimates</small></div>
             <button type="button" className="currency-converter-close" onClick={() => setOpen(false)} aria-label="Close currency converter"><X size={16} /></button>
           </header>
           <label className="currency-converter-amount"><span>From</span>
@@ -74,8 +75,12 @@ export default function CurrencyConverter({
           <label className="currency-converter-amount"><span>Amount in {currencyLabel(from)}</span>
             <input type="number" min="0" step="any" inputMode="decimal" value={amount}
               onChange={event => setAmount(event.target.value)} aria-label={`Amount in ${from}`}
+              aria-invalid={amount.trim() !== "" && (!Number.isFinite(parsed) || parsed < 0)}
+              aria-describedby={amount.trim() !== "" && (!Number.isFinite(parsed) || parsed < 0) ? "currency-amount-error" : undefined}
               data-testid="currency-converter-amount" />
           </label>
+          {amount.trim() !== "" && (!Number.isFinite(parsed) || parsed < 0) &&
+            <small id="currency-amount-error" role="alert">Enter an amount of zero or more.</small>}
           <button type="button" className="currency-converter-swap" onClick={() => { setFrom(to); setTo(from); }}
             aria-label="Swap conversion currencies" data-testid="currency-converter-swap">
             <ArrowLeftRight size={13} /> {currencyLabel(from)} ⇄ {currencyLabel(to)}

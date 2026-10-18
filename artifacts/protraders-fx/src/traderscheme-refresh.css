@@ -1,0 +1,192 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+/* Reference-led appearance: deep navy, cyan edges, restrained glow.
+   Scoped to public landing, dashboard and shared terminal chrome only. */
+.public-landing,
+.terminal-shell {
+  --tsr-navy: #020b1d;
+  --tsr-navy-2: #061429;
+  --tsr-panel: rgba(8, 24, 48, .78);
+  --tsr-pale: #e1ebf1;
+  --tsr-muted: #8fa5bd;
+  --tsr-cyan: #47bbd2;
+  --tsr-cyan-bright: #5fd4ea;
+  --tsr-line: rgba(71, 187, 210, .22);
+  --tsr-line-soft: rgba(71, 187, 210, .12);
+}
+main.public-landing, .terminal-shell.is-dashboard-mode {
+  --reference-ink: #020b1d;
+  --reference-text: #e1ebf1;
+  --reference-muted: #8fa5bd;
+  --reference-cyan: #47bbd2;
+  --reference-line: rgba(71, 187, 210, .16);
+  --reference-line-strong: rgba(71, 187, 210, .3);
+}
+main.public-landing {
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  color: var(--tsr-pale);
+  background:
+    radial-gradient(ellipse 70% 38rem at 50% -8%, rgba(30, 90, 170, .32), transparent 70%),
+    radial-gradient(ellipse 50% 22rem at 50% 62%, rgba(71, 187, 210, .08), transparent 70%),
+    linear-gradient(180deg, #020b1d, #030d22 55%, #020817);
+}
+.public-landing-header {
+  background: rgba(2, 11, 29, .9);
+  border-color: var(--tsr-line);
+  backdrop-filter: blur(10px);
+}
+.public-landing-brand > span { border-radius: 6px; border-color: var(--tsr-line); color: var(--tsr-cyan-bright); }
+.public-landing-brand strong { letter-spacing: .02em; }
+main.public-landing .public-login, main.public-landing .public-hero-secondary {
+  border-radius: 6px;
+  color: var(--tsr-pale);
+  border-color: var(--tsr-line);
+  background: rgba(225, 235, 241, .04);
+}
+main.public-landing .public-login:hover, main.public-landing .public-hero-secondary:hover { border-color: var(--tsr-cyan); color: #fff; }
+main.public-landing .public-signup, main.public-landing .public-hero-primary {
+  border-radius: 6px;
+  color: #02101f;
+  font-weight: 600;
+  background: linear-gradient(180deg, #5fd4ea, #2f9fd0);
+  box-shadow: 0 0 18px rgba(71, 187, 210, .22);
+}
+main.public-landing .public-hero { text-align: center; }
+main.public-landing .public-hero-copy { margin-inline: auto; align-items: center; text-align: center; }
+main.public-landing .public-hero-kicker {
+  border: 1px solid var(--tsr-line);
+  border-radius: 999px;
+  padding: 6px 14px;
+  background: rgba(8, 24, 48, .7);
+  letter-spacing: .1em;
+}
+main.public-landing .public-hero h1 { color: var(--tsr-pale); letter-spacing: -.045em; font-weight: 700; }
+main.public-landing .public-hero h1 span {
+  background: linear-gradient(90deg, #e1ebf1, #47bbd2);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+main.public-landing .public-hero p { color: #9fb3c9; margin-inline: auto; }
+main.public-landing .public-hero-actions { justify-content: center; flex-wrap: wrap; }
+main.public-landing .public-market-orbit {
+  border-radius: 10px;
+  border-color: var(--tsr-line);
+  background:
+    linear-gradient(rgba(71, 187, 210, .06) 1px, transparent 1px) 0 0 / 100% 36px,
+    radial-gradient(circle at 50% 50%, rgba(47, 120, 200, .22), transparent 62%),
+    #031026;
+}
+.orbit-core { background: #051a35; border-color: var(--tsr-cyan); }
+main.public-landing .public-ticker-section, main.public-landing .public-process { background: rgba(4, 16, 36, .7); border-color: var(--tsr-line); }
+main.public-landing .public-ticker-item, main.public-landing .public-process > div {
+  border-color: var(--tsr-line-soft);
+  background: var(--tsr-panel);
+}
+main.public-landing .public-ticker-item strong, main.public-landing .public-ticker-item small, main.public-landing .public-ticker-heading { font-family: 'IBM Plex Mono', monospace; }
+main.public-landing .public-process > div { border-radius: 8px; }
+main.public-landing .public-process span { color: var(--tsr-cyan); font-family: 'IBM Plex Mono', monospace; }
+.public-landing-footer { border-color: var(--tsr-line); background: #020a1a; }
+
+
+main.public-landing .public-landing-brand strong, main.public-landing .public-landing-brand strong b { color: var(--tsr-pale); }
+main.public-landing .public-landing-brand strong { display: block; white-space: nowrap; direction: ltr; }
+main.public-landing .public-landing-brand small { display: block; white-space: normal; }
+main.public-landing .public-landing-brand small, main.public-landing .public-hero-note, main.public-landing .public-ticker-heading small,
+main.public-landing .public-process p, main.public-landing .public-landing-footer, main.public-landing .public-landing-footer > span { color: var(--tsr-muted); }
+main.public-landing .public-hero h1 > small { color: var(--tsr-pale); }
+main.public-landing .public-ticker-item > span, main.public-landing .public-process strong { color: var(--tsr-pale); }
+main.public-landing .public-ticker-item strong { color: var(--tsr-pale); }
+main.public-landing .public-ticker-item strong.quote-up { color: #4fd1a5; }
+main.public-landing .public-ticker-item strong.quote-down { color: #f29aa4; }
+main.public-landing .public-landing-footer a, main.public-landing .public-support-links a { color: var(--tsr-cyan-bright); }
+main.public-landing .public-landing-footer a:hover { color: #fff; }
+main.public-landing .public-hero-kicker, main.public-landing .public-ticker-heading > span { color: var(--tsr-cyan-bright); }
+main.public-landing .public-signup:hover, main.public-landing .public-hero-primary:hover { color: #02101f; background: linear-gradient(180deg, #7fe0f1, #47b2dc); }
+main.public-landing .public-landing-header { color: var(--tsr-pale); }
+/* Shared terminal chrome + dashboard (specificity beats reference-redesign.css) */
+.terminal-shell { color: var(--tsr-pale); background: var(--tsr-navy); font-family: 'IBM Plex Sans', system-ui, sans-serif; }
+.terminal-shell .terminal-header, .terminal-shell .terminal-nav, .terminal-shell .market-strip, .terminal-shell .terminal-footer {
+  color: var(--tsr-pale); background: #030f23; border-color: var(--tsr-line); box-shadow: none; }
+.terminal-shell .terminal-brand strong, .terminal-shell .terminal-balance, .terminal-shell .terminal-balance-copy > strong { color: var(--tsr-pale); }
+.terminal-shell .terminal-brand small { color: var(--tsr-cyan); }
+.terminal-shell .terminal-brand-mark { color: var(--tsr-cyan-bright); border-color: var(--tsr-line); background: rgba(71,187,210,.08); }
+.terminal-shell .terminal-balance svg, .terminal-shell .terminal-header-link:hover { color: var(--tsr-cyan-bright); }
+.terminal-shell .terminal-header-link, .terminal-shell .terminal-mobile-toggle, .terminal-shell .terminal-footer { color: var(--tsr-muted); }
+.terminal-shell .terminal-balance-kes { color: var(--tsr-muted); }
+.terminal-shell .account-switcher { background: rgba(8,24,48,.8); border-color: var(--tsr-line); }
+.terminal-shell .account-switcher button { color: var(--tsr-muted); }
+.terminal-shell .account-switcher button.is-selected, .terminal-shell .get-started, .terminal-shell .terminal-nav-item.is-active {
+  color: #02101f; border-color: var(--tsr-cyan); background: linear-gradient(180deg, #5fd4ea, #2f9fd0); }
+.terminal-shell .terminal-nav-item.is-active svg { color: #02101f; }
+.terminal-shell .account-button { color: var(--tsr-pale); border-color: var(--tsr-line); background: rgba(8,24,48,.8); }
+.terminal-shell .terminal-nav-item { color: var(--tsr-muted); }
+.terminal-shell .terminal-nav-item svg { color: var(--tsr-cyan); }
+.terminal-shell .terminal-nav-item:hover { color: #fff; background: rgba(71,187,210,.1); }
+.terminal-shell .market-tab { color: var(--tsr-muted); border-color: var(--tsr-line-soft); }
+.terminal-shell .market-tab span { color: var(--tsr-pale); }
+.terminal-shell .market-tab small { color: var(--tsr-muted); }
+.terminal-shell .market-tab:hover, .terminal-shell .market-tab.is-active { background: rgba(71,187,210,.1); }
+.terminal-shell .market-tab.is-active { box-shadow: inset 0 -2px var(--tsr-cyan); }
+
+.terminal-shell.is-dashboard-mode .terminal-main {
+  color: var(--tsr-pale);
+  background: radial-gradient(ellipse 60% 22rem at 70% -6%, rgba(30,90,170,.24), transparent 70%), var(--tsr-navy);
+}
+.terminal-shell.is-dashboard-mode .terminal-eyebrow,
+.terminal-shell.is-dashboard-mode .dashboard-section-heading .terminal-eyebrow,
+.terminal-shell.is-dashboard-mode .dashboard-live-heading .terminal-eyebrow { color: var(--tsr-cyan); font-family: 'IBM Plex Mono', monospace; letter-spacing: .1em; }
+.terminal-shell.is-dashboard-mode .terminal-main h2,
+.terminal-shell.is-dashboard-mode .terminal-main h3,
+.terminal-shell.is-dashboard-mode .dashboard-section-heading h2,
+.terminal-shell.is-dashboard-mode .dashboard-context-band strong,
+.terminal-shell.is-dashboard-mode .dashboard-action-card strong,
+.terminal-shell.is-dashboard-mode .dashboard-market-card strong,
+.terminal-shell.is-dashboard-mode .dashboard-support-strip strong { color: var(--tsr-pale); }
+.terminal-shell.is-dashboard-mode .dashboard-section-heading p,
+.terminal-shell.is-dashboard-mode .dashboard-action-card small,
+.terminal-shell.is-dashboard-mode .dashboard-context-band span,
+.terminal-shell.is-dashboard-mode .dashboard-market-card span small,
+.terminal-shell.is-dashboard-mode .dashboard-market-status,
+.terminal-shell.is-dashboard-mode .dashboard-support-strip small,
+.terminal-shell.is-dashboard-mode .dashboard-live-heading > span:last-child,
+.terminal-shell.is-dashboard-mode .dashboard-review-strip > div,
+.terminal-shell.is-dashboard-mode .dashboard-booking-intro p,
+.terminal-shell.is-dashboard-mode .dashboard-booking-risk { color: var(--tsr-muted); }
+.terminal-shell.is-dashboard-mode .dashboard-session { color: var(--tsr-cyan-bright); border: 1px solid var(--tsr-line); background: rgba(8,24,48,.7); border-radius: 999px; }
+.terminal-shell.is-dashboard-mode .dashboard-action-card,
+.terminal-shell.is-dashboard-mode .dashboard-market-card,
+.terminal-shell.is-dashboard-mode .dashboard-review-strip,
+.terminal-shell.is-dashboard-mode .dashboard-context-band,
+.terminal-shell.is-dashboard-mode .dashboard-support-strip,
+.terminal-shell.is-dashboard-mode .dashboard-live-booking,
+.terminal-shell.is-dashboard-mode .dashboard-booking-eligibility {
+  color: var(--tsr-pale); border-color: var(--tsr-line); border-radius: 8px; box-shadow: none; background: var(--tsr-panel); }
+.terminal-shell.is-dashboard-mode .dashboard-action-card::before { background: radial-gradient(circle at 12% 20%, rgba(71,187,210,.12), transparent 46%); }
+.terminal-shell.is-dashboard-mode .dashboard-action-card:hover,
+.terminal-shell.is-dashboard-mode .dashboard-market-card:hover { border-color: var(--tsr-cyan); background: rgba(10,34,64,.9); box-shadow: 0 0 20px rgba(71,187,210,.12); }
+.terminal-shell.is-dashboard-mode .dashboard-action-icon { color: var(--tsr-cyan-bright); border-color: var(--tsr-line); background: rgba(71,187,210,.1); }
+.terminal-shell.is-dashboard-mode .dashboard-card-number,
+.terminal-shell.is-dashboard-mode .dashboard-card-arrow,
+.terminal-shell.is-dashboard-mode .dashboard-context-title strong,
+.terminal-shell.is-dashboard-mode .dashboard-review-strip > span,
+.terminal-shell.is-dashboard-mode .dashboard-review-strip b { color: var(--tsr-cyan); }
+.terminal-shell.is-dashboard-mode .dashboard-context-note strong b { color: #4fd1a5; }
+.terminal-shell.is-dashboard-mode .dashboard-market-card > b { color: var(--tsr-pale); font-family: 'IBM Plex Mono', monospace; }
+.terminal-shell.is-dashboard-mode .dashboard-market-card > b.is-live { color: #4fd1a5; }
+.terminal-shell.is-dashboard-mode .dashboard-support-strip a,
+.terminal-shell.is-dashboard-mode .dashboard-booking-whatsapp { color: #02101f; border-radius: 6px; background: linear-gradient(180deg, #5fd4ea, #2f9fd0); }
+
+/* RTL: direction is inherited from the document; only mirror arrows */
+[dir="rtl"] .dashboard-card-arrow, [dir="rtl"] .public-hero-primary svg { transform: scaleX(-1); }
+[dir="rtl"] main.public-landing .public-hero h1, [dir="rtl"] main.public-landing .public-hero-kicker { letter-spacing: 0; }
+
+@media (max-width: 700px) {
+  main.public-landing .public-hero { padding-inline: 16px; }
+  main.public-landing .public-hero-actions { flex-direction: column; align-items: stretch; width: 100%; }
+  main.public-landing .public-hero-actions a { justify-content: center; min-height: 44px; }
+  .terminal-shell.is-dashboard-mode .dashboard-action-card:hover, .terminal-shell.is-dashboard-mode .dashboard-market-card:hover { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .terminal-shell.is-dashboard-mode .dashboard-action-card, .terminal-shell.is-dashboard-mode .dashboard-market-card { transition: none; }
+}

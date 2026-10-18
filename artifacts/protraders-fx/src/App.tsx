@@ -2634,7 +2634,7 @@ function PublicLandingView({ marketQuotes, startupError, onRetry }: {
   return (
     <main className="public-landing">
       <header className="public-landing-header">
-        <a href={basePath || '/'} className="public-landing-brand"><span><BarChart3 size={18} /></span><strong>PROTRADERS <b>FX</b><small>DERIV TRADING WORKSPACE</small></strong></a>
+        <a href={basePath || '/'} className="public-landing-brand"><span><BarChart3 size={18} /></span><strong>protraders<b>fx</b>.com<small>DERIV TRADING WORKSPACE</small></strong></a>
           <div className="public-landing-actions"><LanguageSelector />
             <CurrencyConverter automatic={automaticCurrency} rates={rates.rates} source={rates.source} checkedAt={rates.checkedAt} updatedAt={rates.updatedAt}
               loading={rates.loading} stale={rates.stale} onRefresh={rates.refresh}
