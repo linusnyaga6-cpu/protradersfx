@@ -1,4 +1,16 @@
 /* Keep scroll ownership consistent across the legacy workspace layouts. */
+.currency-converter-popover {
+  position: fixed;
+  top: max(72px, env(safe-area-inset-top));
+  right: 12px;
+  z-index: 300;
+  max-height: calc(100dvh - 100px - env(safe-area-inset-bottom));
+  overflow-y: auto;
+}
+.currency-converter-trigger:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+}
 html {
   overflow-x: clip;
   overflow-y: auto;

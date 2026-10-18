@@ -1784,6 +1784,9 @@ function AuthenticatedHome() {
                 <UsdKesConverter
                   rate={usdKesRate}
                   updatedAt={usdKesRateState.updatedAt}
+                  loading={usdKesRateState.loading}
+                  stale={usdKesRateState.stale}
+                  onRefresh={usdKesRateState.refresh}
                   displayCurrency={displayCurrency}
                   onToggleDisplayCurrency={() => setDisplayCurrency((current) => current === 'USD' ? 'KES' : 'USD')}
                 />
@@ -1797,7 +1800,7 @@ function AuthenticatedHome() {
                     : `Display-only conversion using the daily USD/KSh reference rate. Your Deriv account and trade currency remain ${currency}.`}
                 >
                   {alternateBalance === null
-                    ? 'Currency estimate unavailable'
+                    ? usdKesRateState.loading ? 'Loading exchange rate…' : 'Rate unavailable · open calculator to retry'
                     : `≈ ${alternateBalance} · display only`}
                 </small>
               )}
