@@ -13,6 +13,9 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import DerivProBotsView from './components/DerivProBotsView';
 import UsdKesConverter from './components/UsdKesConverter';
 import RiskDisclaimerNote from './components/RiskDisclaimerNote';
+import LanguageSelector from './components/LanguageSelector';
+import { useLanguage } from './lib/language-context';
+import { heroDescriptions } from './lib/languages';
 import { useUsdKesRate } from './hooks/useUsdKesRate';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -1290,6 +1293,7 @@ function Home() {
 }
 
 function AuthenticatedHome() {
+  const { t } = useLanguage();
   const { isLoaded, isSignedIn, user, activeMode, balance, currency, refreshAccount, switchMode } = useAppAuth();
   const ownerAccessQuery = useGetOwnerAccess({
     query: {
@@ -1771,7 +1775,8 @@ function AuthenticatedHome() {
           <span><strong>PROTRADERS FX</strong><small>POWERED BY DERIV</small></span>
         </a>
         <div className="terminal-header-actions">
-          <a href={`${basePath}/account`} className="terminal-header-link"><FileText size={13} /> Reports</a>
+          <LanguageSelector />
+          <a href={`${basePath}/account`} className="terminal-header-link"><FileText size={13} /> {t('Reports')}</a>
           <div className="account-switcher">
             <button type="button" className={accountMode === 'DEMO' ? 'is-selected' : ''} onClick={() => void handleAccountMode('DEMO')}>DEMO</button>
             <button type="button" className={accountMode === 'REAL' ? 'is-selected' : ''} onClick={() => void handleAccountMode('REAL')}>REAL</button>
@@ -1807,8 +1812,8 @@ function AuthenticatedHome() {
             </div>
             <ChevronDown size={13} />
           </div>
-          <a href={`${basePath}/account`} className="account-button">Account</a>
-          <a href={DERIV_REFERRAL_URL} target="_blank" rel="noopener noreferrer" className="get-started">Get Started</a>
+          <a href={`${basePath}/account`} className="account-button">{t('Account')}</a>
+          <a href={DERIV_REFERRAL_URL} target="_blank" rel="noopener noreferrer" className="get-started">{t('Get Started')}</a>
         </div>
       </header>
 
@@ -1816,7 +1821,7 @@ function AuthenticatedHome() {
         <div ref={terminalNavigationRef} className="terminal-nav-scroll" tabIndex={0} aria-label="Scrollable trading tools">
           {navItems.map(({ label, icon: Icon }) => (
             <button key={label} type="button" role="tab" aria-selected={activeTool === label} className={`terminal-nav-item ${activeTool === label ? 'is-active' : ''}`} onClick={() => { setFreeBotToOpen(null); setActiveTool(label); }}>
-              <Icon size={13} /> <span>{label}</span>
+              <Icon size={13} /> <span>{t(label)}</span>
             </button>
           ))}
         </div>
@@ -2636,13 +2641,14 @@ function PublicLandingView({ marketQuotes, startupError, onRetry }: {
   startupError: string | null;
   onRetry: () => void;
 }) {
+  const { t, language } = useLanguage();
   const { signInHref, signUpHref } = useAppAuth();
   const publicMarkets = ['EUR/USD', 'GBP/USD', 'USD/JPY', 'VOL 100 1s', 'VOL 75 1s'];
   return (
     <main className="public-landing">
       <header className="public-landing-header">
         <a href={basePath || '/'} className="public-landing-brand"><span><BarChart3 size={18} /></span><strong>PROTRADERS <b>FX</b><small>DERIV TRADING WORKSPACE</small></strong></a>
-          <div className="public-landing-actions"><a className="public-login" href={signInHref} aria-label="Connect your Deriv account and enter the workspace">Join workspace</a><a className="public-signup" href={signUpHref} aria-label="Create or connect a Deriv account">Create account</a></div>
+          <div className="public-landing-actions"><LanguageSelector /><a className="public-login" href={signInHref}>{t('Join workspace')}</a><a className="public-signup" href={signUpHref}>{t('Create account')}</a></div>
       </header>
       {startupError && <div className="public-auth-recovery" role="alert">
         <span>{startupError}</span>
@@ -2652,9 +2658,9 @@ function PublicLandingView({ marketQuotes, startupError, onRetry }: {
       <section className="public-hero public-hero-minimal">
         <div className="public-hero-copy">
           <span className="public-hero-kicker"><i /> MARKET CONTEXT, BEFORE THE CLICK</span>
-          <h1><small>protradersfx.com</small><br /><span>Trade like a pro</span></h1>
-          <p>See live Deriv quotes, choose contract terms, and review settled trade details—all in your ProTraders FX workspace.</p>
-           <div className="public-hero-actions"><a className="public-hero-primary" href={signInHref} aria-label="Sign in with Deriv to enter the ProTraders FX workspace">Enter workspace <ArrowUpRight size={15} /></a><a className="public-hero-secondary" href={signUpHref} aria-label="Create or connect a Deriv account">Create account <Zap size={14} /></a></div>
+          <h1><small>protradersfx.com</small><br /><span>{t('Trade like a pro')}</span></h1>
+          <p>{heroDescriptions[language]}</p>
+           <div className="public-hero-actions"><a className="public-hero-primary" href={signInHref}>{t('Enter workspace')} <ArrowUpRight size={15} /></a><a className="public-hero-secondary" href={signUpHref}>{t('Create account')} <Zap size={14} /></a></div>
           <small className="public-hero-note">Your account and trade execution stay connected to Deriv.</small>
         </div>
         <div className="public-market-orbit" aria-hidden="true">
@@ -2666,7 +2672,7 @@ function PublicLandingView({ marketQuotes, startupError, onRetry }: {
         </div>
       </section>
       <section className="public-ticker-section" aria-label="Live Deriv market quotes">
-        <div className="public-ticker-heading"><span><i /> LIVE MARKET SNAPSHOT</span><small>Official Deriv quotes · current connection state</small></div>
+        <div className="public-ticker-heading"><span><i /> {t('LIVE MARKET SNAPSHOT')}</span><small>Official Deriv quotes · current connection state</small></div>
         <div className="public-ticker">
           {publicMarkets.map((label) => {
             const market = getMarketDefinition(label);
@@ -2699,15 +2705,15 @@ function PublicLandingView({ marketQuotes, startupError, onRetry }: {
         </div>
       </section>
       <section className="public-process" aria-label="Workspace workflow">
-        <div><span>01 / OBSERVE</span><strong>Scan live context</strong><p>Compare market quotes and recent tick behavior from the Deriv feed.</p></div>
-        <div><span>02 / CONFIGURE</span><strong>Set the contract</strong><p>Choose a market, contract type, duration and stake before acting.</p></div>
-        <div><span>03 / REVIEW</span><strong>Read the settlement</strong><p>Inspect returned trade details, entry and exit points, and net profit/loss.</p></div>
+        <div><span>01 / OBSERVE</span><strong>{t('Scan live context')}</strong><p>Compare market quotes and recent tick behavior from the Deriv feed.</p></div>
+        <div><span>02 / CONFIGURE</span><strong>{t('Set the contract')}</strong><p>Choose a market, contract type, duration and stake before acting.</p></div>
+        <div><span>03 / REVIEW</span><strong>{t('Read the settlement')}</strong><p>Inspect returned trade details, entry and exit points, and net profit/loss.</p></div>
       </section>
       <footer className="public-landing-footer">
         <span>PROTRADERS FX <b>·</b> TRADES VIA DERIV</span>
         <RiskDisclaimerNote />
         <div className="public-support-links" aria-label="ProTraders support contacts">
-          <a href={SUPPORT_PHONE_LINK} aria-label={`Call ProTraders support at ${SUPPORT_PHONE_DISPLAY}`}>Support · {SUPPORT_PHONE_DISPLAY}</a>
+          <a href={SUPPORT_PHONE_LINK} aria-label={`Call ProTraders support at ${SUPPORT_PHONE_DISPLAY}`}>{t('Support')} · {SUPPORT_PHONE_DISPLAY}</a>
           <a href={WHATSAPP_SUPPORT_URL} target="_blank" rel="noopener noreferrer">WhatsApp group <ArrowUpRight size={12} /></a>
         </div>
         <a href={DERIV_REFERRAL_URL} target="_blank" rel="noopener noreferrer">Open a Deriv account <ArrowUpRight size={13} /></a>
@@ -2717,6 +2723,7 @@ function PublicLandingView({ marketQuotes, startupError, onRetry }: {
 }
 
 function DashboardView({ accountMode, marketQuotes, isOwner, onNavigate }: { accountMode: 'DEMO' | 'REAL'; marketQuotes: Record<string, MarketQuote>; isOwner: boolean; onNavigate: (tool: string) => void }) {
+  const { t } = useLanguage();
   const bookingEligibilityQuery = useGetLiveTradingEligibility({
     query: {
       queryKey: getGetLiveTradingEligibilityQueryKey(),
@@ -2759,7 +2766,7 @@ function DashboardView({ accountMode, marketQuotes, isOwner, onNavigate }: { acc
           >
             <span className="dashboard-card-number">0{index + 1}</span>
             <span className="dashboard-action-icon"><Icon size={24} /></span>
-            <strong>{label}</strong>
+            <strong>{t(tool)}</strong>
             <small>{description}</small>
             <ChevronRight className="dashboard-card-arrow" size={15} />
           </button>
@@ -2785,7 +2792,7 @@ function DashboardView({ accountMode, marketQuotes, isOwner, onNavigate }: { acc
         <div><b>03</b><strong>Understand the settled result</strong></div>
       </section>
       <div className="dashboard-support-strip dashboard-horizontal-lane" role="region" aria-label="ProTraders support" data-testid="dashboard-support">
-        <div><strong>Support</strong><small>Need help with your workspace?</small></div>
+        <div><strong>{t('Support')}</strong><small>Need help with your workspace?</small></div>
         <a href={SUPPORT_PHONE_LINK} data-testid="dashboard-support-call">Call {SUPPORT_PHONE_DISPLAY}</a>
         <a href={WHATSAPP_SUPPORT_URL} target="_blank" rel="noopener noreferrer" data-testid="dashboard-support-whatsapp">WhatsApp support</a>
       </div>

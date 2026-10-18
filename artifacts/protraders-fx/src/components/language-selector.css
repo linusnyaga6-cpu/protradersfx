@@ -1,0 +1,22 @@
+.language-trigger { display:inline-flex; align-items:center; justify-content:center; gap:5px; flex:0 0 auto; min-height:36px; padding:6px 9px; border:1px solid #cbd9e9; border-radius:7px; background:#fff; color:#244165; font-size:11px; cursor:pointer; }
+.language-trigger:hover { background:#edf5ff; }
+.language-trigger:focus-visible, .language-dialog :focus-visible { outline:3px solid #178fbc; outline-offset:3px; }
+.language-dialog { width:min(460px, calc(100vw - 24px)); max-height:calc(100dvh - 32px); padding:0; border:1px solid #cfdaeb; border-radius:14px; background:white; color:#203654; box-shadow:0 24px 80px #04132e55; overflow:auto; }
+.language-dialog::backdrop { background:#03142c99; }
+.language-dialog-content { padding:20px; display:grid; gap:11px; text-align:start; }
+.language-dialog header { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.language-dialog h2 { display:flex; align-items:center; gap:9px; margin:0; font-size:17px; }
+.language-dialog header button { border:0; background:transparent; padding:8px; color:inherit; cursor:pointer; }
+.language-dialog label { font-size:13px; font-weight:700; }
+.language-dialog select { box-sizing:border-box; width:100%; min-height:42px; padding:8px; border:1px solid #c1d0e1; border-radius:6px; background:#f8fbff; color:#203654; font:inherit; font-size:14px; }
+.language-dialog p, .language-dialog small { margin:0; font-size:12px; line-height:1.6; overflow-wrap:anywhere; }
+.language-dialog a { color:#1959b5; font-size:12px; text-decoration:underline; }
+.language-eligibility { padding:10px; background:#fff7e7; border-radius:7px; }
+.language-privacy { color:#596b83; }
+.language-done { min-height:40px; border:0; border-radius:7px; background:#2859bd; color:white; font-weight:700; cursor:pointer; }
+[dir="rtl"] .terminal-main, [dir="rtl"] .market-strip { direction:ltr; }
+@media(max-width:700px) {
+  .public-landing-header { flex-wrap:wrap; gap:10px; }
+  .public-landing-actions { flex-wrap:wrap; justify-content:flex-end; }
+  .language-trigger { min-height:32px; font-size:10px; }
+}
