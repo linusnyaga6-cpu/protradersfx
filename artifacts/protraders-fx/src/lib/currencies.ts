@@ -6,6 +6,13 @@ export const currencyNames = {
   ARS: "Argentine peso", INR: "Indian rupee", IDR: "Indonesian rupiah",
   PKR: "Pakistani rupee", PHP: "Philippine peso", THB: "Thai baht",
   NZD: "New Zealand dollar", GBP: "British pound", EUR: "Euro",
+  DZD: "Algerian dinar", BHD: "Bahraini dinar", KMF: "Comorian franc",
+  DJF: "Djiboutian franc", IQD: "Iraqi dinar", JOD: "Jordanian dinar",
+  KWD: "Kuwaiti dinar", LBP: "Lebanese pound", LYD: "Libyan dinar",
+  MRU: "Mauritanian ouguiya", MAD: "Moroccan dirham", OMR: "Omani rial",
+  ILS: "Israeli new shekel (used in Palestine)", QAR: "Qatari riyal",
+  SAR: "Saudi riyal", SOS: "Somali shilling", SDG: "Sudanese pound",
+  SYP: "Syrian pound", TND: "Tunisian dinar", AED: "UAE dirham", YER: "Yemeni rial",
 } as const;
 export type DisplayCurrency = keyof typeof currencyNames;
 export type CurrencyRates = Readonly<Record<string, number>>;
@@ -16,6 +23,9 @@ export const countryCurrencies: Record<string, DisplayCurrency> = {
   BR:"BRL", CO:"COP", MX:"MXN", CL:"CLP", CR:"CRC", AR:"ARS",
   IN:"INR", ID:"IDR", PK:"PKR", PH:"PHP", TH:"THB", NZ:"NZD",
   GB:"GBP", DE:"EUR", FR:"EUR", IT:"EUR", ES:"EUR", HR:"EUR",
+  DZ:"DZD", BH:"BHD", KM:"KMF", DJ:"DJF", IQ:"IQD", JO:"JOD", KW:"KWD",
+  LB:"LBP", LY:"LYD", MR:"MRU", MA:"MAD", OM:"OMR", PS:"ILS", QA:"QAR",
+  SA:"SAR", SO:"SOS", SD:"SDG", SY:"SYP", TN:"TND", AE:"AED", YE:"YER",
 };
 export function isDisplayCurrency(value: unknown): value is DisplayCurrency {
   return typeof value === "string" && Object.hasOwn(currencyNames, value);

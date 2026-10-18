@@ -58,6 +58,21 @@ test("manual USD or currency choice remains selected when the country changes", 
   app.changeCountry("DE");
   assert.equal(app.render().displayCurrency, "NGN");
 });
+test("Arab country automatic currencies follow selection while manual choices remain saved", () => {
+  const app = mount("AE");
+  assert.equal(app.render().displayCurrency, "AED");
+  for (const [country, currency] of [["SA","SAR"],["BH","BHD"],["PS","ILS"],["MA","MAD"],["YE","YER"]]) {
+    app.changeCountry(country);
+    assert.equal(app.render().displayCurrency, currency);
+  }
+  app.render().selectCurrency("KWD");
+  app.changeCountry("QA");
+  assert.equal(app.render().displayCurrency, "KWD");
+  assert.equal(app.render().automatic, false);
+  app.render().selectCurrency("auto");
+  assert.equal(app.render().displayCurrency, "QAR");
+  assert.equal(mount("AE", "AED").render().displayCurrency, "AED");
+});
 test("returning to automatic immediately restores country currency and saves automatic mode", () => {
   const app = mount("KE", "EUR");
   assert.equal(app.render().automatic, false);

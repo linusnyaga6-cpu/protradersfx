@@ -57,10 +57,19 @@ export const heroDescriptions: Record<Language, string> = {
   tn: "Bona ditlhwatlhwa tsa Deriv, tlhopha melawana ya konteraka mme o sekaseke dikgwebo tse di fedileng mo ProTraders FX.",
 };
 
-export const countries = ["KE","ZA","NG","GH","EG","BW","BR","CO","MX","CL","CR","AR","IN","ID","PK","PH","TH","NZ","GB","DE","FR","IT","ES","HR"] as const;
+export const arabCountries = [
+  "DZ", "BH", "KM", "DJ", "EG", "IQ", "JO", "KW", "LB", "LY", "MR",
+  "MA", "OM", "PS", "QA", "SA", "SO", "SD", "SY", "TN", "AE", "YE",
+] as const;
+export const countries = [
+  "KE","ZA","NG","GH","BW","BR","CO","MX","CL","CR","AR","IN","ID","PK","PH","TH","NZ","GB","DE","FR","IT","ES","HR",
+  ...arabCountries,
+] as const;
 export const countryLanguages: Record<string, Language> = {
   KE:"sw", ZA:"en", NG:"en", GH:"en", EG:"ar", BW:"tn", BR:"pt", CO:"es", MX:"es", CL:"es", CR:"es", AR:"es",
   IN:"hi", ID:"id", PK:"ur", PH:"fil", TH:"th", NZ:"en", GB:"en", DE:"de", FR:"fr", IT:"it", ES:"es", HR:"hr",
+  DZ:"ar", BH:"ar", KM:"ar", DJ:"ar", IQ:"ar", JO:"ar", KW:"ar", LB:"ar", LY:"ar", MR:"ar",
+  MA:"ar", OM:"ar", PS:"ar", QA:"ar", SA:"ar", SO:"ar", SD:"ar", SY:"ar", TN:"ar", AE:"ar", YE:"ar",
 };
 export function isLanguage(value: unknown): value is Language {
   return typeof value === "string" && Object.hasOwn(languageNames, value);
