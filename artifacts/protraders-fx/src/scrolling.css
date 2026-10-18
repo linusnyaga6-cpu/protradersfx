@@ -1,0 +1,99 @@
+/* Keep scroll ownership consistent across the legacy workspace layouts. */
+html {
+  overflow-x: clip;
+  overflow-y: auto;
+}
+
+body {
+  overflow: visible;
+}
+
+.terminal-shell .terminal-main,
+.terminal-shell.is-manual-mode .terminal-main {
+  min-width: 0;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior-y: auto;
+  scrollbar-width: thin;
+  scroll-padding-block: 12px;
+}
+
+/* The workspace owns desktop vertical scrolling, not individual columns. */
+.terminal-shell .terminal-main > :is(
+  .dashboard-view, .quick-bot-view, .quick-bot-workspace, .bulk-trader-view,
+  .analysis-tools-view, .recovery-builder, .vertex-builder, .tool-placeholder-view,
+  .strategy-workspace, .free-bot-library, .free-bot-independent, .margic-workspace,
+  .deriv-pro-bots-view, .owner-activity-view, .trading-workspace
+) {
+  height: auto !important;
+  max-height: none !important;
+  min-width: 0;
+  overflow: visible;
+}
+
+.terminal-shell .terminal-main :is(.strategy-workspace-main, .strategy-side-panel, .trade-ticket) {
+  height: auto;
+  max-height: none;
+  overflow: visible;
+}
+
+.terminal-shell :is(.vertex-canvas, .recovery-canvas, .margic-canvas) {
+  min-width: 0;
+  max-width: 100%;
+  overflow: auto;
+}
+
+.terminal-shell :is(
+  .terminal-nav-scroll, .market-strip, [role="tablist"], .recovery-nav, .margic-nav,
+  .tool-placeholder-tabs, .owner-activity-table-wrap, .analysis-history,
+  .bot-transaction-table, .bulk-history-table, .ai-batch-result-table,
+  .deriv-pro-bot-table-wrap, .ptx-table-wrap
+) {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.terminal-shell .analysis-history {
+  justify-content: flex-start;
+}
+
+.terminal-shell .analysis-history > * {
+  flex-shrink: 0;
+}
+
+.terminal-shell .owner-activity-row {
+  min-width: 460px;
+}
+
+/* Long results and scanner settings must stay reachable on short screens. */
+:is(.bot-result-dialog, .ai-scanner-modal, .ptx-modal) {
+  max-height: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.market-ai-panel {
+  max-height: calc(100dvh - 110px - env(safe-area-inset-top));
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
+@media (max-width: 700px) {
+  .terminal-shell,
+  .terminal-shell.is-manual-mode {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+
+  .terminal-shell .terminal-main,
+  .terminal-shell.is-manual-mode .terminal-main {
+    overflow: visible !important;
+  }
+}

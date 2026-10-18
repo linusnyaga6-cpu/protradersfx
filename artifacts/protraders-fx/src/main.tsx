@@ -8,6 +8,7 @@ import './reference-redesign.css';
 import './footer-layout.css';
 import './bulk-trader-theme.css';
 import './workspace-navigation.css';
+import './scrolling.css';
 
 createRoot(document.getElementById('root')!, {
   // Keeps caught errors off reportError(), which would raise the dev overlay.
