@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 const RATE_URL = "https://open.er-api.com/v6/latest/USD";
-const FALLBACK_URL = "https://latest.currency-api.pages.dev/v1/currencies/usd.json";
+const FALLBACK_URL = "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json";
 const RATE_CACHE_KEY = "protraders-fx:currency-rates-v2";
 const ONE_HOUR = 60 * 60 * 1000;
 
