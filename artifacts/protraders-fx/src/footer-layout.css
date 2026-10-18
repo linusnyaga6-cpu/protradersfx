@@ -9,6 +9,16 @@
 }
 
 @media (max-width: 700px) {
+  /* Mobile workspaces grow with their content; the document must own scrolling. */
+  html {
+    overflow-x: clip;
+    overflow-y: auto;
+  }
+
+  body {
+    overflow: visible;
+  }
+
   .terminal-shell,
   .terminal-shell.is-manual-mode {
     height: auto;
