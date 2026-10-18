@@ -58,6 +58,18 @@ test("manual USD or currency choice remains selected when the country changes", 
   app.changeCountry("DE");
   assert.equal(app.render().displayCurrency, "NGN");
 });
+test("South American selections use local currency including Ecuador USD", () => {
+  const app = mount("SR");
+  for (const [country, currency] of [["SR","SRD"],["BO","BOB"],["EC","USD"],["GY","GYD"],["PY","PYG"],["PE","PEN"],["UY","UYU"],["VE","VES"]]) {
+    app.changeCountry(country);
+    assert.equal(app.render().displayCurrency, currency, country);
+  }
+  app.render().selectCurrency("KES");
+  app.changeCountry("SR");
+  assert.equal(app.render().displayCurrency, "KES");
+  app.render().selectCurrency("auto");
+  assert.equal(app.render().displayCurrency, "SRD");
+});
 test("Arab country automatic currencies follow selection while manual choices remain saved", () => {
   const app = mount("AE");
   assert.equal(app.render().displayCurrency, "AED");

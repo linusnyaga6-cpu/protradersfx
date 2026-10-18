@@ -45,7 +45,7 @@ export default function LanguageSelector() {
           </select>
           <small role="status">{manualCountry ? "Manually selected" : detection === "detecting" ? "Estimating country…" :
             detection === "network" ? "Approximate network country (VPNs may affect this)" : "Browser region only; network estimate unavailable"}</small>
-          <p className="language-coverage">Available in 18 languages for the landing-page introduction and shared tool navigation. Trading forms, detailed help and provider errors remain in English.</p>
+          <p className="language-coverage">Available in {Object.keys(languageNames).length} languages for the landing-page introduction and shared tool navigation. Trading forms, detailed help and provider errors remain in English.</p>
           <p className="language-eligibility">Country selection is a display preference, not proof of residence or trading permission. Deriv determines available accounts and products using your verified residence. This setting cannot bypass restrictions.</p>
           <a href="https://deriv.com/terms-and-conditions" target="_blank" rel="noopener noreferrer">Check Deriv’s official terms and eligibility</a>
           <small className="language-privacy">Country detection uses country.is, which receives your network IP to return an approximate country. No GPS permission is requested. Only the country code and your display preferences are saved here.</small>

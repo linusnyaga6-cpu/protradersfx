@@ -10,7 +10,7 @@ rates.EUR = 0.9;
 rates.NGN = 1500;
 
 test("all listed countries have an available currency, with KSh explicitly present", () => {
-  assert.equal(Object.keys(currencyNames).length, 42);
+  assert.equal(Object.keys(currencyNames).length, 49);
   for (const country of countries) assert.ok(isDisplayCurrency(countryCurrencies[country]), country);
   assert.equal(countryCurrencies.KE, "KES");
   assert.match(currencyNames.KES, /KSh/);

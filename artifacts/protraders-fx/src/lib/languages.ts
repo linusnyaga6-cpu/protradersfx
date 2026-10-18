@@ -2,7 +2,7 @@ export const languageNames = {
   en: "English", sw: "Kiswahili", af: "Afrikaans", zu: "isiZulu",
   ha: "Hausa", ar: "العربية", pt: "Português", es: "Español",
   hi: "हिन्दी", id: "Bahasa Indonesia", ur: "اردو", fil: "Filipino",
-  th: "ไทย", de: "Deutsch", fr: "Français", it: "Italiano", hr: "Hrvatski", tn: "Setswana",
+  th: "ไทย", de: "Deutsch", fr: "Français", it: "Italiano", hr: "Hrvatski", tn: "Setswana", nl: "Nederlands",
 } as const;
 export type Language = keyof typeof languageNames;
 export const translationKeys = [
@@ -17,6 +17,7 @@ export type TranslationKey = typeof translationKeys[number];
 // Keep trading identifiers and provider errors untouched. These are presentation labels only.
 export const translations: Record<Language, readonly string[]> = {
   en: translationKeys,
+  nl: ["Word lid van de werkruimte","Account aanmaken","Werkruimte openen","Handel als een professional","Dashboard","Bulkhandel","Handmatig handelen","Analysetools","Gratis bots","Deriv Pro-bots","Activiteit van de eigenaar","Ondersteuning","Botbouwer","Snelle bot","Kopieerhandel","Rapporten","Account","Aan de slag","LIVE MARKTOVERZICHT","Bekijk de markt","Stel het contract in","Bekijk het resultaat"],
   sw: ["Jiunge na eneo la biashara","Fungua akaunti","Ingia eneo la biashara","Fanya biashara kama mtaalamu","Dashibodi","Biashara nyingi","Biashara ya mkono","Zana za uchambuzi","Roboti za bure","Roboti za Deriv Pro","Shughuli za mmiliki","Msaada","Unda roboti","Roboti ya haraka","Nakili biashara","Ripoti","Akaunti","Anza","MUHTASARI WA SOKO MOJA KWA MOJA","Chunguza hali ya soko","Weka mkataba","Kagua matokeo"],
   af: ["Sluit by werkruimte aan","Skep rekening","Betree werkruimte","Handel soos 'n kenner","Kontroleskerm","Grootmaathandel","Handmatige handel","Ontledingshulpmiddels","Gratis bots","Deriv Pro-bots","Eienaaraktiwiteit","Ondersteuning","Botbouer","Vinnige bot","Kopieerhandel","Verslae","Rekening","Begin","LEWENDIGE MARKOORSIG","Bekyk die mark","Stel die kontrak","Hersien die resultaat"],
   zu: ["Joyina indawo yokuhweba","Dala i-akhawunti","Ngena endaweni yokuhweba","Hweba njengochwepheshe","Ideshibhodi","Ukuhweba okuningi","Ukuhweba ngesandla","Amathuluzi okuhlaziya","Amarobhothi amahhala","Amarobhothi e-Deriv Pro","Umsebenzi womnikazi","Usizo","Umakhi wamarobhothi","Irobhothi elisheshayo","Kopisha ukuhweba","Imibiko","I-akhawunti","Qala","ISIFINYEZO SEMAKETHE EBHUKHOMA","Bheka imakethe","Setha inkontileka","Buyekeza umphumela"],
@@ -38,6 +39,7 @@ export const translations: Record<Language, readonly string[]> = {
 
 export const heroDescriptions: Record<Language, string> = {
   en: "See live Deriv quotes, choose contract terms, and review settled trade details—all in your ProTraders FX workspace.",
+  nl: "Bekijk live Deriv-koersen, kies de contractvoorwaarden en bekijk afgeronde transacties — allemaal in je ProTraders FX-werkruimte.",
   sw: "Tazama bei za moja kwa moja za Deriv, chagua masharti ya mkataba na kagua matokeo ya biashara katika ProTraders FX.",
   af: "Bekyk regstreekse Deriv-pryse, kies kontrakvoorwaardes en hersien afgehandelde transaksies in ProTraders FX.",
   zu: "Bona amanani e-Deriv abukhoma, khetha imigomo yenkontileka bese ubuyekeza ukuhweba okuqediwe ku-ProTraders FX.",
@@ -61,15 +63,18 @@ export const arabCountries = [
   "DZ", "BH", "KM", "DJ", "EG", "IQ", "JO", "KW", "LB", "LY", "MR",
   "MA", "OM", "PS", "QA", "SA", "SO", "SD", "SY", "TN", "AE", "YE",
 ] as const;
+export const southAmericanCountries = ["AR", "BO", "BR", "CL", "CO", "EC", "GY", "PY", "PE", "SR", "UY", "VE"] as const;
 export const countries = [
-  "KE","ZA","NG","GH","BW","BR","CO","MX","CL","CR","AR","IN","ID","PK","PH","TH","NZ","GB","DE","FR","IT","ES","HR",
+  "KE","ZA","NG","GH","BW","MX","CR","IN","ID","PK","PH","TH","NZ","GB","DE","FR","IT","ES","HR",
   ...arabCountries,
+  ...southAmericanCountries,
 ] as const;
 export const countryLanguages: Record<string, Language> = {
   KE:"sw", ZA:"en", NG:"en", GH:"en", EG:"ar", BW:"tn", BR:"pt", CO:"es", MX:"es", CL:"es", CR:"es", AR:"es",
   IN:"hi", ID:"id", PK:"ur", PH:"fil", TH:"th", NZ:"en", GB:"en", DE:"de", FR:"fr", IT:"it", ES:"es", HR:"hr",
   DZ:"ar", BH:"ar", KM:"ar", DJ:"ar", IQ:"ar", JO:"ar", KW:"ar", LB:"ar", LY:"ar", MR:"ar",
   MA:"ar", OM:"ar", PS:"ar", QA:"ar", SA:"ar", SO:"ar", SD:"ar", SY:"ar", TN:"ar", AE:"ar", YE:"ar",
+  BO:"es", EC:"es", GY:"en", PY:"es", PE:"es", SR:"nl", UY:"es", VE:"es",
 };
 export function isLanguage(value: unknown): value is Language {
   return typeof value === "string" && Object.hasOwn(languageNames, value);

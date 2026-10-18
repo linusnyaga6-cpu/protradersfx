@@ -13,6 +13,8 @@ export const currencyNames = {
   ILS: "Israeli new shekel (used in Palestine)", QAR: "Qatari riyal",
   SAR: "Saudi riyal", SOS: "Somali shilling", SDG: "Sudanese pound",
   SYP: "Syrian pound", TND: "Tunisian dinar", AED: "UAE dirham", YER: "Yemeni rial",
+  BOB: "Bolivian boliviano", GYD: "Guyanese dollar", PYG: "Paraguayan guaraní",
+  PEN: "Peruvian sol", SRD: "Surinamese dollar", UYU: "Uruguayan peso", VES: "Venezuelan bolívar",
 } as const;
 export type DisplayCurrency = keyof typeof currencyNames;
 export type CurrencyRates = Readonly<Record<string, number>>;
@@ -23,6 +25,7 @@ export const countryCurrencies: Record<string, DisplayCurrency> = {
   BR:"BRL", CO:"COP", MX:"MXN", CL:"CLP", CR:"CRC", AR:"ARS",
   IN:"INR", ID:"IDR", PK:"PKR", PH:"PHP", TH:"THB", NZ:"NZD",
   GB:"GBP", DE:"EUR", FR:"EUR", IT:"EUR", ES:"EUR", HR:"EUR",
+  BO:"BOB", EC:"USD", GY:"GYD", PY:"PYG", PE:"PEN", SR:"SRD", UY:"UYU", VE:"VES",
   DZ:"DZD", BH:"BHD", KM:"KMF", DJ:"DJF", IQ:"IQD", JO:"JOD", KW:"KWD",
   LB:"LBP", LY:"LYD", MR:"MRU", MA:"MAD", OM:"OMR", PS:"ILS", QA:"QAR",
   SA:"SAR", SO:"SOS", SD:"SDG", SY:"SYP", TN:"TND", AE:"AED", YE:"YER",

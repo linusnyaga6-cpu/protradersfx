@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { arabCountries, countryLanguages, countries, detectBrowserLanguage, heroDescriptions, isLanguage, languageNames, translate, translationKeys, translations } from "./languages.ts";
+import { arabCountries, southAmericanCountries, countryLanguages, countries, detectBrowserLanguage, heroDescriptions, isLanguage, languageNames, translate, translationKeys, translations } from "./languages.ts";
 
-test("all eighteen languages have every shared label and a landing introduction", () => {
-  assert.equal(Object.keys(languageNames).length, 18);
+test("all nineteen languages have every shared label and a landing introduction", () => {
+  assert.equal(Object.keys(languageNames).length, 19);
   for (const language of Object.keys(languageNames)) {
     assert.equal(translations[language].length, translationKeys.length, language);
     assert.ok(translations[language].every(text => typeof text === "string" && text.length > 0));
@@ -19,7 +19,7 @@ test("detects regional browser locales in preference order, including Filipino a
   assert.equal(detectBrowserLanguage(["xx-XX"]), null);
 });
 test("country suggestions cover the user's regions without claiming eligibility", () => {
-  assert.equal(countries.length, 45);
+  assert.equal(countries.length, 53);
   for (const country of countries) assert.ok(isLanguage(countryLanguages[country]));
 });
 test("all 22 Arab League countries are selectable once and default to Arabic", () => {
@@ -31,6 +31,16 @@ test("all 22 Arab League countries are selectable once and default to Arabic", (
     assert.equal(countryLanguages[code], "ar", code);
     assert.ok(new Intl.DisplayNames(["ar"], { type: "region" }).of(code));
   }
+});
+test("all 12 South American countries have language suggestions including Dutch for Suriname", () => {
+  assert.deepEqual([...southAmericanCountries].sort(), ["AR","BO","BR","CL","CO","EC","GY","PY","PE","SR","UY","VE"].sort());
+  for (const code of southAmericanCountries) assert.ok(countries.includes(code), code);
+  assert.equal(countryLanguages.SR, "nl");
+  assert.equal(countryLanguages.GY, "en");
+  assert.equal(countryLanguages.BR, "pt");
+  assert.equal(countryLanguages.PE, "es");
+  assert.equal(detectBrowserLanguage(["nl-SR"]), "nl");
+  assert.equal(translate("nl", "Create account"), "Account aanmaken");
 });
 test("only presentation text is translated, never contract codes or unknown errors", () => {
   assert.equal(translate("sw", "Dashboard"), "Dashibodi");
