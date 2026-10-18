@@ -11,7 +11,9 @@ import {
 } from '@workspace/api-client-react';
 import { ErrorBoundary } from '@/components/error-boundary';
 import DerivProBotsView from './components/DerivProBotsView';
-import UsdKesConverter from './components/UsdKesConverter';
+import CurrencyConverter from './components/CurrencyConverter';
+import { useDisplayCurrencyPreference } from './hooks/useDisplayCurrencyPreference';
+import { convertCurrency, currencyLabel } from './lib/currencies';
 import RiskDisclaimerNote from './components/RiskDisclaimerNote';
 import LanguageSelector from './components/LanguageSelector';
 import { useLanguage } from './lib/language-context';
@@ -1305,13 +1307,7 @@ function AuthenticatedHome() {
   });
   const [activeMarket, setActiveMarket] = useState(DEFAULT_MARKET_LABEL);
   const [accountMode, setAccountMode] = useState<'DEMO' | 'REAL'>(activeMode === 'real' ? 'REAL' : 'DEMO');
-  const [displayCurrency, setDisplayCurrency] = useState<DisplayCurrency>(() => {
-    try {
-      return window.localStorage.getItem('protradersfx:display-currency') === 'KES' ? 'KES' : 'USD';
-    } catch {
-      return 'USD';
-    }
-  });
+  const { displayCurrency, selectCurrency, automatic: automaticCurrency } = useDisplayCurrencyPreference();
   const [direction, setDirection] = useState<'RISE' | 'FALL'>('RISE');
   const [contractType, setContractType] = useState<'RISE/FALL' | 'OVER/UNDER' | 'ODD/EVEN'>('RISE/FALL');
   const [contractSide, setContractSide] = useState<'RISE' | 'FALL' | 'OVER' | 'UNDER' | 'ODD' | 'EVEN'>('RISE');
@@ -1352,13 +1348,6 @@ function AuthenticatedHome() {
     setAccountMode(activeMode === 'real' ? 'REAL' : 'DEMO');
   }, [activeMode]);
   useEffect(() => {
-    try {
-      window.localStorage.setItem('protradersfx:display-currency', displayCurrency);
-    } catch {
-      // The currency preference is a convenience and must not block trading UI.
-    }
-  }, [displayCurrency]);
-  useEffect(() => {
     if (!isSignedIn) {
       setManualHistoryByAccount({});
       setManualTradeResult(null);
@@ -1375,13 +1364,13 @@ function AuthenticatedHome() {
   }, [activeTool]);
   const marketQuotes = usePublicMarketBoard();
   const usdKesRateState = useUsdKesRate();
-  const usdKesRate = usdKesRateState.rate;
+  const usdKesRate = usdKesRateState.rates;
   const displayBalance = balance === null
     ? '—'
     : formatMoneyForDisplay(balance, currency, displayCurrency, usdKesRate);
-  const canConvertBalance = ['USD', 'KES', 'KSH'].includes(currency.toUpperCase());
-  const alternateBalance = balance !== null && usdKesRate !== null && canConvertBalance
-    ? formatMoneyForDisplay(balance, currency, displayCurrency === 'USD' ? 'KES' : 'USD', usdKesRate)
+  const canConvertBalance = true;
+  const alternateBalance = balance !== null && convertCurrency(balance, currency, displayCurrency, usdKesRate) !== null
+    ? formatMoneyForDisplay(balance, currency, displayCurrency, usdKesRate)
     : null;
   const activeDefinition = getMarketDefinition(activeMarket);
   const activeQuote = marketQuotes[activeDefinition.symbol];
@@ -1766,7 +1755,7 @@ function AuthenticatedHome() {
     <CurrencyDisplayContext.Provider value={{
       displayCurrency,
       rate: usdKesRate,
-      toggleDisplayCurrency: () => setDisplayCurrency((current) => current === 'USD' ? 'KES' : 'USD'),
+      toggleDisplayCurrency: () => selectCurrency(displayCurrency === 'USD' ? 'KES' : 'USD'),
     }}>
     <div className={`terminal-shell ${activeTool === 'Manual Trader' ? 'is-manual-mode' : ''} ${activeTool === 'Manual Trader' && manualTraderLoading ? 'is-manual-loading' : ''} ${activeTool === 'Dashboard' ? 'is-dashboard-mode' : ''} ${['Bot Builder', 'Free Bots', 'Deriv Pro Bots', 'Bulk Trader', 'Quick Bot', 'Analysis Tools', 'Volt AI', 'Auto AI', 'Signal AI', 'Apex Bot', 'Copy Trader'].includes(activeTool) ? 'is-reference-mode' : ''}`}>
       <header className="terminal-header">
@@ -1786,27 +1775,28 @@ function AuthenticatedHome() {
             <div className="terminal-balance-copy">
               <div className="terminal-balance-primary">
                 <strong>{displayBalance}</strong>
-                <UsdKesConverter
-                  rate={usdKesRate}
+                <CurrencyConverter
+                  automatic={automaticCurrency}
+                  rates={usdKesRate}
+                  source={usdKesRateState.source}
+                  checkedAt={usdKesRateState.checkedAt}
                   updatedAt={usdKesRateState.updatedAt}
                   loading={usdKesRateState.loading}
                   stale={usdKesRateState.stale}
                   onRefresh={usdKesRateState.refresh}
                   displayCurrency={displayCurrency}
-                  onToggleDisplayCurrency={() => setDisplayCurrency((current) => current === 'USD' ? 'KES' : 'USD')}
+                  onSelectCurrency={selectCurrency}
                 />
               </div>
               {canConvertBalance && (
                 <small
                   className={`terminal-balance-kes ${alternateBalance === null ? 'is-unavailable' : ''}`}
                   data-testid="usd-kes-balance-equivalent"
-                  title={usdKesRate === null
-                    ? 'USD/KSh estimate is unavailable until the daily reference rate loads.'
-                    : `Display-only conversion using the daily USD/KSh reference rate. Your Deriv account and trade currency remain ${currency}.`}
+                  title={`Daily display estimate. Your Deriv account and trade currency remain ${currency}.`}
                 >
                   {alternateBalance === null
                     ? usdKesRateState.loading ? 'Loading exchange rate…' : 'Rate unavailable · open calculator to retry'
-                    : `≈ ${alternateBalance} · display only`}
+                    : usdKesRateState.stale ? `≈ ${alternateBalance} · saved estimate` : `≈ ${alternateBalance} · display only`}
                 </small>
               )}
             </div>
@@ -2643,12 +2633,18 @@ function PublicLandingView({ marketQuotes, startupError, onRetry }: {
 }) {
   const { t, language } = useLanguage();
   const { signInHref, signUpHref } = useAppAuth();
+  const rates = useUsdKesRate();
+  const { displayCurrency, selectCurrency, automatic: automaticCurrency } = useDisplayCurrencyPreference();
   const publicMarkets = ['EUR/USD', 'GBP/USD', 'USD/JPY', 'VOL 100 1s', 'VOL 75 1s'];
   return (
     <main className="public-landing">
       <header className="public-landing-header">
         <a href={basePath || '/'} className="public-landing-brand"><span><BarChart3 size={18} /></span><strong>PROTRADERS <b>FX</b><small>DERIV TRADING WORKSPACE</small></strong></a>
-          <div className="public-landing-actions"><LanguageSelector /><a className="public-login" href={signInHref}>{t('Join workspace')}</a><a className="public-signup" href={signUpHref}>{t('Create account')}</a></div>
+          <div className="public-landing-actions"><LanguageSelector />
+            <CurrencyConverter automatic={automaticCurrency} rates={rates.rates} source={rates.source} checkedAt={rates.checkedAt} updatedAt={rates.updatedAt}
+              loading={rates.loading} stale={rates.stale} onRefresh={rates.refresh}
+              displayCurrency={displayCurrency} onSelectCurrency={selectCurrency} />
+            <a className="public-login" href={signInHref}>{t('Join workspace')}</a><a className="public-signup" href={signUpHref}>{t('Create account')}</a></div>
       </header>
       {startupError && <div className="public-auth-recovery" role="alert">
         <span>{startupError}</span>
@@ -3842,7 +3838,7 @@ function RecoveryBotView({ accountMode, currency, balance, activeMarket, marketQ
          <a className="whatsapp-button" href={WHATSAPP_GROUP_URL} target="_blank" rel="noopener noreferrer" aria-label="Join the ProTraders WhatsApp support group">WhatsApp Group</a>
         <span className="recovery-spacer" />
         <span className="recovery-live-quote"><i /> {selectedDefinition.name} {formatMarketPrice(selectedQuote?.price ?? null, selectedQuote?.pipSize ?? 2)}</span>
-        <span className="recovery-currency">{displayCurrency === 'USD' ? 'USD' : 'KSh'}⌄</span>
+        <span className="recovery-currency">{currencyLabel(displayCurrency)}⌄</span>
         <strong className="recovery-balance">◉ {balance === null ? '—' : formatMoneyForDisplay(balance, currency, displayCurrency, rate)}</strong>
         <span className="recovery-demo">{accountMode}</span>
         <button type="button" className="transfer-button">Transfer</button>

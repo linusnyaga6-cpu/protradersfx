@@ -16,7 +16,7 @@ function mount(fetch, cached = null) {
   let cursor = 0;
   let effect;
   const context = {
-    fetch, AbortSignal, Date,
+    fetch, AbortSignal, AbortController, Date, setTimeout, clearTimeout,
     useState(initial) {
       const index = cursor++;
       if (!(index in states)) states[index] = typeof initial === "function" ? initial() : initial;
@@ -55,13 +55,14 @@ test("loads a validated rate and supplies a bounded request signal", async () =>
   assert.ok(signal instanceof AbortSignal);
   assert.equal(app.render().rate, 129.75);
   assert.equal(app.render().loading, false);
+  assert.ok(Number.isFinite(Date.parse(app.render().checkedAt)));
   app.cleanup();
 });
 
 test("network failure retries after 30 seconds and can recover", async () => {
   let calls = 0;
   const app = mount(async () => {
-    if (++calls === 1) throw Error("offline");
+    if (++calls <= 2) throw Error("offline");
     return { ok: true, json: async () => payload };
   });
   await settle();
@@ -101,5 +102,29 @@ test("HTTP failures do not become successful conversions", async () => {
   await settle();
   assert.equal(app.render().rate, null);
   assert.equal(app.render().loading, false);
+  app.cleanup();
+});
+
+test("secondary provider restores KSh and other quotes when the primary fails", async () => {
+  const app = mount(async url => {
+    if (url.includes("open.er-api")) throw Error("primary blocked");
+    return { ok: true, json: async () => ({
+      date: new Date().toISOString().slice(0, 10), usd: { usd: 1, kes: 129.75, ngn: 1500, eur: 0.9 },
+    }) };
+  });
+  await settle();
+  assert.equal(app.render().rate, 129.75);
+  assert.equal(app.render().rates.NGN, 1500);
+  assert.equal(app.render().rates.EUR, 0.9);
+  assert.equal(app.render().source, "Currency API");
+  app.cleanup();
+});
+
+test("rates older than seven days are not used as current estimates", async () => {
+  const app = mount(async () => { throw Error("offline"); }, {
+    rate: 128, updatedAt: new Date(Date.now() - 8 * 86400000).toISOString(), nextUpdateAt: Date.now() + 10000,
+  });
+  await settle();
+  assert.equal(app.render().rate, null);
   app.cleanup();
 });

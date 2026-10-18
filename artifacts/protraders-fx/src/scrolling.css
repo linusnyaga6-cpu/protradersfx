@@ -6,7 +6,24 @@
   z-index: 300;
   max-height: calc(100dvh - 100px - env(safe-area-inset-bottom));
   overflow-y: auto;
+  margin: 0;
+  left: auto;
+  padding: 0;
 }
+.currency-converter-popover:not([open]) { display: none; }
+.currency-converter-popover::backdrop { background: #03142c88; }
+.currency-converter-content { display: grid; gap: 12px; padding: 14px; }
+.currency-converter-content > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.currency-converter-content > header > div { display: grid; gap: 3px; }
+.currency-converter-content > header small { font-size: 11px; }
+.currency-display-label { display: inline-flex; align-items: center; gap: 4px; color: #244165; }
+.currency-display-select, .currency-converter-amount select {
+  min-width: 0; min-height: 34px; padding: 6px; border: 1px solid #cbd9e9;
+  border-radius: 6px; color: #244165; background: #fff; font-size: 11px;
+}
+.currency-display-select { width: 110px; max-width: 28vw; }
+.currency-converter-amount select { width: 100%; font-size: 12px; }
+.currency-converter-content :focus-visible, .currency-display-select:focus-visible { outline: 3px solid #178fbc; outline-offset: 2px; }
 .currency-converter-trigger:disabled {
   opacity: .6;
   cursor: not-allowed;
