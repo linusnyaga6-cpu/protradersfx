@@ -39,6 +39,7 @@ import {
   type ManualContractType,
 } from './lib/deriv-contracts';
 import { manualEntryBatchDecision } from './lib/manual-entry-batch';
+import { reachedTradingLimit } from './lib/trading-limits';
 import { startPublicIntro } from './lib/public-intro';
 import { actualTradeStake, normalizeTradeExecution, settledTradeNetProfit, sumSettledTradeNetProfit, tradeResultFinancialState } from './lib/trade-financials';
 import {
@@ -1093,11 +1094,12 @@ function getFloatingScanResult(definition: MarketDefinition, quote?: MarketQuote
         settledTrades.push(trade);
         setTrades((current) => [...current, trade]);
         await onTradeSettled();
-        if (takeProfitLimit > 0 && cumulativeProfit >= takeProfitLimit) {
+        const limitReached = reachedTradingLimit(cumulativeProfit, takeProfitLimit, stopLossLimit);
+        if (limitReached === 'take-profit') {
           stopReason = `Take Profit reached at ${formatSignedProfit(cumulativeProfit)} ${currency}.`;
           break;
         }
-        if (stopLossLimit > 0 && cumulativeProfit <= -stopLossLimit) {
+        if (limitReached === 'stop-loss') {
           stopReason = `Stop Loss reached at ${formatSignedProfit(cumulativeProfit)} ${currency}.`;
           break;
         }
@@ -3363,11 +3365,12 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
         recordTrade(settledTrade);
         setBulkRunProgress({ phase: 'scanning', current: index + 2, completed, total: count });
         setReviewState(`Entry ${index + 1}/${count} settled · ${formatSignedProfit(exactProfit)} ${settledTrade.currency ?? currency} · scanning next entry…`);
-        if (takeProfitLimit > 0 && cumulativeProfit >= takeProfitLimit) {
+        const limitReached = reachedTradingLimit(cumulativeProfit, takeProfitLimit, stopLossLimit);
+        if (limitReached === 'take-profit') {
           stopReason = `Take Profit reached at ${cumulativeProfit.toFixed(2)} ${currency}.`;
           break;
         }
-        if (stopLossLimit > 0 && cumulativeProfit <= -stopLossLimit) {
+        if (limitReached === 'stop-loss') {
           stopReason = `Stop Loss reached at ${cumulativeProfit.toFixed(2)} ${currency}.`;
           break;
         }
@@ -3777,11 +3780,12 @@ function RecoveryBotView({ accountMode, currency, balance, activeMarket, marketQ
         await onTradeSettled();
         setSummaryTab('Transactions');
         setJournalEntries((current) => [...current, `Run ${runIndex + 1}/${requestedRuns} · ${tradeContractLabel(settledTrade)} · ${selectedDefinition.name} · entry ${formatTradePoint(settledTrade.entrySpot)} → exit ${formatTradePoint(settledTrade.exitSpot)} · stake ${formatTradePoint(settledTrade.stake ?? settledTrade.buyPrice)} ${settledTrade.currency ?? currency} · net P/L ${formatSignedProfit(resolvedTradeProfit(settledTrade))} ${settledTrade.currency ?? currency}`]);
-        if (takeProfitLimit > 0 && cumulativeProfit >= takeProfitLimit) {
+        const limitReached = reachedTradingLimit(cumulativeProfit, takeProfitLimit, stopLossLimit);
+        if (limitReached === 'take-profit') {
           stopReason = `Take Profit reached at ${cumulativeProfit.toFixed(2)} ${currency}.`;
           break;
         }
-        if (stopLossLimit > 0 && cumulativeProfit <= -stopLossLimit) {
+        if (limitReached === 'stop-loss') {
           stopReason = `Stop Loss reached at ${cumulativeProfit.toFixed(2)} ${currency}.`;
           break;
         }
@@ -4220,11 +4224,12 @@ function FreeBotsView({ accountMode, currency, balance, activeMarket, marketQuot
         setBotTransactions((current) => [...current, settledTrade]);
         await onTradeSettled();
         setBotStatus(`${completed}/${requestedRuns} settled · ${cumulativeProfit.toFixed(2)} ${settledTrade.currency ?? currency}`);
-        if (takeProfitLimit > 0 && cumulativeProfit >= takeProfitLimit) {
+        const limitReached = reachedTradingLimit(cumulativeProfit, takeProfitLimit, stopLossLimit);
+        if (limitReached === 'take-profit') {
           stopReason = `Take Profit reached at ${cumulativeProfit.toFixed(2)} ${currency}.`;
           break;
         }
-        if (stopLossLimit > 0 && cumulativeProfit <= -stopLossLimit) {
+        if (limitReached === 'stop-loss') {
           stopReason = `Stop Loss reached at ${cumulativeProfit.toFixed(2)} ${currency}.`;
           break;
         }

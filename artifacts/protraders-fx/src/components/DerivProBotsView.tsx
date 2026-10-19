@@ -27,6 +27,7 @@ import {
   ProfitLossValue,
   useCurrencyDisplay,
 } from "../lib/display-currency";
+import { reachedTradingLimit } from "../lib/trading-limits";
 
 type MarketOption = {
   label: string;
@@ -641,10 +642,11 @@ export default function DerivProBotsView({
       runProfitRef.current = nextRunProfit;
       setRunProfit(nextRunProfit);
 
-      if (config.takeProfit > 0 && nextRunProfit >= config.takeProfit) {
+      const limitReached = reachedTradingLimit(nextRunProfit, config.takeProfit, config.stopLoss);
+      if (limitReached === "take-profit") {
         setCompleted(true);
         stopRun(`Take-profit reached: ${formatSignedProfit(nextRunProfit, trade.currency)}.`, true);
-      } else if (config.stopLoss > 0 && nextRunProfit <= -config.stopLoss) {
+      } else if (limitReached === "stop-loss") {
         setCompleted(true);
         stopRun(`Stop-loss reached: ${formatSignedProfit(nextRunProfit, trade.currency)}.`, true);
       } else if (nextRunCount >= config.maxTrades) {
