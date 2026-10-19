@@ -5,3 +5,4 @@
 .pnl-value[data-pnl-tone="flat"],
 .pnl-value[data-pnl-tone="pending"] { color: #8494a7 !important; }
 .pnl-value { display: inline; font: inherit; direction: ltr; unicode-bidi: isolate; }
+.terminal-balance-warning { color: #d97706; font-size: 10px; white-space: normal; }

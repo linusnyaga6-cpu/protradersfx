@@ -40,7 +40,7 @@ import {
 } from './lib/deriv-contracts';
 import { manualEntryBatchDecision } from './lib/manual-entry-batch';
 import { startPublicIntro } from './lib/public-intro';
-import { normalizeTradeExecution, settledTradeNetProfit, sumSettledTradeNetProfit } from './lib/trade-financials';
+import { actualTradeStake, normalizeTradeExecution, settledTradeNetProfit, sumSettledTradeNetProfit } from './lib/trade-financials';
 import {
   CurrencyDisplayContext,
   ProfitLossValue,
@@ -188,7 +188,7 @@ function settledTradeOutcome(trade: ExecutedTrade): 'won' | 'lost' | null {
 
 function summarizeTrades(trades: ExecutedTrade[]) {
   const totalStake = trades.reduce((total, trade) => (
-    total + (trade.orderStatusUnknown ? 0 : finiteNumber(trade.stake) ?? finiteNumber(trade.buyPrice) ?? 0)
+    total + (trade.orderStatusUnknown ? 0 : actualTradeStake(trade) ?? 0)
   ), 0);
   const payoutIsComplete = trades.length > 0 && trades.every((trade) => (
     !trade.settlementPending && !trade.orderStatusUnknown && finiteNumber(trade.payout) !== null
@@ -266,11 +266,11 @@ function TradeSpotPair({ trade, className }: { trade: ExecutedTrade; className: 
 function TradeMoneyDetails({ trade, fallbackCurrency }: { trade: ExecutedTrade; fallbackCurrency: string }) {
   const { displayCurrency, rate } = useCurrencyDisplay();
   const currency = trade.currency ?? fallbackCurrency;
-  const stake = finiteNumber(trade.stake) ?? finiteNumber(trade.buyPrice);
+  const stake = actualTradeStake(trade);
   const profit = resolvedTradeProfit(trade);
   return (
     <span className="trade-money-details">
-      <b>{stake === null ? 'Stake —' : `Stake ${formatMoneyForDisplay(stake, currency, displayCurrency, rate)}`}</b>
+      <b>{stake === null ? 'Contract —' : `Contract ${formatMoneyForDisplay(stake, currency, displayCurrency, rate)}`}</b>
       <strong className={profit === null ? 'is-flat' : profit < 0 ? 'is-loss' : 'is-win'}>
         {profit === null ? 'Net P/L pending' : <>Net P/L <ProfitLossValue amount={profit} currency={currency} /></>}
       </strong>
@@ -310,7 +310,7 @@ function TradeResultDialog({ result, onClose }: { result: BatchResult | null; on
         {activeTab === 'summary' && (
           <div className="ai-batch-result-summary">
             <div className="ai-batch-result-stats">
-              <span><small>TOTAL STAKE</small><b>{formatMoneyForDisplay(totalStake, result.currency, displayCurrency, rate)}</b></span>
+              <span><small>CONTRACT VALUE (STAKE)</small><b>{formatMoneyForDisplay(totalStake, result.currency, displayCurrency, rate)}</b></span>
               <span><small>CONTRACT</small><b>{contractSummary}</b></span>
               <span><small>NO. OF RUNS</small><b>{result.trades}</b></span>
               <span><small>CONTRACTS LOST</small><b>{tradeSummary.contractsLost}</b></span>
@@ -357,13 +357,13 @@ function TradeResultDialog({ result, onClose }: { result: BatchResult | null; on
 function TradeFigureStrip({ trades, currency }: { trades: ExecutedTrade[]; currency: string }) {
   const { displayCurrency, rate } = useCurrencyDisplay();
   if (!trades.length) return null;
-  const placed = trades.reduce((total, trade) => total + (trade.stake ?? trade.buyPrice ?? 0), 0);
+  const placed = trades.reduce((total, trade) => total + (actualTradeStake(trade) ?? 0), 0);
   const profit = totalTradeProfit(trades);
   const tone = profit === null ? 'is-flat' : profit < 0 ? 'is-loss' : profit > 0 ? 'is-win' : 'is-flat';
   return (
     <div className={`trade-figure-strip ${tone}`} aria-label="Trade figures">
       <span><small>TRADES</small><b>{trades.length}</b></span>
-      <span><small>PLACED</small><b>{formatMoneyForDisplay(placed, currency, displayCurrency, rate)}</b></span>
+      <span><small>CONTRACT VALUE</small><b>{formatMoneyForDisplay(placed, currency, displayCurrency, rate)}</b></span>
       <span><small>NET P/L</small><b><ProfitLossValue amount={profit} currency={currency} /></b></span>
     </div>
   );
@@ -412,7 +412,7 @@ function BotTransactionPanel({
         trade.mode,
         formatTradePoint(trade.entrySpot),
         formatTradePoint(trade.exitSpot),
-        formatTradePoint(trade.stake ?? trade.buyPrice),
+        formatTradePoint(actualTradeStake(trade)),
         formatSignedProfit(resolvedTradeProfit(trade)),
         trade.currency ?? currency,
       ]),
@@ -443,8 +443,8 @@ function BotTransactionPanel({
       {activeTab === 'Summary' && (
         <div className="bot-transaction-summary">
             <article><span>SETTLED TRADES</span><strong>{tradeSummary.settledCount}</strong><small>{running ? runningLabel : 'Completed contracts'}</small></article>
-          <article><span>TOTAL STAKE</span><strong>{formatMoneyForDisplay(placed, currency, displayCurrency, rate)}</strong><small>Stake placed only</small></article>
-          <article><span>CONTRACT</span><strong>{contracts}</strong><small>Selected contract type</small></article>
+          <article><span>CONTRACT VALUE</span><strong>{formatMoneyForDisplay(placed, currency, displayCurrency, rate)}</strong><small>Actual stakes only</small></article>
+          <article><span>CONTRACT TYPE</span><strong>{contracts}</strong><small>Selected contract type</small></article>
           <article><span>NET P/L</span><strong><ProfitLossValue amount={profit} currency={currency} /></strong><small>Settled result, stake excluded</small></article>
           <article><span>LAST ENTRY / EXIT</span><strong>{formatTradePoint(latestTrade?.entrySpot)} / {formatTradePoint(latestTrade?.exitSpot)}</strong><small>Latest settled contract</small></article>
         </div>
@@ -463,7 +463,7 @@ function BotTransactionPanel({
           }) : <p className="bot-transactions-empty">{emptyMessage ?? (running ? 'The current contract will appear here after it settles.' : 'Press Run Bot to create a transaction.')}</p>}
           {trades.length > 0 && (
             <div className="bot-transaction-totals" aria-label="Transaction totals">
-              <span><small>TOTAL STAKE</small><strong>{formatMoneyForDisplay(placed, currency, displayCurrency, rate)}</strong></span>
+              <span><small>CONTRACT VALUE (STAKE)</small><strong>{formatMoneyForDisplay(placed, currency, displayCurrency, rate)}</strong></span>
               <span><small>CONTRACT</small><strong>{contracts}</strong></span>
               <span><small>NO. OF RUNS</small><strong>{trades.length}</strong></span>
               <span><small>CONTRACTS LOST</small><strong>{tradeSummary.contractsLost}</strong></span>
@@ -1293,7 +1293,7 @@ function Home() {
 
 function AuthenticatedHome() {
   const { t } = useLanguage();
-  const { isLoaded, isSignedIn, user, activeMode, balance, currency, refreshAccount, switchMode } = useAppAuth();
+  const { isLoaded, isSignedIn, user, activeMode, balance, balanceError, currency, refreshAccount, switchMode } = useAppAuth();
   const ownerAccessQuery = useGetOwnerAccess({
     query: {
       queryKey: getGetOwnerAccessQueryKey(),
@@ -1677,6 +1677,7 @@ function AuthenticatedHome() {
           }
           totalProfit += exactProfit ?? 0;
           if (exactProfit !== null) settledRuns += 1;
+          await refreshAccount();
         } catch (error) {
           firstError = error instanceof Error ? error.message : 'Unable to execute the Deriv contract.';
           break;
@@ -1741,7 +1742,7 @@ function AuthenticatedHome() {
     if (profit === null) return;
     setManualTradeResult({
       profit,
-      amount: manualTradeHistory.reduce((total, trade) => total + (trade.stake ?? trade.buyPrice ?? 0), 0),
+      amount: manualTradeHistory.reduce((total, trade) => total + (actualTradeStake(trade) ?? 0), 0),
       trades: manualTradeHistory.length,
       currency,
       tradeResults: manualTradeHistory,
@@ -1771,7 +1772,8 @@ function AuthenticatedHome() {
             <CircleDollarSign size={15} />
             <div className="terminal-balance-copy">
               <div className="terminal-balance-primary">
-                <strong>{displayBalance}</strong>
+                <strong title={balanceError ?? 'Deriv account balance; refreshes during trading'}>{displayBalance}</strong>
+                {balanceError && <small role="status" className="terminal-balance-warning">Balance delayed — retrying</small>}
                 <CurrencyConverter
                   automatic={automaticCurrency}
                   rates={usdKesRate}
@@ -3813,7 +3815,7 @@ function RecoveryBotView({ accountMode, currency, balance, activeMarket, marketQ
       : failed ? `${completed}/${requestedRuns} runs completed before execution stopped.` : completed > 0 ? `${completed}/${requestedRuns} settled · ${formatSignedProfit(batchProfit)}` : stopReason || `${completed}/${requestedRuns} runs completed.`);
   };
   const resultCurrency = transactions.at(-1)?.currency ?? currency;
-   const resultStake = transactions.reduce((total, trade) => total + (trade.stake ?? trade.buyPrice ?? 0), 0);
+   const resultStake = transactions.reduce((total, trade) => total + (actualTradeStake(trade) ?? 0), 0);
   const resultProfit = totalTradeProfit(transactions);
   const resultRuns = transactions.length;
   const resultLost = transactions.filter((trade) => trade.result === 'lost').length;
@@ -3901,8 +3903,8 @@ function RecoveryBotView({ accountMode, currency, balance, activeMarket, marketQ
            {summaryTab === 'Results' && <div className="recovery-tab-content"><strong>Results</strong><div className="recovery-figure-results"><b><ProfitLossValue amount={resultProfit} currency={resultCurrency} /></b><span>{tradeContractSummary(transactions)}</span><span>{resultRuns}</span><span>{resultWon}</span><span>{resultLost}</span></div>{lastTrade && <div className="recovery-entry-exit-card"><span><small>LAST ENTRY</small><b>{formatTradePoint(lastTrade.entrySpot)}</b></span><span><small>LAST EXIT</small><b>{formatTradePoint(lastTrade.exitSpot)}</b></span></div>}</div>}
           {summaryTab !== 'Journal' && <div className="recovery-metrics">
             {[
-              ['Total stake', formatMoneyForDisplay(resultStake, resultCurrency, displayCurrency, rate)],
-              ['Contract', tradeContractSummary(transactions)],
+              ['Contract value (stake)', formatMoneyForDisplay(resultStake, resultCurrency, displayCurrency, rate)],
+              ['Contract type', tradeContractSummary(transactions)],
               ['No. of runs', String(resultRuns)],
               ['Contracts lost', String(resultLost)],
               ['Contracts won', String(resultWon)],

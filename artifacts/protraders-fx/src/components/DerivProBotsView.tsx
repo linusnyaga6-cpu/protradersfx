@@ -20,6 +20,7 @@ import {
 import {
   settledTradeNetProfit,
   sumSettledTradeNetProfit,
+  actualTradeStake,
 } from "../lib/trade-financials";
 import {
   formatMoneyForDisplay,
@@ -342,7 +343,7 @@ function formatSignedProfit(value: number | null | undefined, currency: string) 
 
 function summarizeBotTrades(trades: SettledTrade[]) {
   const totalStake = trades.reduce(
-    (sum, trade) => sum + (trade.orderStatusUnknown ? 0 : trade.stake ?? trade.buyPrice ?? 0),
+    (sum, trade) => sum + (trade.orderStatusUnknown ? 0 : actualTradeStake(trade) ?? 0),
     0,
   );
   const unresolved = trades.some(
@@ -965,7 +966,7 @@ export default function DerivProBotsView({
             ) : (
               <div className="deriv-pro-bot-table-wrap">
                 <table className="deriv-pro-bot-table">
-                  <thead><tr><th>Bot</th><th>Time</th><th>Market</th><th>Contract</th><th>Entry → Exit</th><th>Stake</th><th>P/L</th><th>Result</th></tr></thead>
+                  <thead><tr><th>Bot</th><th>Time</th><th>Market</th><th>Contract</th><th>Entry → Exit</th><th>Contract value (stake)</th><th>Net P/L</th><th>Result</th></tr></thead>
                   <tbody>
                     {[...trades].reverse().map((trade) => {
                       const netProfit = settledTradeNetProfit(trade);
@@ -977,7 +978,7 @@ export default function DerivProBotsView({
                         <td>{trade.market}</td>
                         <td>{formatDerivContractType(trade.contractType, trade.barrier)}</td>
                         <td>{trade.entrySpot ?? "—"} → {trade.exitSpot ?? "—"}</td>
-                        <td>{formatMoneyForDisplay(trade.stake, trade.currency, displayCurrency, rate)}</td>
+                        <td>{formatMoneyForDisplay(actualTradeStake(trade), trade.currency, displayCurrency, rate)}</td>
                         <td>{profitPending ? "PENDING" : <ProfitLossValue amount={netProfit} currency={trade.currency} />}</td>
                         <td><span className={`deriv-pro-bot-result-badge is-${trade.orderStatusUnknown ? "pending" : trade.result}`}>{trade.orderStatusUnknown ? "unknown" : trade.settlementPending ? "pending" : trade.result}</span></td>
                       </tr>
@@ -985,7 +986,7 @@ export default function DerivProBotsView({
                   </tbody>
                 </table>
                 <div className="bot-transaction-totals deriv-pro-bot-result-totals" aria-label="Premium bot transaction totals">
-                  <span><small>TOTAL STAKE</small><strong>{formatMoneyForDisplay(resultSummary.totalStake, currency, displayCurrency, rate)}</strong></span>
+                  <span><small>CONTRACT VALUE (STAKE)</small><strong>{formatMoneyForDisplay(resultSummary.totalStake, currency, displayCurrency, rate)}</strong></span>
                   <span><small>CONTRACT</small><strong>{contractSummary}</strong></span>
                   <span><small>NO. OF RUNS</small><strong>{trades.length}</strong></span>
                   <span><small>CONTRACTS LOST</small><strong>{resultSummary.contractsLost}</strong></span>

@@ -19,6 +19,13 @@ function finiteNumber(value: unknown) {
   return Number.isFinite(number) ? number : null;
 }
 
+export function actualTradeStake(trade: TradeFinancials) {
+  const paid = finiteNumber(trade.buyPrice);
+  if (paid !== null && paid >= 0) return paid;
+  const stake = finiteNumber(trade.stake);
+  return stake !== null && stake >= 0 ? stake : null;
+}
+
 export function settledTradeNetProfit(trade: TradeFinancials) {
   const status = String(trade.status ?? trade.result ?? "").toLowerCase();
   if (
@@ -31,7 +38,7 @@ export function settledTradeNetProfit(trade: TradeFinancials) {
     return null;
   }
 
-  const buyPrice = finiteNumber(trade.buyPrice) ?? finiteNumber(trade.stake);
+  const buyPrice = actualTradeStake(trade);
   const payout = finiteNumber(trade.payout);
   if (payout !== null && buyPrice !== null) {
     return payout - buyPrice;
@@ -59,7 +66,7 @@ export function normalizeTradeExecution<T extends TradeFinancials & { contractId
   const normalized = {
     ...trade,
     buyPrice: finiteNumber(trade.buyPrice) ?? undefined,
-    stake: finiteNumber(trade.stake) ?? undefined,
+    stake: actualTradeStake(trade) ?? undefined,
     payout: finiteNumber(trade.payout),
     profit: finiteNumber(trade.profit),
   };
