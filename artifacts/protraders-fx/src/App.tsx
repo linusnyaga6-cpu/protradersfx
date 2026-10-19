@@ -24,7 +24,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import { LegacyAuthProvider, useAppAuth } from '@/auth';
 import { useWorkspaceNavigation } from './hooks/useWorkspaceNavigation';
-import { analyzeBulkMarket, MIN_BULK_SCAN_TICKS, type BulkScanResult } from './lib/bulk-trader-scanner';
+import { analyzeBulkMarket, MIN_BULK_SCAN_TICKS, type BulkScanResult, waitForBulkEntrySignal } from './lib/bulk-trader-scanner';
 import {
   executeDerivTrade,
   formatDerivContractType,
@@ -3116,35 +3116,10 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
     return Number(formatted.replace(/\D/g, '').slice(-1));
   }), [activeQuote]);
   const latestBulkDigit = digitHistory.at(-1)?.toString() ?? '';
-  const liveChart = useMemo(() => {
-    const values = (activeQuote?.ticks ?? []).slice(-28);
-    if (values.length < 2) return null;
-    const low = Math.min(...values);
-    const span = Math.max(...values) - low || 1;
-    const coordinates = values.map((value, index) => ({
-      x: 12 + (index / (values.length - 1)) * 456,
-      y: 108 - ((value - low) / span) * 88,
-    }));
-    return {
-      points: coordinates.map(({ x, y }) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' '),
-      lastY: coordinates.at(-1)?.y ?? 64,
-      count: values.length,
-    };
-  }, [activeQuote?.ticks]);
-  const currentTickChange = activeQuote?.price !== null
-    && activeQuote?.price !== undefined
-    && activeQuote.previousPrice !== null
-    && activeQuote.previousPrice !== undefined
-    && activeQuote.previousPrice !== 0
-    ? ((activeQuote.price - activeQuote.previousPrice) / activeQuote.previousPrice) * 100
-    : null;
-  const digitCounts = useMemo(() => {
-    const counts = Array.from({ length: 10 }, () => 0);
-    digitHistory.forEach((digit) => { if (Number.isFinite(digit)) counts[digit] += 1; });
-    return counts.map((count) => ({ count, percentage: digitHistory.length ? (count / digitHistory.length) * 100 : null }));
-  }, [digitHistory]);
   const scanMarkets = () => {
     if (scannerState === 'scanning' || executionLockRef.current) return;
+    setScannerOpen(true);
+    setBatchResult(null);
     const preferredDefinition = activeDefinition;
     const scanWindow = Number.parseInt(numberOfTicks, 10);
     if (!Number.isInteger(scanWindow) || scanWindow < MIN_BULK_SCAN_TICKS || scanWindow > 999) {
@@ -3180,9 +3155,11 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
       setSelectedScannerSymbol(preferredDefinition.symbol);
       setScannerState('complete');
       setScannerMessage(analysis.message);
-      if (analysis.result?.hasSignal && autoTrader) {
-        setReviewState(`Live scan ready · ${analysis.result.side} observed in ${analysis.result.sampleSize} ticks.`);
-        void handleExecuteAiBatch(analysis.result, true);
+      if (autoTrader) {
+        setReviewState(analysis.result?.hasSignal
+          ? `Signal found · starting the ${bulkTrades}-entry auto-run.`
+          : 'Auto-scan active · waiting for a clear signal. No order sent yet.');
+        void handleExecuteAiBatch(analysis.result ?? undefined, true);
       } else if (analysis.result && !analysis.result.hasSignal) {
         setReviewState('The scan halves disagree. Auto-run is unavailable; review the sample or choose a side manually.');
       } else {
@@ -3213,11 +3190,14 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
     if (executionLockRef.current) {
       stopRequestedRef.current = true;
       setBulkRunProgress((current) => ({ ...current, phase: 'stopping' }));
-      setReviewState('Stop requested · waiting for the current trade to settle…');
+      setReviewState(bulkRunProgress.phase === 'placing'
+        ? 'Stop requested · waiting for the current trade to settle…'
+        : 'Stop requested · finishing the scan without opening another trade…');
       return;
     }
-    const executionResult = scanResult ?? selectedScannerResult;
-    if (!executionResult) return;
+    const executionResult = scanResult ?? (adaptToLatestScan ? undefined : selectedScannerResult);
+    if (!adaptToLatestScan && !executionResult) return;
+    const scanDefinition = executionResult?.definition ?? activeDefinition;
     const amount = Number(stake);
     const duration = Number(ticks);
     const count = Number(bulkTrades);
@@ -3249,7 +3229,7 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
       setReviewState(`Enter valid ${currency} Take Profit and Stop Loss limits.`);
       return;
     }
-    if (tradeType !== 'Rise/Fall' && executionResult.definition.family !== 'volatility') {
+    if (tradeType !== 'Rise/Fall' && scanDefinition.family !== 'volatility') {
       setReviewState('Even/Odd and Over/Under contracts require a Volatility market.');
       return;
     }
@@ -3259,7 +3239,7 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
     setBatchResult(null);
     setLiveBatchTrades([]);
     setBulkRunProgress({ phase: 'scanning', current: 1, completed: 0, total: count });
-    setReviewState(`Scanning ${executionResult.definition.name} before entry 1 of ${count}…`);
+    setReviewState(`Scanning ${scanDefinition.name} before entry 1 of ${count}…`);
     let completed = 0;
     let firstError = '';
     let cumulativeProfit = 0;
@@ -3268,6 +3248,7 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
     let totalPlaced = 0;
     const settledTrades: ExecutedTrade[] = [];
     let pendingSettlementTrade: ExecutedTrade | null = null;
+    let lastEntrySignalTickAt: number | null = null;
     const recordTrade = (trade: ExecutedTrade) => {
       settledTrades.push(trade);
       setLiveBatchTrades((current) => [...current, trade]);
@@ -3282,63 +3263,97 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
         break;
       }
       setBulkRunProgress({ phase: 'scanning', current: index + 1, completed, total: count });
-      setReviewState(`Scanning ${executionResult.definition.name} before entry ${index + 1}/${count}…`);
-      await new Promise<void>((resolve) => window.setTimeout(resolve, 120));
+      setReviewState(`Scanning ${scanDefinition.name} before entry ${index + 1}/${count}…`);
+      scannedEntries += 1;
+      let entrySignal: BulkScanResult | null = null;
+      let scanErrorMessage = '';
+      if (adaptToLatestScan) {
+        entrySignal = await waitForBulkEntrySignal({
+          readAnalysis: () => analyzeBulkMarket(
+            scanDefinition,
+            marketQuotesRef.current[scanDefinition.symbol],
+            tradeType,
+            scanWindow,
+          ),
+          shouldStop: () => stopRequestedRef.current,
+          afterTickAt: lastEntrySignalTickAt,
+          onAnalysis: (analysis) => {
+            setScannerDigits(analysis.digitDistribution);
+            setScannerResults(analysis.result ? [analysis.result] : []);
+            setSelectedScannerSymbol(scanDefinition.symbol);
+            setScannerState('complete');
+            setScannerMessage(analysis.message);
+            setBulkRunProgress({ phase: 'scanning', current: index + 1, completed, total: count });
+            const freshSignal = analysis.result?.hasSignal
+              && analysis.result.quote.lastTickAt !== lastEntrySignalTickAt;
+            if (freshSignal && analysis.result) {
+              setReviewState(`Entry ${index + 1}/${count} · clear ${analysis.result.side} signal found · preparing trade…`);
+            } else if (analysis.result?.hasSignal) {
+              setReviewState(`Waiting for a fresh Deriv tick before entry ${index + 1}/${count}. No duplicate trade sent.`);
+            } else {
+              setReviewState(`${analysis.message} Auto-scan continues; no trade sent without a clear signal.`);
+            }
+          },
+        });
+      } else {
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 120));
+        if (stopRequestedRef.current) {
+          stopReason = 'Bot stopped by user.';
+          break;
+        }
+        const analysis = analyzeBulkMarket(
+          scanDefinition,
+          marketQuotesRef.current[scanDefinition.symbol],
+          tradeType,
+          scanWindow,
+        );
+        setScannerDigits(analysis.digitDistribution);
+        setScannerResults(analysis.result ? [analysis.result] : []);
+        setSelectedScannerSymbol(scanDefinition.symbol);
+        setScannerState('complete');
+        setScannerMessage(analysis.message);
+        entrySignal = analysis.result;
+        scanErrorMessage = analysis.message;
+      }
       if (stopRequestedRef.current) {
         stopReason = 'Bot stopped by user.';
         break;
       }
-      const analysis = analyzeBulkMarket(
-        executionResult.definition,
-        marketQuotesRef.current[executionResult.definition.symbol],
-        tradeType,
-        scanWindow,
-      );
-      setScannerDigits(analysis.digitDistribution);
-      setScannerResults(analysis.result ? [analysis.result] : []);
-      setSelectedScannerSymbol(executionResult.definition.symbol);
-      setScannerState('complete');
-      setScannerMessage(analysis.message);
-      scannedEntries += 1;
-      if (!analysis.result) {
-        firstError = analysis.message;
+      if (!entrySignal) {
+        firstError = scanErrorMessage || 'No complete live sample was available for the entry.';
         setBulkRunProgress({ phase: 'error', current: index + 1, completed, total: count });
         break;
       }
-      if (adaptToLatestScan && !analysis.result.hasSignal) {
-        stopReason = `No clear recent majority; stopped before entry ${index + 1}.`;
-        setReviewState(`${analysis.message} No automatic entry was placed.`);
-        break;
-      }
-      const entrySignal: BulkScanResult = adaptToLatestScan
-        ? analysis.result
+      lastEntrySignalTickAt = entrySignal.quote.lastTickAt;
+      const tradeSignal: BulkScanResult = adaptToLatestScan
+        ? entrySignal
         : {
-            ...analysis.result,
-            side: executionResult.side,
-            contractType: executionResult.contractType,
-            barrier: executionResult.barrier,
-            rationale: `${analysis.result.rationale} Trader-selected side: ${executionResult.side}.`,
+            ...entrySignal,
+            side: executionResult!.side,
+            contractType: executionResult!.contractType,
+            barrier: executionResult!.barrier,
+            rationale: `${entrySignal.rationale} Trader-selected side: ${executionResult!.side}.`,
           };
       setBulkRunProgress({ phase: 'placing', current: index + 1, completed, total: count });
-      setReviewState(`Entry ${index + 1}/${count} · scanned ${analysis.sampleSize} live ticks · ${adaptToLatestScan ? `signal ${entrySignal.side}` : `selected ${entrySignal.side}`} · placing and waiting for settlement…`);
+      setReviewState(`Entry ${index + 1}/${count} · scanned ${entrySignal.sampleSize} live ticks · ${adaptToLatestScan ? `signal ${entrySignal.side}` : `selected ${entrySignal.side}`} · placing and waiting for settlement…`);
       try {
         const tradeAmount = nextMartingaleStake(amount, martingaleMultiplier, consecutiveLosses);
         if (!Number.isFinite(tradeAmount) || tradeAmount < 0.35 || tradeAmount > 10_000) {
           throw new Error(`Martingale stake ${tradeAmount.toFixed(2)} is outside the supported ${currency} 0.35–10,000 range.`);
         }
         const rawTrade = await executeDerivTrade<ExecutedTrade>({
-          symbol: entrySignal.definition.symbol,
-          contractType: entrySignal.contractType,
+          symbol: tradeSignal.definition.symbol,
+          contractType: tradeSignal.contractType,
           amount: tradeAmount,
           duration,
           durationUnit: 't',
           currency,
-          barrier: entrySignal.barrier,
+          barrier: tradeSignal.barrier,
           mode: accountMode === 'REAL' ? 'real' : 'demo',
         });
         let settledTrade: ExecutedTrade = {
           ...normalizeExecutedTrade(rawTrade),
-          marketName: entrySignal.definition.name,
+          marketName: tradeSignal.definition.name,
           mode: accountMode,
         };
         if (!settledTrade.settlementPending && !settledTrade.orderStatusUnknown && resolvedTradeProfit(settledTrade) === null) {
@@ -3403,38 +3418,6 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
       setReviewState(`${completed}/${count} trades settled · ${formatSignedProfit(batchProfit)} ${currency}`);
     }
   };
-  const leftChoice = tradeType === 'Even/Odd' ? 'Even' : tradeType === 'Rise/Fall' ? 'Rise' : 'Over';
-  const rightChoice = tradeType === 'Even/Odd' ? 'Odd' : tradeType === 'Rise/Fall' ? 'Fall' : 'Under';
-  const executeBulkChoice = (choice: 'left' | 'right') => {
-    const side = choice === 'left' ? leftChoice : rightChoice;
-    if (tradeType !== 'Rise/Fall' && activeDefinition.family !== 'volatility') {
-      setReviewState('Even/Odd and Over/Under contracts require a Volatility market. Select one before placing the batch.');
-      return;
-    }
-    if (!activeQuote) {
-      setReviewState('Waiting for the selected market quote before placing the batch.');
-      return;
-    }
-    const contractType: BulkScanResult['contractType'] = tradeType === 'Rise/Fall'
-      ? side === 'Rise' ? 'CALL' : 'PUT'
-      : tradeType === 'Over/Under'
-        ? side === 'Over' ? 'DIGITOVER' : 'DIGITUNDER'
-        : side === 'Even' ? 'DIGITEVEN' : 'DIGITODD';
-    const result: BulkScanResult = {
-      definition: activeDefinition,
-      quote: activeQuote,
-      side,
-      contractType,
-      observedShare: 0,
-      recentObservedShare: 0,
-      windowAgreement: false,
-      hasSignal: false,
-      sampleSize: digitHistory.length,
-      rationale: `Trader-selected ${side} batch.`,
-      barrier: tradeType === 'Over/Under' ? 4 : undefined,
-    };
-    void handleExecuteAiBatch(result, false);
-  };
   function openBulkHistoryDetail() {
     if (!bulkTransactions.length) return;
     const profit = totalTradeProfit(bulkTransactions);
@@ -3474,7 +3457,7 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
           <div>
             <div className="ptx-eyebrow"><span>TRADING WORKSPACE</span><span>/</span><span>LIVE MARKET · BATCH EXECUTION</span></div>
             <h1>Bulk Trader</h1>
-            <p>Review live market context, choose one side, and follow each entry through settlement.</p>
+            <p>Set the market and risk controls, then scan for a clear entry.</p>
           </div>
           <div className="ptx-heading-actions">
             <span className="ptx-connection"><i className={activeQuote?.status === 'live' ? 'is-live' : ''} />{activeQuote?.status === 'live' ? 'DERIV FEED LIVE' : activeQuote?.price !== null && activeQuote?.price !== undefined ? 'LAST QUOTE' : activeQuote?.status === 'error' ? 'FEED ERROR' : 'CONNECTING'}</span>
@@ -3483,52 +3466,16 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
         </section>
         <form className="ptx-workspace" onSubmit={(event) => event.preventDefault()}>
           <div className="ptx-left">
-            <section className="ptx-card ptx-market-card" aria-label="Market context and digit scan">
+            <section className="ptx-card ptx-setup-card" aria-label="Bulk Trader setup">
               <div className="ptx-card-head">
-                <div className="ptx-card-title"><span className="ptx-step">01</span> Market context</div>
-                <span className="ptx-card-meta">OFFICIAL DERIV QUOTES</span>
+                <div className="ptx-card-title"><span className="ptx-step">01</span> Trade setup</div>
+                <span className="ptx-card-meta">{accountMode} · {currency}</span>
               </div>
-              <div className="ptx-market-overview">
-                <div className="ptx-market-info">
-                  <label><span>MARKET</span><select disabled={executionState === 'executing' || scannerState === 'scanning'} value={activeMarket} onChange={(event) => setActiveMarket(event.target.value)} data-testid="bulk-market">{MARKET_DEFINITIONS.map(({ label, name }) => <option key={label} value={label}>{name}</option>)}</select></label>
-                  <div className="ptx-quote-label">{activeQuote?.status === 'live' ? 'LIVE QUOTE' : activeQuote?.price !== null && activeQuote?.price !== undefined ? 'LAST QUOTE' : 'WAITING FOR QUOTE'}</div>
-                  <div className="ptx-quote">
-                    {formatMarketPrice(activeQuote?.price ?? null, activeQuote?.pipSize ?? 2)}
-                    {currentTickChange !== null && <span className={`ptx-quote-change ${currentTickChange < 0 ? 'is-negative' : ''}`}>{currentTickChange >= 0 ? '+' : ''}{currentTickChange.toFixed(2)}%</span>}
-                  </div>
-                  <div className="ptx-quote-foot">{activeDefinition.name} · {activeQuote?.status === 'live' ? 'streaming' : activeQuote?.status ?? 'connecting'}</div>
-                </div>
-                <div className="ptx-market-chart">
-                  <div className="ptx-chart-top"><strong>Market trace</strong><span>{liveChart ? `LAST ${liveChart.count} TICKS` : 'LIVE TICKS'}</span></div>
-                  {liveChart ? <svg className="ptx-chart-svg" viewBox="0 0 480 128" preserveAspectRatio="none" role="img" aria-label={`Live price trace for ${activeDefinition.name}`}>
-                    <g className="ptx-chart-grid"><line x1="0" y1="20" x2="480" y2="20" /><line x1="0" y1="64" x2="480" y2="64" /><line x1="0" y1="108" x2="480" y2="108" /></g>
-                    <polyline className="ptx-chart-line" points={liveChart.points} />
-                    <circle className="ptx-chart-dot" cx="468" cy={liveChart.lastY} r="4" />
-                  </svg> : <div className="ptx-chart-empty">{activeQuote?.status === 'live' ? 'Waiting for enough live ticks to draw the market trace.' : 'Live market trace will appear when Deriv quotes connect.'}</div>}
-                  <span className="ptx-chart-axis">{liveChart?.count ?? 0} recent ticks</span>
-                </div>
+              <div className="ptx-setup-grid">
+                <label className="ptx-field"><span>MARKET</span><select className="ptx-input" disabled={executionState === 'executing' || scannerState === 'scanning'} value={activeMarket} onChange={(event) => setActiveMarket(event.target.value)} data-testid="bulk-market">{MARKET_DEFINITIONS.map(({ label, name, family }) => <option key={label} value={label} disabled={tradeType !== 'Rise/Fall' && family !== 'volatility'}>{name}</option>)}</select><small className="ptx-market-live"><i className={activeQuote?.status === 'live' ? 'is-live' : activeQuote?.status === 'error' ? 'is-error' : ''} />{activeQuote?.status === 'live' ? 'LIVE' : activeQuote?.price !== null && activeQuote?.price !== undefined ? 'LAST QUOTE' : activeQuote?.status === 'error' ? 'FEED ERROR' : 'CONNECTING'} · {formatMarketPrice(activeQuote?.price ?? null, activeQuote?.pipSize ?? 2)}</small></label>
+                <label className="ptx-field"><span>CONTRACT TYPE</span><select className="ptx-input" disabled={executionState === 'executing' || scannerState === 'scanning'} value={tradeType} onChange={(event) => setTradeType(event.target.value as typeof tradeType)} data-testid="bulk-trade-type"><option>Even/Odd</option><option>Rise/Fall</option><option>Over/Under</option></select></label>
+                <label className="ptx-field"><span>SCAN WINDOW <small>MIN {MIN_BULK_SCAN_TICKS}</small></span><input className="ptx-input" inputMode="numeric" min={MIN_BULK_SCAN_TICKS} max="999" disabled={executionState === 'executing' || scannerState === 'scanning'} value={numberOfTicks} onChange={(event) => setNumberOfTicks(event.target.value.replace(/\D/g, '').slice(0, 3))} data-testid="bulk-scan-window" /></label>
               </div>
-              <div className="ptx-signal-row">
-                <div className="ptx-trade-type"><label><span>TRADE TYPE</span><select disabled={executionState === 'executing' || scannerState === 'scanning'} value={tradeType} onChange={(event) => setTradeType(event.target.value as typeof tradeType)} data-testid="bulk-trade-type"><option>Even/Odd</option><option>Rise/Fall</option><option>Over/Under</option></select></label></div>
-                <div className="ptx-scan-window">
-                  <label className="ptx-field"><span>SCAN WINDOW <small>MIN {MIN_BULK_SCAN_TICKS}</small></span><input className="ptx-input" inputMode="numeric" min={MIN_BULK_SCAN_TICKS} max="999" disabled={executionState === 'executing' || scannerState === 'scanning'} value={numberOfTicks} onChange={(event) => setNumberOfTicks(event.target.value.replace(/\D/g, '').slice(0, 3))} data-testid="bulk-scan-window" /></label>
-                  <button type="button" className="ptx-button" onClick={openScanner} disabled={scannerState === 'scanning' || executionState === 'executing'} data-testid="bulk-open-scanner"><Sparkles size={13} aria-hidden="true" /> {scannerState === 'scanning' ? 'SCANNING…' : 'OPEN SCANNER'}</button>
-                </div>
-              </div>
-              <div className="ptx-digit-section">
-                <div className="ptx-digit-heading"><span>LIVE DIGIT DISTRIBUTION</span><b>{digitHistory.length} RECENT TICKS</b></div>
-                <div className="ptx-digit-bars" aria-label="Live tick digit distribution">
-                  {digitCounts.map(({ percentage }, digit) => {
-                    const highestShare = digitCounts.reduce((highest, item) => item.percentage !== null ? Math.max(highest, item.percentage) : highest, 0);
-                    const leading = percentage !== null && percentage > 0 && percentage === highestShare;
-                    return <div key={digit} className={`ptx-digit ${leading ? 'is-leading' : ''}`} style={{ '--bar': `${Math.max(0, percentage ?? 0)}%` } as React.CSSProperties}><strong>{digit}</strong><span>{percentage === null ? '—' : `${percentage.toFixed(1)}%`}</span></div>;
-                  })}
-                </div>
-                <div className="ptx-recent"><span>RECENT DIGITS</span>{digitHistory.length ? digitHistory.slice(-12).map((digit, index) => <b key={`${digit}-${index}`} aria-label={`Digit ${digit}`}>{digit}</b>) : <small>Waiting for live tick history</small>}</div>
-              </div>
-            </section>
-            <section className="ptx-card" aria-label="Bulk contract parameters">
-              <div className="ptx-card-head"><div className="ptx-card-title"><span className="ptx-step">02</span> Contract parameters</div><span className="ptx-card-meta">PER ENTRY</span></div>
               <div className="ptx-contract-grid">
                 <label className="ptx-field"><span>CONTRACT DURATION <small>TICKS</small></span><input className="ptx-input" inputMode="numeric" disabled={executionState === 'executing'} value={ticks} onChange={(event) => setTicks(event.target.value.replace(/\D/g, '').slice(0, 3) || '1')} /></label>
                 <label className="ptx-field"><span>STAKE <small>{currency}</small></span><input className="ptx-input" inputMode="decimal" disabled={executionState === 'executing'} value={stake} onChange={(event) => setStake(event.target.value)} /></label>
@@ -3538,63 +3485,60 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
                 <label className="ptx-field"><span>STOP LOSS <small>{currency}</small></span><input className="ptx-input" inputMode="decimal" disabled={executionState === 'executing'} value={bulkStopLoss} onChange={(event) => setBulkStopLoss(event.target.value)} /></label>
               </div>
               <p className="ptx-risk-note"><span aria-hidden="true">!</span><span>Sequential entries. Stops on error, unsettled trade, Take Profit, Stop Loss, or your Stop command.</span></p>
-            </section>
-            <section className="ptx-card" aria-label="Choose a trade side">
-              <div className="ptx-card-head"><div className="ptx-card-title"><span className="ptx-step">03</span> Choose a side</div><span className="ptx-card-meta">{bulkTrades || '0'} ENTRIES · SAME SIDE</span></div>
-              <div className="ptx-actions">
-                <button type="button" className={`ptx-action ${/under|odd|fall/i.test(leftChoice) ? 'alt' : ''}`} onClick={() => executeBulkChoice('left')} disabled={executionState === 'executing' || scannerState === 'scanning'} data-testid="bulk-execute-left">
-                  <span className="ptx-action-title">{tradeType === 'Even/Odd' ? <CircleDollarSign size={14} /> : /rise|over/i.test(leftChoice) ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}{leftChoice}</span>
-                  <strong>{currency} {stake || '0.00'}</strong>
-                  <small>PLACE {bulkTrades || '0'} TRADE{bulkTrades === '1' ? '' : 'S'}</small>
-                </button>
-                <button type="button" className={`ptx-action ${/under|odd|fall/i.test(rightChoice) ? 'alt' : ''}`} onClick={() => executeBulkChoice('right')} disabled={executionState === 'executing' || scannerState === 'scanning'} data-testid="bulk-execute-right">
-                  <span className="ptx-action-title">{tradeType === 'Even/Odd' ? <CircleDollarSign size={14} /> : /rise|over/i.test(rightChoice) ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}{rightChoice}</span>
-                  <strong>{currency} {stake || '0.00'}</strong>
-                  <small>PLACE {bulkTrades || '0'} TRADE{bulkTrades === '1' ? '' : 'S'}</small>
-                </button>
-              </div>
-              <div className="ptx-action-foot">
-                <button type="button" className="ptx-toggle-wrap" onClick={() => setAutoTrader(!autoTrader)} disabled={executionState === 'executing' || scannerState === 'scanning'} data-testid="bulk-auto-mode" aria-checked={autoTrader} role="switch"><span className="ptx-toggle" aria-hidden="true" />Auto-execute {autoTrader ? 'on' : 'off'}</button>
-                {executionState === 'executing' && <button type="button" className="ptx-button" onClick={() => void handleExecuteAiBatch()} data-testid="bulk-stop-run">STOP AFTER CURRENT</button>}
-                <span className="ptx-local-label">LIVE DERIV ORDERS</span>
-                {reviewState && <span className="ptx-action-status" role="status" data-testid="bulk-review-status">{reviewState}</span>}
+              <div className="ptx-scanner-controls">
+                <div className="ptx-auto-control">
+                  <button type="button" className="ptx-toggle-wrap" onClick={() => setAutoTrader((enabled) => !enabled)} disabled={executionState === 'executing' || scannerState === 'scanning'} data-testid="bulk-auto-mode" aria-label={autoTrader ? 'Turn auto-execution off; scans will not place orders automatically' : 'Turn auto-execution on; a clear live signal will start the configured entry batch'} aria-checked={autoTrader} role="switch"><span className="ptx-toggle" aria-hidden="true" />Auto-execute {autoTrader ? 'ON' : 'OFF'}</button>
+                  <small>{autoTrader ? 'Scan for a clear signal, then place the configured entries.' : 'Scan and review only. No automatic orders.'}</small>
+                </div>
+                <span className="ptx-local-label">{accountMode} DERIV ORDERS</span>
+                <button type="button" className={`ptx-button primary ptx-scan-trigger ${executionState === 'executing' ? 'is-stop' : ''}`} disabled={scannerState === 'scanning' && executionState !== 'executing'} onClick={(event) => { event.preventDefault(); if (executionState === 'executing') void handleExecuteAiBatch(); else scanMarkets(); }} data-testid="bulk-scan-or-stop">{scannerState === 'scanning' && executionState !== 'executing' ? 'SCANNING…' : executionState === 'executing' ? bulkRunProgress.phase === 'stopping' ? 'STOPPING…' : bulkRunProgress.phase === 'placing' ? 'STOP AFTER CURRENT TRADE' : 'STOP AUTO-SCAN' : autoTrader ? `SCAN & AUTO-TRADE · ${accountMode}` : 'SCAN MARKET'}</button>
               </div>
             </section>
+            {scannerOpen && <section className="ptx-card ptx-scan-results" aria-live="polite" aria-label="Bulk Trader scan results" data-testid="bulk-scan-results">
+              <div className="ptx-card-head">
+                <div className="ptx-card-title"><span className="ptx-step">02</span> Live scan results</div>
+                <span className="ptx-status-chip">{executionState === 'executing' ? progressLabel : scannerState === 'complete' ? 'SCAN READY' : scannerState === 'scanning' ? 'SCANNING' : 'READY'}</span>
+              </div>
+              <div className="ptx-scan-body">
+                <div className="ptx-scan-status">
+                  <strong>{executionState === 'executing' ? reviewState || scannerMessage : scannerMessage}</strong>
+                  <span>{selectedScannerResult ? `${selectedScannerResult.sampleSize}/${numberOfTicks} TICKS` : activeQuote?.status === 'live' ? `${activeQuote.ticks.length} LIVE TICKS` : activeQuote?.status?.toUpperCase() ?? 'CONNECTING'}</span>
+                </div>
+                {selectedScannerResult && <div className="ptx-scan-reading">
+                  <div><span>{selectedScannerResult.windowAgreement ? 'WINDOWS AGREE' : 'WINDOWS DIFFER'}</span><small>Observed sample · not a forecast</small></div>
+                  <strong>{selectedScannerResult.side}</strong>
+                  <b>{selectedScannerResult.recentObservedShare.toFixed(1)}%</b>
+                  <small>{selectedScannerResult.sampleSize} live ticks · {selectedScannerResult.rationale}</small>
+                </div>}
+                {(scannerState === 'complete' || scannerState === 'scanning') && <div className="ptx-scan-digits" aria-label="Digit scan results">
+                  {scannerDigits.map(({ digit, percentage }) => <div key={digit} className={latestBulkDigit === String(digit) ? 'is-latest' : ''}><strong>{digit}</strong><span>{percentage.toFixed(1)}%</span></div>)}
+                </div>}
+                {bulkRunProgress.total > 0 && <div className="ptx-run-progress">
+                  <div className="ptx-progress" role="progressbar" aria-valuemin={0} aria-valuemax={bulkRunProgress.total} aria-valuenow={bulkRunProgress.completed} aria-label={`${bulkRunProgress.completed} of ${bulkRunProgress.total} trades settled`}><span style={{ width: `${scanProgress}%` }} /></div>
+                  <div className="ptx-metrics">
+                    <div className="ptx-metric"><span>ENTRY</span><strong>{`${bulkRunProgress.current}/${bulkRunProgress.total}`}</strong></div>
+                    <div className="ptx-metric"><span>SETTLED</span><strong>{`${bulkRunProgress.completed}/${bulkRunProgress.total}`}</strong></div>
+                    <div className="ptx-metric"><span>BATCH NET P/L</span><strong>{liveBatchTrades.length ? liveBatchProfit === null ? 'PENDING' : <ProfitLossValue amount={liveBatchProfit} currency={currency} /> : '—'}</strong></div>
+                  </div>
+                </div>}
+                {liveBatchTrades.length > 0 && <div className="ptx-results">
+                  <div className="ptx-results-head"><span>RECENT ENTRIES · LATEST FIRST</span><b>{liveBatchTrades.length} / {bulkTrades}</b></div>
+                  {liveBatchTrades.slice(-5).reverse().map((trade, index) => {
+                    const tradeProfit = resolvedTradeProfit(trade);
+                    const tradeNumber = liveBatchTrades.length - index;
+                    return <div className="ptx-result-row" key={`${trade.contractId ?? 'pending'}-${tradeNumber}`} data-testid={`bulk-live-entry-${tradeNumber}`}>
+                      <span><b>#{tradeNumber} · {tradeContractLabel(trade)}</b><small>E {formatTradePoint(trade.entrySpot)} · X {formatTradePoint(trade.exitSpot)}</small><TradeMoneyDetails trade={trade} fallbackCurrency={currency} /></span>
+                      <strong className={trade.orderStatusUnknown || trade.settlementPending ? 'is-pending' : tradeProfit !== null && tradeProfit < 0 ? 'is-loss' : ''}>{trade.orderStatusUnknown ? 'STATUS UNKNOWN' : trade.settlementPending ? 'PENDING' : <ProfitLossValue amount={tradeProfit} currency={trade.currency ?? currency} />}</strong>
+                    </div>;
+                  })}
+                  <TradeFigureStrip trades={bulkTransactions} currency={currency} />
+                </div>}
+                {reviewState && <div className="ptx-review-status" role="status" data-testid="bulk-review-status">{reviewState}</div>}
+                {!autoTrader && executionState !== 'executing' && scannerState === 'complete' && selectedScannerResult?.hasSignal && <button type="button" className="ptx-button primary ptx-run-signal" onClick={() => void handleExecuteAiBatch(selectedScannerResult, true)} data-testid="bulk-run-signal">RUN {selectedScannerResult.side.toUpperCase()} · {bulkTrades} ENTRIES · {accountMode}</button>}
+                <div className="ptx-disclaimer"><span aria-hidden="true">!</span><div>Tick readings are historical observations, not predictions. Trading can lead to losses.</div></div>
+              </div>
+            </section>}
           </div>
-          <aside className="ptx-right">
-            <section className="ptx-card ptx-monitor" aria-live="polite" data-testid="bulk-live-monitor">
-              <div className="ptx-monitor-top">
-                <div className="ptx-monitor-title">
-                  <div><span>04 / EXECUTION MONITOR</span><strong>{scannerMessage}</strong></div>
-                  <b className="ptx-status-chip">{executionState === 'executing' ? progressLabel : scannerState === 'scanning' ? 'SCANNING' : progressLabel}</b>
-                </div>
-                {bulkRunProgress.total > 0 && <div className="ptx-progress" role="progressbar" aria-valuemin={0} aria-valuemax={bulkRunProgress.total} aria-valuenow={bulkRunProgress.completed} aria-label={`${bulkRunProgress.completed} of ${bulkRunProgress.total} trades settled`}><span style={{ width: `${scanProgress}%` }} /></div>}
-                <div className="ptx-metrics">
-                  <div className="ptx-metric"><span>ENTRY</span><strong>{bulkRunProgress.total ? `${bulkRunProgress.current}/${bulkRunProgress.total}` : '—'}</strong></div>
-                  <div className="ptx-metric"><span>SETTLED</span><strong>{bulkRunProgress.total ? `${bulkRunProgress.completed}/${bulkRunProgress.total}` : '0'}</strong></div>
-                  <div className="ptx-metric"><span>BATCH NET P/L</span><strong>{liveBatchTrades.length ? liveBatchProfit === null ? 'PENDING' : <ProfitLossValue amount={liveBatchProfit} currency={currency} /> : '—'}</strong></div>
-                </div>
-              </div>
-              {selectedScannerResult && <div className="ptx-scan-reading">
-                <div><span>{selectedScannerResult.windowAgreement ? 'WINDOWS AGREE' : 'WINDOWS DIFFER'}</span><small>Observed sample · not a forecast</small></div>
-                <strong>{selectedScannerResult.side}</strong>
-                <b>{selectedScannerResult.recentObservedShare.toFixed(1)}%</b>
-                <small>{selectedScannerResult.sampleSize} live ticks · {selectedScannerResult.rationale}</small>
-              </div>}
-              <div className="ptx-results">
-                <div className="ptx-results-head"><span>THIS BATCH · LATEST FIRST</span><b>{liveBatchTrades.length} {liveBatchTrades.length === 1 ? 'ENTRY' : 'ENTRIES'}</b></div>
-                {liveBatchTrades.length > 0 ? liveBatchTrades.slice(-5).reverse().map((trade, index) => {
-                  const tradeProfit = resolvedTradeProfit(trade);
-                  const tradeNumber = liveBatchTrades.length - index;
-                  return <div className="ptx-result-row" key={`${trade.contractId ?? 'pending'}-${tradeNumber}`} data-testid={`bulk-live-entry-${tradeNumber}`}>
-                    <span><b>#{tradeNumber} · {tradeContractLabel(trade)}</b><small>E {formatTradePoint(trade.entrySpot)} · X {formatTradePoint(trade.exitSpot)}</small><TradeMoneyDetails trade={trade} fallbackCurrency={currency} /></span>
-                    <strong className={trade.orderStatusUnknown || trade.settlementPending ? 'is-pending' : ''}>{trade.orderStatusUnknown ? 'STATUS UNKNOWN' : trade.settlementPending ? 'PENDING' : <ProfitLossValue amount={tradeProfit} currency={trade.currency ?? currency} />}</strong>
-                  </div>;
-                }) : <p className="ptx-empty">{executionState === 'executing' ? 'Scanning live ticks before entry one.' : 'Trade entries and settled P/L will appear here as the batch runs.'}</p>}
-              </div>
-            </section>
-            <div className="ptx-disclaimer"><span aria-hidden="true">!</span><div>Digit readings describe the selected tick sample; they are not a forecast or win probability. Trading can lead to losses.</div></div>
-          </aside>
         </form>
         <BotTransactionPanel
           trades={bulkTransactions}
@@ -3609,50 +3553,6 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
           emptyMessage="Settled Bulk Trader trades will appear here."
         />
       </div>
-      {scannerOpen && (
-        <div className="ptx-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setScannerOpen(false); }}>
-          <section className="ptx-modal" role="dialog" aria-modal="true" aria-labelledby="ai-scanner-title" onMouseDown={(event) => event.stopPropagation()}>
-            <div className="ptx-modal-bar"><span>PROTRADERS FX / DERIV LIVE SCAN</span><button className="ptx-close" type="button" onClick={() => setScannerOpen(false)} aria-label="Close market scanner"><X size={16} /></button></div>
-            <div className="ptx-modal-body">
-              <span className="ptx-modal-kicker">MARKET REVIEW · LIVE TICK SAMPLE</span>
-              <h2 id="ai-scanner-title">Market scan</h2>
-              <p className="ptx-modal-intro">Review the selected market and batch settings. Tick patterns are observations, not contract win odds.</p>
-              <div className="ptx-modal-grid">
-                <label><span>{tradeType === 'Rise/Fall' ? 'MARKET' : 'VOLATILITY MARKET'}</span><select disabled={executionState === 'executing'} value={activeMarket} onChange={(event) => setActiveMarket(event.target.value)}>{MARKET_DEFINITIONS.map(({ label, name, family }) => <option key={label} value={label} disabled={tradeType !== 'Rise/Fall' && family !== 'volatility'}>{name}</option>)}</select></label>
-                <label><span>STAKE · {currency}</span><input inputMode="decimal" disabled={executionState === 'executing'} value={stake} onChange={(event) => setStake(event.target.value)} /></label>
-                <label><span>MARTINGALE ×</span><input inputMode="decimal" disabled={executionState === 'executing'} value={martingale} onChange={(event) => setMartingale(event.target.value)} /></label>
-                <label><span>BULK ENTRIES</span><input inputMode="numeric" disabled={executionState === 'executing'} value={bulkTrades} onChange={(event) => setBulkTrades(event.target.value)} /></label>
-                <label><span>TAKE PROFIT · {currency}</span><input inputMode="decimal" disabled={executionState === 'executing'} value={bulkTakeProfit} onChange={(event) => setBulkTakeProfit(event.target.value)} /></label>
-                <label><span>STOP LOSS · {currency}</span><input inputMode="decimal" disabled={executionState === 'executing'} value={bulkStopLoss} onChange={(event) => setBulkStopLoss(event.target.value)} /></label>
-              </div>
-              <div className="ptx-scanner-market"><span>{activeQuote?.status === 'live' ? 'LIVE MARKET' : 'MARKET STATUS'}</span><b>{scannerState === 'complete' && selectedScannerResult ? selectedScannerResult.definition.name : activeDefinition.name} · {activeQuote?.status ?? 'connecting'}</b></div>
-              <div className="ptx-modal-status">
-                <div><span>{scannerState === 'complete' ? selectedScannerResult?.windowAgreement ? 'WINDOWS AGREE' : 'MIXED WINDOW REVIEW' : scannerState === 'scanning' ? 'SCANNING' : 'READY TO SCAN'}</span><strong>{scannerMessage}</strong></div>
-                <Sparkles size={20} aria-hidden="true" />
-              </div>
-              {scannerState === 'complete' && selectedScannerResult && <div className="ptx-best"><span>OBSERVED SAMPLE · NOT WIN ODDS</span><b>{selectedScannerResult.side}</b><em>{selectedScannerResult.observedShare.toFixed(1)}% full · {selectedScannerResult.recentObservedShare.toFixed(1)}% recent · {selectedScannerResult.sampleSize} ticks</em><small>{selectedScannerResult.rationale}</small></div>}
-              {scannerState === 'complete' && <div className="ptx-modal-digits" aria-label="Digit scan results">{scannerDigits.map(({ digit, percentage }) => <div key={digit} className={latestBulkDigit === String(digit) ? 'is-latest' : ''}><strong>{digit}</strong><span>{selectedScannerResult ? `${percentage.toFixed(1)}%` : '—'}</span></div>)}</div>}
-              {liveBatchTrades.length > 0 && <div className="ptx-results">
-                <div className="ptx-results-head"><span>ACTIVE BATCH · LATEST FIRST</span><b>{liveBatchTrades.length} ENTRIES</b></div>
-                {liveBatchTrades.slice(-5).reverse().map((trade, index) => {
-                  const tradeProfit = resolvedTradeProfit(trade);
-                  const tradeNumber = liveBatchTrades.length - index;
-                  return <div className="ptx-result-row" key={`scanner-${trade.contractId ?? 'pending'}-${tradeNumber}`}>
-                    <span><b>#{tradeNumber} · {tradeContractLabel(trade)}</b><small>E {formatTradePoint(trade.entrySpot)} · X {formatTradePoint(trade.exitSpot)}</small><TradeMoneyDetails trade={trade} fallbackCurrency={currency} /></span>
-                    <strong className={trade.orderStatusUnknown || trade.settlementPending ? 'is-pending' : ''}>{trade.orderStatusUnknown ? 'STATUS UNKNOWN' : trade.settlementPending ? 'PENDING' : <ProfitLossValue amount={tradeProfit} currency={trade.currency ?? currency} />}</strong>
-                  </div>;
-                })}
-              </div>}
-              <TradeFigureStrip trades={bulkTransactions} currency={currency} />
-              {bulkTransactions.length > 0 && <div className="ptx-review-status" aria-label="Bulk transaction count">{bulkTransactions.length} settled or pending transactions recorded in this session.</div>}
-              {reviewState && <div className="ptx-review-status" role="status">{reviewState}</div>}
-              <div className="ptx-modal-action">
-                <button type="button" className={`ptx-button primary ${executionState === 'executing' ? 'is-stop' : ''}`} disabled={scannerState === 'scanning' && executionState !== 'executing'} onClick={(event) => { event.preventDefault(); if (executionState === 'executing') void handleExecuteAiBatch(); else if (scannerState === 'complete' && !autoTrader && selectedScannerResult?.hasSignal) void handleExecuteAiBatch(selectedScannerResult, true); else scanMarkets(); }} data-testid="bulk-scan-or-stop">{scannerState === 'scanning' ? 'SCANNING…' : executionState === 'executing' ? 'STOP AFTER CURRENT TRADE' : scannerState === 'complete' && !autoTrader && selectedScannerResult?.hasSignal ? 'RUN BOT' : scannerState === 'complete' ? 'SCAN AGAIN' : 'SCAN MARKET'}</button>
-              </div>
-            </div>
-          </section>
-        </div>
-      )}
       <TradeResultDialog result={batchResult} onClose={() => setBatchResult(null)} />
     </section>
   );
