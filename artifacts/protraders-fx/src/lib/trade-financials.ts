@@ -62,6 +62,19 @@ export function sumSettledTradeNetProfit<T extends TradeFinancials>(trades: T[])
   return profits.reduce<number>((total, profit) => total + (profit ?? 0), 0);
 }
 
+export function tradeResultFinancialState(result: {
+  profit?: unknown;
+  settlementPending?: boolean;
+  orderStatusUnknown?: boolean;
+  tradeResults?: TradeFinancials[];
+}) {
+  const trades = result.tradeResults ?? [];
+  const profit = trades.length ? sumSettledTradeNetProfit(trades) : finiteNumber(result.profit);
+  const orderStatusUnknown = Boolean(result.orderStatusUnknown || trades.some(trade => trade.orderStatusUnknown));
+  const pending = Boolean(orderStatusUnknown || result.settlementPending || profit === null);
+  return { profit: pending ? null : profit, pending, orderStatusUnknown };
+}
+
 export function normalizeTradeExecution<T extends TradeFinancials & { contractId?: unknown; transactionId?: unknown }>(trade: T) {
   const normalized = {
     ...trade,

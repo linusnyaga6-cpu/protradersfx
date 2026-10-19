@@ -40,7 +40,7 @@ import {
 } from './lib/deriv-contracts';
 import { manualEntryBatchDecision } from './lib/manual-entry-batch';
 import { startPublicIntro } from './lib/public-intro';
-import { actualTradeStake, normalizeTradeExecution, settledTradeNetProfit, sumSettledTradeNetProfit } from './lib/trade-financials';
+import { actualTradeStake, normalizeTradeExecution, settledTradeNetProfit, sumSettledTradeNetProfit, tradeResultFinancialState } from './lib/trade-financials';
 import {
   CurrencyDisplayContext,
   ProfitLossValue,
@@ -103,7 +103,7 @@ type MarketQuote = {
   ticks: number[];
   lastTickAt: number | null;
 };
-type ExecutedTrade = {
+export type ExecutedTrade = {
   contractId?: string | number;
   transactionId?: string | number;
   type?: string;
@@ -126,7 +126,7 @@ type ExecutedTrade = {
   entrySpot?: number | string | null;
   exitSpot?: number | string | null;
 };
-type BatchResult = {
+export type BatchResult = {
   profit: number;
   amount: number;
   trades: number;
@@ -278,14 +278,15 @@ function TradeMoneyDetails({ trade, fallbackCurrency }: { trade: ExecutedTrade; 
   );
 }
 
-function TradeResultDialog({ result, onClose }: { result: BatchResult | null; onClose: () => void }) {
+export function TradeResultDialog({ result, onClose }: { result: BatchResult | null; onClose: () => void }) {
   const [activeTab, setActiveTab] = useState<'summary' | 'transactions' | 'journal'>('summary');
   const { displayCurrency, rate } = useCurrencyDisplay();
   useEffect(() => {
     if (result) setActiveTab('summary');
   }, [result]);
   if (!result) return null;
-  const resultTone = result.profit < 0 ? 'is-loss' : result.profit > 0 ? 'is-win' : 'is-flat';
+  const financial = tradeResultFinancialState(result);
+  const resultTone = financial.profit === null ? 'is-flat' : financial.profit < 0 ? 'is-loss' : financial.profit > 0 ? 'is-win' : 'is-flat';
   const tradeResults = result.tradeResults ?? [];
   const latestTrade = tradeResults.at(-1);
   const tradeSummary = summarizeTrades(tradeResults);
@@ -295,9 +296,9 @@ function TradeResultDialog({ result, onClose }: { result: BatchResult | null; on
     <div className="bot-result-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section className={`bot-result-dialog ai-batch-result ${resultTone}`} role="dialog" aria-modal="true" aria-label="Trade result">
         <button type="button" className="bot-result-close" onClick={onClose} aria-label="Close result">×</button>
-        <span className="ai-batch-result-kicker">{result.orderStatusUnknown ? 'ORDER STATUS UNKNOWN' : result.settlementPending ? 'SETTLEMENT PENDING' : result.profit < 0 ? 'LOSS' : result.profit > 0 ? 'PROFIT' : 'FLAT'}</span>
-        <strong className="ai-batch-result-value">{result.settlementPending || result.orderStatusUnknown ? 'PENDING' : <ProfitLossValue amount={result.profit} currency={result.currency} />}</strong>
-        {(result.settlementPending || result.orderStatusUnknown) && <p role="status">{result.orderStatusUnknown ? "Deriv did not confirm whether the order was placed. Check your Deriv transaction history before retrying." : "The order was placed. Deriv has not returned its final result yet; do not submit it again."}</p>}
+        <span className="ai-batch-result-kicker">{financial.orderStatusUnknown ? 'ORDER STATUS UNKNOWN' : financial.pending ? 'SETTLEMENT PENDING' : financial.profit! < 0 ? 'LOSS' : financial.profit! > 0 ? 'PROFIT' : 'BREAK-EVEN'}</span>
+        <strong className="ai-batch-result-value">{financial.pending ? 'PENDING' : <ProfitLossValue amount={financial.profit} currency={result.currency} />}</strong>
+        {financial.pending && <p role="status">{financial.orderStatusUnknown ? "Deriv did not confirm whether the order was placed. Check your Deriv transaction history before retrying." : "The order was placed. Deriv has not returned its final result yet; do not submit it again."}</p>}
         <div className="ai-batch-result-tabs" role="tablist" aria-label="Trade result details">
           {([
             ['summary', 'SUMMARY'],
@@ -315,7 +316,7 @@ function TradeResultDialog({ result, onClose }: { result: BatchResult | null; on
               <span><small>NO. OF RUNS</small><b>{result.trades}</b></span>
               <span><small>CONTRACTS LOST</small><b>{tradeSummary.contractsLost}</b></span>
               <span><small>CONTRACTS WON</small><b>{tradeSummary.contractsWon}</b></span>
-              <span><small>TOTAL NET PROFIT/LOSS</small><b><ProfitLossValue amount={tradeSummary.totalProfit} currency={result.currency} /></b></span>
+              <span><small>TOTAL NET PROFIT/LOSS</small><b><ProfitLossValue amount={financial.profit} currency={result.currency} /></b></span>
             </div>
             <div className="ai-batch-result-points">
               <span><small>LAST ENTRY POINT</small><b>{formatTradePoint(latestTrade?.entrySpot)}</b></span>
@@ -354,10 +355,10 @@ function TradeResultDialog({ result, onClose }: { result: BatchResult | null; on
   );
 }
 
-function TradeFigureStrip({ trades, currency }: { trades: ExecutedTrade[]; currency: string }) {
+export function TradeFigureStrip({ trades, currency }: { trades: ExecutedTrade[]; currency: string }) {
   const { displayCurrency, rate } = useCurrencyDisplay();
   if (!trades.length) return null;
-  const placed = trades.reduce((total, trade) => total + (actualTradeStake(trade) ?? 0), 0);
+  const placed = summarizeTrades(trades).totalStake;
   const profit = totalTradeProfit(trades);
   const tone = profit === null ? 'is-flat' : profit < 0 ? 'is-loss' : profit > 0 ? 'is-win' : 'is-flat';
   return (
@@ -371,7 +372,7 @@ function TradeFigureStrip({ trades, currency }: { trades: ExecutedTrade[]; curre
 
 type BotTransactionTab = 'Summary' | 'Transactions' | 'Journal';
 
-function BotTransactionPanel({
+export function BotTransactionPanel({
   trades,
   currency,
   running,

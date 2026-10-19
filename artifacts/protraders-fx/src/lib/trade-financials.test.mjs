@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { actualTradeStake, normalizeTradeExecution, settledTradeNetProfit, sumSettledTradeNetProfit } from "./trade-financials.ts";
+import { actualTradeStake, normalizeTradeExecution, settledTradeNetProfit, sumSettledTradeNetProfit, tradeResultFinancialState } from "./trade-financials.ts";
 
 test("martingale results use the actual paid stake and keep net P/L separate", () => {
   const trades = [
@@ -26,4 +26,25 @@ test("unsettled trades remain pending; unknown purchases are not counted as conf
   assert.equal(settledTradeNetProfit({ buyPrice: 4, payout: 7.6, settlementPending: true }), null);
   assert.equal(actualTradeStake({ buyPrice: "-4", stake: "2" }), 2);
   assert.equal(actualTradeStake({}), null);
+});
+
+test("result headline follows settled contract rows, never a stale aggregate or balance", () => {
+  assert.deepEqual(tradeResultFinancialState({
+    profit: 999, tradeResults: [{ buyPrice: 10, payout: 0, result: "lost" }],
+  }), { profit: -10, pending: false, orderStatusUnknown: false });
+  assert.deepEqual(tradeResultFinancialState({
+    profit: -999, tradeResults: [{ buyPrice: 10, payout: 18, result: "won" }],
+  }), { profit: 8, pending: false, orderStatusUnknown: false });
+  assert.equal(tradeResultFinancialState({
+    profit: 999, tradeResults: [{ buyPrice: 10, payout: 10, status: "sold" }],
+  }).profit, 0);
+});
+
+test("pending or uncertain rows cannot produce a false profit headline", () => {
+  assert.deepEqual(tradeResultFinancialState({
+    profit: 999, tradeResults: [{ buyPrice: 10, payout: 18, status: "open" }],
+  }), { profit: null, pending: true, orderStatusUnknown: false });
+  assert.equal(tradeResultFinancialState({
+    profit: 999, tradeResults: [{ orderStatusUnknown: true }],
+  }).orderStatusUnknown, true);
 });

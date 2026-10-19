@@ -86,9 +86,12 @@ export function ProfitLossValue({ amount, currency }: {
   currency: string;
 }) {
   const { displayCurrency, rate } = useCurrencyDisplay();
+  const tone = profitLossTone(amount);
   return createElement("span", {
     className: "pnl-value",
-    "data-pnl-tone": profitLossTone(amount),
+    "data-pnl-tone": tone,
+    "data-pnl-label": tone === "profit" ? "PROFIT" : tone === "loss" ? "LOSS" : tone === "pending" ? "PENDING" : "",
+    title: tone === "flat" ? "Break-even: no net gain or loss" : tone === "pending" ? "Awaiting a confirmed net result" : `${tone === "profit" ? "Net profit" : "Net loss"}; stake excluded`,
     dir: "ltr",
   }, formatSignedMoneyForDisplay(amount, currency, displayCurrency, rate));
 }

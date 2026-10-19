@@ -4,5 +4,52 @@
 .pnl-value[data-pnl-tone="loss"] { color: #ef4444 !important; }
 .pnl-value[data-pnl-tone="flat"],
 .pnl-value[data-pnl-tone="pending"] { color: #8494a7 !important; }
-.pnl-value { display: inline; font: inherit; direction: ltr; unicode-bidi: isolate; }
+.pnl-value {
+  /* Legacy result-card rules style all descendant spans as cards. A P/L value
+     must remain plain inline text, including in nested totals and on phones. */
+  display: inline !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  width: auto !important;
+  min-width: 0 !important;
+  font: inherit !important;
+  white-space: nowrap;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+.pnl-value[data-pnl-label]:not([data-pnl-label=""])::before {
+  content: attr(data-pnl-label);
+  margin-inline-end: .4em;
+  font-size: .7em;
+  font-weight: 700;
+}
+.pnl-value[data-pnl-tone="profit"],
+.pnl-value[data-pnl-tone="loss"] { font-weight: 700 !important; font-variant-numeric: tabular-nums; }
+.trade-money-details > :is(b, strong) {
+  color: #334155 !important;
+  font-size: 12px !important;
+  line-height: 1.4;
+}
+.trade-figure-strip > span:not(:last-child) > b { color: #334155 !important; }
 .terminal-balance-warning { color: #d97706; font-size: 10px; white-space: normal; }
+
+@media (max-width: 600px) {
+  .bot-transaction-table { min-width: 0 !important; width: 100%; }
+  .bot-transaction-table .bot-transaction-row {
+    min-width: 0 !important;
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+    gap: 6px;
+    padding: 10px 8px;
+  }
+  .bot-transaction-row > .trade-type-cell { grid-column: 1; grid-row: 1; min-width: 0; }
+  .bot-transaction-row > .bot-transaction-points { grid-column: 1; grid-row: 2; }
+  .bot-transaction-row > .trade-money-details { grid-column: 2; grid-row: 1 / span 2; min-width: 0; }
+  .bot-transaction-row > .trade-money-details > :is(b, strong) { white-space: normal !important; }
+  .bot-transaction-row.is-head > :nth-child(2) { display: none; }
+  .bot-transaction-row.is-head > :last-child { grid-column: 2; }
+  .trade-figure-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .trade-figure-strip > span:last-child { grid-column: 1 / -1; border-top: 1px solid #e2ecee; }
+}

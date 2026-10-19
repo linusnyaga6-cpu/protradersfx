@@ -48,3 +48,18 @@ test("P/L stylesheet binds financial meaning to red and green regardless of work
   assert.match(css, /\[data-pnl-tone="profit"\]\s*\{\s*color: #16a34a !important;/);
   assert.match(css, /\[data-pnl-tone="loss"\]\s*\{\s*color: #ef4444 !important;/);
 });
+
+test("visible outcome labels distinguish profit, loss and pending results without colour alone", () => {
+  assert.match(render(8), /data-pnl-label="PROFIT"/);
+  assert.match(render(-10), /data-pnl-label="LOSS"/);
+  assert.match(render(null), /data-pnl-label="PENDING"/);
+  assert.match(render(0), /Break-even: no net gain or loss/);
+});
+
+test("nested P/L values cannot inherit card layout or invisible font sizes from legacy span selectors", () => {
+  const css = readFileSync(new URL("../profit-loss.css", import.meta.url), "utf8");
+  assert.match(css, /display: inline !important/);
+  assert.match(css, /padding: 0 !important/);
+  assert.match(css, /font: inherit !important/);
+  assert.match(css, /\.trade-money-details > :is\(b, strong\)/);
+});
