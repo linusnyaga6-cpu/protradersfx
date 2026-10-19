@@ -1,0 +1,22 @@
+- [Vercel domain ownership and routing](vercel-hosted-domain.md) — verify domain ownership and connector access; the visible Vercel project may belong to a different product.
+- [Vercel source mismatch](vercel-source-mismatch.md) — the root server can serve checked-in assets instead of the updated artifact; verify the exact public bundle before declaring deploys live.
+- [Vercel Deriv-only authentication](vercel-clerk-production.md) — ProTraders FX intentionally avoids Clerk; the current production guard is temporary until the clean static bundle replaces the stale asset.
+- [Deriv public market stream](deriv-public-market-stream.md) — defer auth/feed startup, keep the guest landing light, batch ticks, and throttle bounded cache writes.
+- [TraderScheme reference surfaces](traderscheme-reference-surfaces.md) — TraderScheme guides the ProTraders home, trading, and results experience; retain official Deriv data and current trade behavior.
+- [Vercel connector project permissions](vercel-connector-project-permissions.md) — a connected Vercel account may still reject project creation with a permission error; do not treat generic 403s as OAuth failures.
+- [Vercel preview protection](vercel-preview-protection.md) — existing project SSO protection can hide new preview deployments behind Vercel auth even when the build is ready.
+- [Vercel API route parity](vercel-api-route-parity.md) — production server routes are separate from the local API artifact and must be mirrored.
+- [ProTraders FX owner access](protradersfx-owner-access.md) — the user owns the site and expects the authenticated workspace and owner functions to be accessible.
+- [Deriv OAuth proposal channel](deriv-oauth-proposals.md) — connected accounts use the account-specific Options API OTP WebSocket for proposals.
+- [Deriv execution token handling](deriv-execution-oauth.md) — refresh OAuth sessions, bound account calls, reject silent socket closes, and keep proposal/buy on one socket.
+- [Manual batch runs](manual-trading-batches.md) — requested runs repeat the fixed selection; continue confirmed pending orders, but stop when placement is uncertain.
+- [Bot risk-limit enforcement](bot-risk-limits.md) — configured TP/SL and run counts must be the only automatic limits; never add a smaller hidden run cap.
+- [Activity commission reporting](activity-commission-reporting.md) — calculate expected commission only from configured Deriv rate data; show pending when no verified rate exists.
+- [Markets custody boundaries](markets-custody-boundaries.md) — separate customer liabilities from owner treasury surplus; disable funding until provider and reconciliation controls exist.
+- [Deriv Pro Bots product policy](deriv-pro-bots-policy.md) — keep Free Bots separate from Premium Bots; implement sourced strategies only from authorized specifications.
+- [Live-trading booking policy](live-trading-booking.md) — show a $5 contact-only booking fee to verified real USD accounts above $100, with a clear trading-risk disclaimer.
+- [Copy-trade stake ownership](copy-trading-stake.md) — each follower chooses their own copied-trade stake; never derive it from the leader’s stake or balance.
+- [Workspace navigation](workspace-navigation-policy.md) — horizontal tool and tab rows across workspaces; Back/Forward restores visited tools without trapping users.
+- [Language and country preferences](language-country-policy.md) — display choices never change Deriv residency or trading eligibility; mark incomplete translations clearly.
+- [Profit and loss presentation](financial-display-policy.md) — losses use a red minus sign; profits use a green plus sign, including currency-converted results.
+- [Browser tester preview routing](browser-preview-routing.md) — the testing browser needs the HTTPS development preview URL, not the app container's localhost.

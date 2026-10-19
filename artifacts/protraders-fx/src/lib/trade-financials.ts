@@ -39,6 +39,13 @@ export function settledTradeNetProfit(trade: TradeFinancials) {
   }
 
   const buyPrice = actualTradeStake(trade);
+  // Deriv's payout can still be the quoted winning payout after a loss.
+  // Never turn a confirmed losing contract into a profit using that quote.
+  if (status === "lost" || String(trade.result ?? "").toLowerCase() === "lost") {
+    const netLoss = finiteNumber(trade.profit);
+    if (netLoss !== null && netLoss < 0) return netLoss;
+    return buyPrice === null ? null : -Math.abs(buyPrice);
+  }
   const payout = finiteNumber(trade.payout);
   if (payout !== null && buyPrice !== null) {
     return payout - buyPrice;

@@ -25,7 +25,7 @@ const cases: Record<string, ExecutedTrade[]> = {
   ],
   mixed: [
     { buyPrice: 10, payout: 18, result: 'won' },
-    { buyPrice: 10, payout: 0, result: 'lost' },
+    { buyPrice: 10, payout: 19, profit: 9, result: 'lost' },
     { buyPrice: 10, payout: 10, status: 'sold' },
   ],
 };

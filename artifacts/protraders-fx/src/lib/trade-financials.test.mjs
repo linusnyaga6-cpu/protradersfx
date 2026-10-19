@@ -48,3 +48,11 @@ test("pending or uncertain rows cannot produce a false profit headline", () => {
     profit: 999, tradeResults: [{ orderStatusUnknown: true }],
   }).orderStatusUnknown, true);
 });
+
+test("confirmed losses stay negative when Deriv retains the quoted winning payout", () => {
+  for (const profit of [-10, 9, 0, null, undefined]) {
+    assert.equal(settledTradeNetProfit({status:"lost",buyPrice:10,payout:19,profit}), -10);
+  }
+  assert.equal(settledTradeNetProfit({status:"lost",buyPrice:10,payout:19,profit:-4}), -4);
+  assert.equal(tradeResultFinancialState({profit:9,tradeResults:[{result:"lost",buyPrice:10,payout:19}]}).profit,-10);
+});
