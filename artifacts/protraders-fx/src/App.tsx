@@ -43,6 +43,7 @@ import { startPublicIntro } from './lib/public-intro';
 import { normalizeTradeExecution, settledTradeNetProfit, sumSettledTradeNetProfit } from './lib/trade-financials';
 import {
   CurrencyDisplayContext,
+  ProfitLossValue,
   formatMoneyForDisplay,
   formatSignedMoneyForDisplay,
   type DisplayCurrency,
@@ -271,7 +272,7 @@ function TradeMoneyDetails({ trade, fallbackCurrency }: { trade: ExecutedTrade; 
     <span className="trade-money-details">
       <b>{stake === null ? 'Stake —' : `Stake ${formatMoneyForDisplay(stake, currency, displayCurrency, rate)}`}</b>
       <strong className={profit === null ? 'is-flat' : profit < 0 ? 'is-loss' : 'is-win'}>
-        {profit === null ? 'Net P/L pending' : `Net P/L ${formatSignedMoneyForDisplay(profit, currency, displayCurrency, rate)}`}
+        {profit === null ? 'Net P/L pending' : <>Net P/L <ProfitLossValue amount={profit} currency={currency} /></>}
       </strong>
     </span>
   );
@@ -295,7 +296,7 @@ function TradeResultDialog({ result, onClose }: { result: BatchResult | null; on
       <section className={`bot-result-dialog ai-batch-result ${resultTone}`} role="dialog" aria-modal="true" aria-label="Trade result">
         <button type="button" className="bot-result-close" onClick={onClose} aria-label="Close result">×</button>
         <span className="ai-batch-result-kicker">{result.orderStatusUnknown ? 'ORDER STATUS UNKNOWN' : result.settlementPending ? 'SETTLEMENT PENDING' : result.profit < 0 ? 'LOSS' : result.profit > 0 ? 'PROFIT' : 'FLAT'}</span>
-        <strong className="ai-batch-result-value">{result.settlementPending || result.orderStatusUnknown ? 'PENDING' : formatSignedMoneyForDisplay(result.profit, result.currency, displayCurrency, rate)}</strong>
+        <strong className="ai-batch-result-value">{result.settlementPending || result.orderStatusUnknown ? 'PENDING' : <ProfitLossValue amount={result.profit} currency={result.currency} />}</strong>
         {(result.settlementPending || result.orderStatusUnknown) && <p role="status">{result.orderStatusUnknown ? "Deriv did not confirm whether the order was placed. Check your Deriv transaction history before retrying." : "The order was placed. Deriv has not returned its final result yet; do not submit it again."}</p>}
         <div className="ai-batch-result-tabs" role="tablist" aria-label="Trade result details">
           {([
@@ -314,7 +315,7 @@ function TradeResultDialog({ result, onClose }: { result: BatchResult | null; on
               <span><small>NO. OF RUNS</small><b>{result.trades}</b></span>
               <span><small>CONTRACTS LOST</small><b>{tradeSummary.contractsLost}</b></span>
               <span><small>CONTRACTS WON</small><b>{tradeSummary.contractsWon}</b></span>
-              <span><small>TOTAL NET PROFIT/LOSS</small><b className={tradeSummary.totalProfit !== null && tradeSummary.totalProfit < 0 ? 'is-loss' : 'is-win'}>{formatSignedMoneyForDisplay(tradeSummary.totalProfit, result.currency, displayCurrency, rate)}</b></span>
+              <span><small>TOTAL NET PROFIT/LOSS</small><b><ProfitLossValue amount={tradeSummary.totalProfit} currency={result.currency} /></b></span>
             </div>
             <div className="ai-batch-result-points">
               <span><small>LAST ENTRY POINT</small><b>{formatTradePoint(latestTrade?.entrySpot)}</b></span>
@@ -363,7 +364,7 @@ function TradeFigureStrip({ trades, currency }: { trades: ExecutedTrade[]; curre
     <div className={`trade-figure-strip ${tone}`} aria-label="Trade figures">
       <span><small>TRADES</small><b>{trades.length}</b></span>
       <span><small>PLACED</small><b>{formatMoneyForDisplay(placed, currency, displayCurrency, rate)}</b></span>
-      <span><small>NET P/L</small><b>{formatSignedMoneyForDisplay(profit, currency, displayCurrency, rate)}</b></span>
+      <span><small>NET P/L</small><b><ProfitLossValue amount={profit} currency={currency} /></b></span>
     </div>
   );
 }
@@ -444,7 +445,7 @@ function BotTransactionPanel({
             <article><span>SETTLED TRADES</span><strong>{tradeSummary.settledCount}</strong><small>{running ? runningLabel : 'Completed contracts'}</small></article>
           <article><span>TOTAL STAKE</span><strong>{formatMoneyForDisplay(placed, currency, displayCurrency, rate)}</strong><small>Stake placed only</small></article>
           <article><span>CONTRACT</span><strong>{contracts}</strong><small>Selected contract type</small></article>
-          <article><span>NET P/L</span><strong className={profit !== null && profit < 0 ? 'is-loss' : 'is-win'}>{formatSignedMoneyForDisplay(profit, currency, displayCurrency, rate)}</strong><small>Settled result, stake excluded</small></article>
+          <article><span>NET P/L</span><strong><ProfitLossValue amount={profit} currency={currency} /></strong><small>Settled result, stake excluded</small></article>
           <article><span>LAST ENTRY / EXIT</span><strong>{formatTradePoint(latestTrade?.entrySpot)} / {formatTradePoint(latestTrade?.exitSpot)}</strong><small>Latest settled contract</small></article>
         </div>
       )}
@@ -467,7 +468,7 @@ function BotTransactionPanel({
               <span><small>NO. OF RUNS</small><strong>{trades.length}</strong></span>
               <span><small>CONTRACTS LOST</small><strong>{tradeSummary.contractsLost}</strong></span>
               <span><small>CONTRACTS WON</small><strong>{tradeSummary.contractsWon}</strong></span>
-              <span><small>TOTAL NET PROFIT/LOSS</small><strong className={profit !== null && profit < 0 ? 'is-loss' : 'is-win'}>{formatSignedMoneyForDisplay(profit, currency, displayCurrency, rate)}</strong></span>
+              <span><small>TOTAL NET PROFIT/LOSS</small><strong><ProfitLossValue amount={profit} currency={currency} /></strong></span>
             </div>
           )}
         </div>
@@ -565,8 +566,8 @@ function OwnerActivityView() {
                       <small>{trade.symbol} · {trade.contractType} · {trade.mode.toUpperCase()} · {new Date(trade.at).toLocaleString()}</small>
                     </span>
                     <b>{trade.currency} {trade.amount.toFixed(2)}</b>
-                    <em className={trade.profit !== null && trade.profit < 0 ? 'is-loss' : 'is-win'}>
-                      {formatSignedProfit(trade.profit)}<small>{trade.result.toUpperCase()}</small>
+                    <em>
+                      <ProfitLossValue amount={trade.profit} currency={trade.currency} /><small>{trade.result.toUpperCase()}</small>
                     </em>
                   </div>
                 ))}
@@ -2208,7 +2209,7 @@ function AuthenticatedHome() {
                 <header><span>LAST TRADE</span><small>{latestManualTrade?.marketName ?? activeDefinition.name} · {latestManualTrade?.mode ?? accountMode}</small></header>
                 <div className="manual-result-primary">
                   <div><small>{latestManualTrade ? 'CONTRACT' : 'TRADE HISTORY'}</small><strong>{latestManualContractLabel}</strong></div>
-                  <b>{latestManualTrade ? formatSignedMoneyForDisplay(resolvedTradeProfit(latestManualTrade), latestManualTrade.currency ?? currency, displayCurrency, usdKesRate) : '—'}</b>
+                  <b>{latestManualTrade ? <ProfitLossValue amount={resolvedTradeProfit(latestManualTrade)} currency={latestManualTrade.currency ?? currency} /> : '—'}</b>
                 </div>
                 <div className="manual-result-stats">
                   <span><small>DIGIT</small><strong>{latestDigit ?? '—'}</strong></span>
@@ -3565,7 +3566,7 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
                 <div className="ptx-metrics">
                   <div className="ptx-metric"><span>ENTRY</span><strong>{bulkRunProgress.total ? `${bulkRunProgress.current}/${bulkRunProgress.total}` : '—'}</strong></div>
                   <div className="ptx-metric"><span>SETTLED</span><strong>{bulkRunProgress.total ? `${bulkRunProgress.completed}/${bulkRunProgress.total}` : '0'}</strong></div>
-                  <div className="ptx-metric"><span>BATCH NET P/L</span><strong className={liveBatchProfit === null ? '' : liveBatchProfit < 0 ? 'bad' : 'good'}>{liveBatchTrades.length ? liveBatchProfit === null ? 'PENDING' : `${formatSignedProfit(liveBatchProfit)} ${currency}` : '—'}</strong></div>
+                  <div className="ptx-metric"><span>BATCH NET P/L</span><strong>{liveBatchTrades.length ? liveBatchProfit === null ? 'PENDING' : <ProfitLossValue amount={liveBatchProfit} currency={currency} /> : '—'}</strong></div>
                 </div>
               </div>
               {selectedScannerResult && <div className="ptx-scan-reading">
@@ -3581,7 +3582,7 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
                   const tradeNumber = liveBatchTrades.length - index;
                   return <div className="ptx-result-row" key={`${trade.contractId ?? 'pending'}-${tradeNumber}`} data-testid={`bulk-live-entry-${tradeNumber}`}>
                     <span><b>#{tradeNumber} · {tradeContractLabel(trade)}</b><small>E {formatTradePoint(trade.entrySpot)} · X {formatTradePoint(trade.exitSpot)}</small><TradeMoneyDetails trade={trade} fallbackCurrency={currency} /></span>
-                    <strong className={trade.orderStatusUnknown || trade.settlementPending ? 'is-pending' : tradeProfit !== null && tradeProfit < 0 ? 'is-loss' : ''}>{trade.orderStatusUnknown ? 'STATUS UNKNOWN' : trade.settlementPending ? 'PENDING' : `${formatSignedProfit(tradeProfit)} ${trade.currency ?? currency}`}</strong>
+                    <strong className={trade.orderStatusUnknown || trade.settlementPending ? 'is-pending' : ''}>{trade.orderStatusUnknown ? 'STATUS UNKNOWN' : trade.settlementPending ? 'PENDING' : <ProfitLossValue amount={tradeProfit} currency={trade.currency ?? currency} />}</strong>
                   </div>;
                 }) : <p className="ptx-empty">{executionState === 'executing' ? 'Scanning live ticks before entry one.' : 'Trade entries and settled P/L will appear here as the batch runs.'}</p>}
               </div>
@@ -3632,7 +3633,7 @@ function BulkTraderView({ activeMarket, setActiveMarket, marketQuotes, accountMo
                   const tradeNumber = liveBatchTrades.length - index;
                   return <div className="ptx-result-row" key={`scanner-${trade.contractId ?? 'pending'}-${tradeNumber}`}>
                     <span><b>#{tradeNumber} · {tradeContractLabel(trade)}</b><small>E {formatTradePoint(trade.entrySpot)} · X {formatTradePoint(trade.exitSpot)}</small><TradeMoneyDetails trade={trade} fallbackCurrency={currency} /></span>
-                    <strong className={trade.orderStatusUnknown || trade.settlementPending ? 'is-pending' : tradeProfit !== null && tradeProfit < 0 ? 'is-loss' : ''}>{trade.orderStatusUnknown ? 'STATUS UNKNOWN' : trade.settlementPending ? 'PENDING' : `${formatSignedProfit(tradeProfit)} ${trade.currency ?? currency}`}</strong>
+                    <strong className={trade.orderStatusUnknown || trade.settlementPending ? 'is-pending' : ''}>{trade.orderStatusUnknown ? 'STATUS UNKNOWN' : trade.settlementPending ? 'PENDING' : <ProfitLossValue amount={tradeProfit} currency={trade.currency ?? currency} />}</strong>
                   </div>;
                 })}
               </div>}
@@ -3892,12 +3893,12 @@ function RecoveryBotView({ accountMode, currency, balance, activeMarket, marketQ
                <span className="recovery-transaction-type"><i className={resolvedTradeProfit(trade) !== null && resolvedTradeProfit(trade)! < 0 ? 'is-loss' : 'is-win'} /><strong>#{transactions.length - index} · {tradeContractLabel(trade)}</strong></span>
                <span className="recovery-spots"><span><i className="spot-entry" />{formatTradePoint(trade.entrySpot)}</span></span>
                <span className="recovery-spots"><span><i className="spot-exit" />{formatTradePoint(trade.exitSpot)}</span></span>
-              <span className="recovery-buy-pnl"><span>Stake {formatMoneyForDisplay(trade.stake ?? trade.buyPrice, trade.currency ?? resultCurrency, displayCurrency, rate)}</span><em className={resolvedTradeProfit(trade) !== null && resolvedTradeProfit(trade)! < 0 ? 'is-loss' : 'is-win'}>{formatSignedMoneyForDisplay(resolvedTradeProfit(trade), trade.currency ?? resultCurrency, displayCurrency, rate)}</em></span>
+              <span className="recovery-buy-pnl"><span>Stake {formatMoneyForDisplay(trade.stake ?? trade.buyPrice, trade.currency ?? resultCurrency, displayCurrency, rate)}</span><em><ProfitLossValue amount={resolvedTradeProfit(trade)} currency={trade.currency ?? resultCurrency} /></em></span>
             </div>) : <div className="recovery-transaction-empty">No bot transactions yet.</div>}
             <a className="recovery-whats-this" href="#recovery-transactions-help">What's this?</a>
           </div>}
           {summaryTab === 'Journal' && <div className="recovery-tab-content"><strong>Journal</strong>{journalEntries.length ? journalEntries.slice(-5).map((entry, index) => <p key={`${entry}-${index}`}>{entry}</p>) : <p>Your bot activity journal will appear here after you run the bot.</p>}</div>}
-           {summaryTab === 'Results' && <div className="recovery-tab-content"><strong>Results</strong><div className="recovery-figure-results"><b className={resultProfit !== null && resultProfit < 0 ? 'is-loss' : 'is-win'}>{formatSignedMoneyForDisplay(resultProfit, resultCurrency, displayCurrency, rate)}</b><span>{tradeContractSummary(transactions)}</span><span>{resultRuns}</span><span>{resultWon}</span><span>{resultLost}</span></div>{lastTrade && <div className="recovery-entry-exit-card"><span><small>LAST ENTRY</small><b>{formatTradePoint(lastTrade.entrySpot)}</b></span><span><small>LAST EXIT</small><b>{formatTradePoint(lastTrade.exitSpot)}</b></span></div>}</div>}
+           {summaryTab === 'Results' && <div className="recovery-tab-content"><strong>Results</strong><div className="recovery-figure-results"><b><ProfitLossValue amount={resultProfit} currency={resultCurrency} /></b><span>{tradeContractSummary(transactions)}</span><span>{resultRuns}</span><span>{resultWon}</span><span>{resultLost}</span></div>{lastTrade && <div className="recovery-entry-exit-card"><span><small>LAST ENTRY</small><b>{formatTradePoint(lastTrade.entrySpot)}</b></span><span><small>LAST EXIT</small><b>{formatTradePoint(lastTrade.exitSpot)}</b></span></div>}</div>}
           {summaryTab !== 'Journal' && <div className="recovery-metrics">
             {[
               ['Total stake', formatMoneyForDisplay(resultStake, resultCurrency, displayCurrency, rate)],
@@ -3906,7 +3907,7 @@ function RecoveryBotView({ accountMode, currency, balance, activeMarket, marketQ
               ['Contracts lost', String(resultLost)],
               ['Contracts won', String(resultWon)],
               ['Total net profit/loss', formatSignedMoneyForDisplay(resultProfit, resultCurrency, displayCurrency, rate)],
-            ].map(([label, value]) => <div key={label}><strong>{label}</strong><span className={label === 'Total net profit/loss' && resultProfit !== null && resultProfit < 0 ? 'is-loss' : label === 'Total net profit/loss' ? 'is-win' : ''}>{value}</span></div>)}
+            ].map(([label, value]) => <div key={label}><strong>{label}</strong><span>{label === 'Total net profit/loss' ? <ProfitLossValue amount={resultProfit} currency={resultCurrency} /> : value}</span></div>)}
           </div>}
            <button type="button" className="recovery-reset" disabled={running} onClick={() => { if (recoveryExecutionLockRef.current) return; stopRequestedRef.current = true; setRunning(false); setProposalState('idle'); setProposalMessage(''); setLastTrade(null); setTransactions([]); setJournalEntries([]); setSummaryTab('Summary'); setStake('10'); setRunCount('1'); setNumberOfTicks('1'); setMartingale('2'); setTakeProfit('50'); setStopLoss('500'); setConsecutiveLosses('5'); }}>Reset</button>
         </aside>

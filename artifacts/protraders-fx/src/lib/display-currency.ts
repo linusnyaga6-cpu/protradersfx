@@ -1,4 +1,4 @@
-import { createContext, useContext } from "react";
+import { createContext, createElement, useContext } from "react";
 import { convertCurrency, currencyLabel, normalizeCurrency, type DisplayCurrency, type RateInput } from "./currencies.ts";
 
 export type { DisplayCurrency } from "./currencies";
@@ -73,4 +73,22 @@ export function formatSignedMoneyForDisplay(
   if (parsed === 0) return "FLAT";
   const sign = parsed > 0 ? "+" : "-";
   return `${sign}${formatMoneyForDisplay(Math.abs(parsed), sourceCurrency, displayCurrency, rate)}`;
+}
+
+export function profitLossTone(amount: number | string | null | undefined) {
+  const parsed = finiteAmount(amount);
+  return parsed === null ? "pending" : parsed > 0 ? "profit" : parsed < 0 ? "loss" : "flat";
+}
+
+// Keep the numeric sign and its colour together, independent of surrounding themes.
+export function ProfitLossValue({ amount, currency }: {
+  amount: number | string | null | undefined;
+  currency: string;
+}) {
+  const { displayCurrency, rate } = useCurrencyDisplay();
+  return createElement("span", {
+    className: "pnl-value",
+    "data-pnl-tone": profitLossTone(amount),
+    dir: "ltr",
+  }, formatSignedMoneyForDisplay(amount, currency, displayCurrency, rate));
 }

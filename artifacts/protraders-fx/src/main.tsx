@@ -11,6 +11,7 @@ import './bulk-trader-theme.css';
 import './workspace-navigation.css';
 import './scrolling.css';
 import './traderscheme-refresh.css';
+import './profit-loss.css';
 
 createRoot(document.getElementById('root')!, {
   // Keeps caught errors off reportError(), which would raise the dev overlay.

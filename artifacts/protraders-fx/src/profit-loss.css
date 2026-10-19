@@ -1,0 +1,7 @@
+/* Scoped to actual P/L values, not stakes, prices, or market-direction signals.
+   Important protects financial meaning from the legacy workspace theme overrides. */
+.pnl-value[data-pnl-tone="profit"] { color: #16a34a !important; }
+.pnl-value[data-pnl-tone="loss"] { color: #ef4444 !important; }
+.pnl-value[data-pnl-tone="flat"],
+.pnl-value[data-pnl-tone="pending"] { color: #8494a7 !important; }
+.pnl-value { display: inline; font: inherit; direction: ltr; unicode-bidi: isolate; }

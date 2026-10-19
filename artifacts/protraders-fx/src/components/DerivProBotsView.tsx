@@ -23,7 +23,7 @@ import {
 } from "../lib/trade-financials";
 import {
   formatMoneyForDisplay,
-  formatSignedMoneyForDisplay,
+  ProfitLossValue,
   useCurrencyDisplay,
 } from "../lib/display-currency";
 
@@ -950,8 +950,8 @@ export default function DerivProBotsView({
 
           <div className="deriv-pro-bot-run-summary">
             <span>Run trades <strong>{runTradeCount}/{configRef.current?.maxTrades ?? (Number(maxTrades) || 0)}</strong></span>
-            <span>Run net P/L <strong className={runProfitPending ? "" : runProfit >= 0 ? "is-positive" : "is-negative"}>{runProfitPending ? "PENDING" : runTradeCount === 0 ? "—" : formatSignedMoneyForDisplay(runProfit, currency, displayCurrency, rate)}</strong></span>
-            <span>All-session net P/L <strong className={totalProfit === null ? "" : totalProfit >= 0 ? "is-positive" : "is-negative"}>{allSessionProfitPending ? "PENDING" : formatSignedMoneyForDisplay(totalProfit, currency, displayCurrency, rate)}</strong></span>
+            <span>Run net P/L <strong>{runProfitPending ? "PENDING" : runTradeCount === 0 ? "—" : <ProfitLossValue amount={runProfit} currency={currency} />}</strong></span>
+            <span>All-session net P/L <strong>{allSessionProfitPending ? "PENDING" : <ProfitLossValue amount={totalProfit} currency={currency} />}</strong></span>
             <span>Balance <strong>{balance === null ? "—" : formatMoneyForDisplay(balance, currency, displayCurrency, rate)}</strong></span>
           </div>
 
@@ -978,7 +978,7 @@ export default function DerivProBotsView({
                         <td>{formatDerivContractType(trade.contractType, trade.barrier)}</td>
                         <td>{trade.entrySpot ?? "—"} → {trade.exitSpot ?? "—"}</td>
                         <td>{formatMoneyForDisplay(trade.stake, trade.currency, displayCurrency, rate)}</td>
-                        <td className={netProfit === null ? "" : netProfit >= 0 ? "is-positive" : "is-negative"}>{profitPending ? "PENDING" : formatSignedMoneyForDisplay(netProfit, trade.currency, displayCurrency, rate)}</td>
+                        <td>{profitPending ? "PENDING" : <ProfitLossValue amount={netProfit} currency={trade.currency} />}</td>
                         <td><span className={`deriv-pro-bot-result-badge is-${trade.orderStatusUnknown ? "pending" : trade.result}`}>{trade.orderStatusUnknown ? "unknown" : trade.settlementPending ? "pending" : trade.result}</span></td>
                       </tr>
                     );})}
@@ -990,7 +990,7 @@ export default function DerivProBotsView({
                   <span><small>NO. OF RUNS</small><strong>{trades.length}</strong></span>
                   <span><small>CONTRACTS LOST</small><strong>{resultSummary.contractsLost}</strong></span>
                   <span><small>CONTRACTS WON</small><strong>{resultSummary.contractsWon}</strong></span>
-                  <span><small>TOTAL NET PROFIT/LOSS</small><strong className={resultSummary.totalProfit === null ? "" : resultSummary.totalProfit < 0 ? "is-loss" : "is-win"}>{allSessionProfitPending ? "PENDING" : formatSignedMoneyForDisplay(resultSummary.totalProfit, currency, displayCurrency, rate)}</strong></span>
+                  <span><small>TOTAL NET PROFIT/LOSS</small><strong>{allSessionProfitPending ? "PENDING" : <ProfitLossValue amount={resultSummary.totalProfit} currency={currency} />}</strong></span>
                 </div>
               </div>
             )}
