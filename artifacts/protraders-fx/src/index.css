@@ -6155,15 +6155,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   font: 7px/1.25 var(--app-font-sans);
 }
 
-.manual-stop-after-current {
-  min-height: 27px;
-  padding: 0 9px;
-  border: 1px solid #dfaa55;
-  border-radius: 5px;
-  color: #71440e;
-  background: #fff7e9;
-  font: 800 8px var(--app-font-sans);
-  cursor: pointer;
+.manual-batch-notice {
+  margin: 2px 0;
+  color: #80591c;
+  font: 700 8px/1.35 var(--app-font-sans);
 }
 
 .manual-ticket-actions button small {
@@ -6182,6 +6177,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .manual-main .manual-entry-risk span { color: #9ab4bf; }
 
 .manual-main .manual-entry-risk strong { color: #65dfbd; }
+
+.manual-main .manual-batch-notice { color: #ffd17a; }
 
 @media (max-width: 560px) {
   .manual-entry-settings { grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); }
